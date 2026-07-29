@@ -1,0 +1,13 @@
+[Unit]
+Description=Zohara OS Background Package Migrator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/zohara-migrator-daemon
+RemainAfterExit=yes
+ConditionPathExists=/tmp/zohara_scan_results.json
+
+[Install]
+WantedBy=multi-user.target

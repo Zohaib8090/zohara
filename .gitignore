@@ -1,0 +1,23 @@
+# Rust / Cargo
+**/target/
+**/*.rs.bk
+
+# Archiso build directories
+work/
+out/
+*.iso
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

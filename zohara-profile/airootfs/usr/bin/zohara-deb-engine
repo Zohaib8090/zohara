@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+
+# Zohara OS - DEB Compatibility Engine
+# This engine processes double-clicked .deb packages.
+
+if [ -z "$1" ]; then
+    echo "Usage: zohara-deb-engine <package.deb>"
+    exit 1
+fi
+
+DEB_FILE="$1"
+PACKAGE_NAME=$(basename "$DEB_FILE" .deb)
+
+echo "Processing $DEB_FILE via Zohara DEB Engine..."
+
+# Option A: debtap conversion (Primary Route)
+# debtap must be updated before first use, handled by systemd service or on first run
+if [ ! -f "/var/cache/debtap/virtual-packages" ]; then
+    echo "Initializing debtap database..."
+    sudo debtap -u
+fi
+
+# Convert silently (-q)
+echo "Converting $DEB_FILE to Arch package format..."
+sudo debtap -Q -q "$DEB_FILE"
+
+# Find the generated zst file
+GENERATED_PKG=$(ls ${PACKAGE_NAME}*.pkg.tar.zst 2>/dev/null | head -n 1)
+
+if [ -n "$GENERATED_PKG" ]; then
+    echo "Installing converted package: $GENERATED_PKG"
+    sudo pacman -U --noconfirm "$GENERATED_PKG"
+    
+    # Cleanup
+    rm -f "$GENERATED_PKG"
+    echo "Installation complete."
+else
+    # Fallback Option B: Distrobox (Silent execution container)
+    echo "Debtap conversion failed. Falling back to Distrobox container."
+    
+    # Check if fallback container exists
+    if ! distrobox list | grep -q "zohara-deb-runner"; then
+        echo "Creating zohara-deb-runner container (Ubuntu based)..."
+        distrobox create --name zohara-deb-runner --image ubuntu:latest -Y
+    fi
+    
+    echo "Installing $DEB_FILE in zohara-deb-runner..."
+    distrobox enter zohara-deb-runner -- sudo apt-get install -y "./$DEB_FILE"
+    
+    # Export the app to host menu
+    APP_EXEC=$(dpkg -I "$DEB_FILE" | grep -i "Package:" | awk '{print $2}')
+    distrobox enter zohara-deb-runner -- distrobox-export --app "$APP_EXEC"
+fi

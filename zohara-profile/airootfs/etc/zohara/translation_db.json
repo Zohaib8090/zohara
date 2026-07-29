@@ -1,0 +1,18 @@
+{
+    "ubuntu": {
+        "google-chrome-stable": "google-chrome",
+        "vlc": "vlc",
+        "python3": "python",
+        "htop": "htop",
+        "build-essential": "base-devel",
+        "libssl-dev": "openssl"
+    },
+    "fedora": {
+        "google-chrome-stable": "google-chrome",
+        "vlc": "vlc",
+        "python3": "python",
+        "htop": "htop",
+        "gcc-c++": "gcc",
+        "openssl-devel": "openssl"
+    }
+}
