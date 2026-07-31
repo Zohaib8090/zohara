@@ -41,16 +41,11 @@ jobs:
           set -e
           # Patch mkarchiso to fix FAT partition size
           sed -i 's/2 \* 1024 \* 1024/1024 * 1024 * 1024/g' /usr/bin/mkarchiso
-          # Clean up pacman.conf
+          # Point pacman.conf to /opt/localrepo
+          sed -i 's|Server = file:///build/localrepo|Server = file:///opt/localrepo|g' /build/zohara-profile/pacman.conf
+          grep -q '\[localrepo\]' /build/zohara-profile/pacman.conf || echo -e '\n[localrepo]\nSigLevel = Optional TrustAll\nServer = file:///opt/localrepo' >> /build/zohara-profile/pacman.conf
+          # Clean up
           sed -i '/\[chaotic-aur\]/,+1d' /build/zohara-profile/pacman.conf
-          grep -q '\[localrepo\]' /build/zohara-profile/pacman.conf || echo -e '\n[localrepo]\nSigLevel = Optional TrustAll\nServer = file:///build/localrepo' >> /build/zohara-profile/pacman.conf
           rm -f /build/zohara-profile/airootfs/etc/mkinitcpio.d/linux.preset
           mkarchiso -v -w /tmp/archiso-tmp -o /build/out /build/zohara-profile/
           "
-
-    - name: Upload ISO Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: zohara-os-x86_64.iso
-        path: out/*.iso
-        retention-days: 7
