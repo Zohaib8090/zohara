@@ -1,0 +1,4 @@
+#!/bin/bash
+if [ -f /etc/skel/theme.tar.gz ]; then
+    plasma-apply-lookandfeel -a /etc/skel/theme.tar.gz || true
+fi

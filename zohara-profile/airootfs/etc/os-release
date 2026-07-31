@@ -1,0 +1,5 @@
+NAME="Zohara OS"
+ID=zohara
+ID_LIKE=arch
+PRETTY_NAME="Zohara OS"
+VERSION="1.0"

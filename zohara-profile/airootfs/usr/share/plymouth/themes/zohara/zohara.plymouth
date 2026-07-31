@@ -1,0 +1,7 @@
+[Plymouth Theme]
+Name=Zohara OS
+Description=Zohara OS Splash Screen
+ModuleName=script
+[script]
+ImageDir=/usr/share/plymouth/themes/zohara
+ScriptFile=/usr/share/plymouth/themes/zohara/zohara.script

@@ -1,0 +1,56 @@
+name: Build Zohara OS ISO
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Cache Docker layers
+      uses: actions/cache@v3
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        load: true
+        tags: zohara-builder:latest
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+    - name: Build ISO
+      run: |
+        mkdir -p out
+        docker run --rm --privileged \
+          -v $(pwd):/build \
+          -w /build zohara-builder bash -c "
+          set -e
+          # Patch mkarchiso to fix FAT partition size
+          sed -i 's/2 \* 1024 \* 1024/1024 * 1024 * 1024/g' /usr/bin/mkarchiso
+          # Clean up pacman.conf
+          sed -i '/\[chaotic-aur\]/,+1d' /build/zohara-profile/pacman.conf
+          grep -q '\[localrepo\]' /build/zohara-profile/pacman.conf || echo -e '\n[localrepo]\nSigLevel = Optional TrustAll\nServer = file:///build/localrepo' >> /build/zohara-profile/pacman.conf
+          rm -f /build/zohara-profile/airootfs/etc/mkinitcpio.d/linux.preset
+          mkarchiso -v -w /tmp/archiso-tmp -o /build/out /build/zohara-profile/
+          "
+
+    - name: Upload ISO Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: zohara-os-x86_64.iso
+        path: out/*.iso
+        retention-days: 7
