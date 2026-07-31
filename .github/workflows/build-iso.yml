@@ -31,7 +31,7 @@ jobs:
         tags: zohara-builder:latest
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
-    - name: Build ISO
+       - name: Build ISO
       run: |
         mkdir -p out
         docker run --rm --privileged \
