@@ -13,6 +13,7 @@ arch="x86_64"
 pacman_conf="pacman.conf"
 airootfs_image_type="squashfs"
 airootfs_image_tool_options=('-comp' 'zstd' '-b' '1M')
+efiboot_efi_img_size='512M'
 file_permissions=(
   ["/usr/bin/zohara-deb-engine"]="0:0:755"
   ["/usr/local/bin/zohara-setup-desktop"]="0:0:755"
