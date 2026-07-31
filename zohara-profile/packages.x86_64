@@ -27,7 +27,6 @@ wayland
 xorg-xinit
 
 # Hardware / Drivers
-nvidia-dkms
 mesa
 vulkan-intel
 vulkan-radeon
@@ -62,5 +61,3 @@ dolphin
 konsole
 plymouth
 brave-origin-bin
-nvidia-utils
-linux-zen-headers
