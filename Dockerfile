@@ -1,8 +1,8 @@
 FROM archlinux:latest
 RUN pacman -Syyu --noconfirm && pacman -Sy --noconfirm archiso git base-devel sudo
 
-# Patch mkarchiso to add +50000 KiB buffer to FAT image calculation
-RUN sed -i '/imgsize_kib=/ s/))\$/ + 50000))/' /usr/bin/mkarchiso
+# Patch mkarchiso to add +51200 KiB (50 MiB) buffer to FAT image calculation
+RUN sed -i '/if (( imgsize_kib >= 36864 )); then/i \    imgsize_kib=$(( imgsize_kib + 51200 ))' /usr/bin/mkarchiso
 
 # Create builder user and bypass PAM
 RUN useradd -m builder && \
