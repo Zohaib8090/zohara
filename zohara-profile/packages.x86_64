@@ -1,7 +1,7 @@
 # Base System
 base
 base-devel
-linux-zen
+linux
 linux-firmware
 mkinitcpio
 amd-ucode
