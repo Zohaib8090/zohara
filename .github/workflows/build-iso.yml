@@ -39,13 +39,9 @@ jobs:
           -v $(pwd):/build \
           -w /build zohara-builder bash -c "
           set -e
-          # Patch mkarchiso to add +50000 KiB buffer to FAT image calculation
-          sed -i '/_imgsize_kib=/s/))\$/ + 50000))/' /usr/bin/mkarchiso
-          
           # Point pacman.conf to /opt/localrepo where AUR packages were compiled
           sed -i 's|Server = file:///build/localrepo|Server = file:///opt/localrepo|g' /build/zohara-profile/pacman.conf
           grep -q '\[localrepo\]' /build/zohara-profile/pacman.conf || echo -e '\n[localrepo]\nSigLevel = Optional TrustAll\nServer = file:///opt/localrepo' >> /build/zohara-profile/pacman.conf
-          
           # Clean up
           sed -i '/\[chaotic-aur\]/,+1d' /build/zohara-profile/pacman.conf
           rm -f /build/zohara-profile/airootfs/etc/mkinitcpio.d/linux.preset
