@@ -97,7 +97,7 @@ jobs:
     - name: Show ISO info
       run: |
         ls -lh out/*.iso
-        isoinfo -d -i out/*.iso | grep -E "Volume id|Volume size|Logical block"
+        7z l out/*.iso | grep -E "^Date|^Path|Type|Physical" | head -10
 
     - name: Upload ISO as artifact
       uses: actions/upload-artifact@v4
