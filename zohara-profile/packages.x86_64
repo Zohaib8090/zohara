@@ -1,7 +1,7 @@
 # Base System
 base
 base-devel
-linux
+linux-zen
 linux-firmware
 mkinitcpio
 amd-ucode
@@ -60,4 +60,4 @@ plasma-meta
 dolphin
 konsole
 plymouth
-brave-origin-bin
+brave-bin

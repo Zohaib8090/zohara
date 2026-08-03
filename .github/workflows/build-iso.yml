@@ -3,12 +3,21 @@ name: Build Zohara OS ISO
 on:
   push:
     branches: [ "master" ]
+    tags:
+      - "v*"
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # GitHub Actions runners have limited disk space; free up space before the huge build
     steps:
+    - name: Free up disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        sudo docker system prune -af
+        df -h
+
     - name: Checkout repository
       uses: actions/checkout@v4
 
@@ -23,7 +32,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-buildx-
 
-    - name: Build Docker image
+    - name: Build Docker builder image
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -32,25 +41,83 @@ jobs:
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
+    # Move cache to prevent it from growing unboundedly
+    - name: Move cache
+      run: |
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
     - name: Build ISO
       run: |
         mkdir -p out
         docker run --rm --privileged \
           -v $(pwd):/build \
-          -w /build zohara-builder bash -c "
-          set -e
-          # Point pacman.conf to /opt/localrepo where AUR packages were compiled
-          sed -i 's|Server = file:///build/localrepo|Server = file:///opt/localrepo|g' /build/zohara-profile/pacman.conf
-          grep -q '\[localrepo\]' /build/zohara-profile/pacman.conf || echo -e '\n[localrepo]\nSigLevel = Optional TrustAll\nServer = file:///opt/localrepo' >> /build/zohara-profile/pacman.conf
-          # Clean up
-          sed -i '/\[chaotic-aur\]/,+1d' /build/zohara-profile/pacman.conf
-          rm -f /build/zohara-profile/airootfs/etc/mkinitcpio.d/linux.preset
-          mkarchiso -v -w /tmp/archiso-tmp -o /build/out /build/zohara-profile/
-          "
+          zohara-builder
 
-    - name: Upload ISO Artifact
+    - name: Validate boot files in EFI image
+      run: |
+        ISO=$(ls out/*.iso | head -1)
+        echo "Inspecting ISO: $ISO"
+
+        # Extract the UEFI El Torito FAT image using xorriso metadata
+        LBA=$(xorriso -indev "$ISO" -report_el_torito 2>/dev/null | grep 'UEFI' | awk '{print $NF}')
+        BLOCKS=$(xorriso -indev "$ISO" -report_el_torito 2>/dev/null | grep 'El Torito img blks' | grep '2 ' | awk '{print $NF}')
+        echo "UEFI EFI FAT image: LBA=$LBA, blocks=$BLOCKS"
+
+        mkdir -p /tmp/efi_check
+        dd if="$ISO" bs=2048 skip="$LBA" count="$BLOCKS" of=/tmp/efi.img 2>/dev/null
+
+        echo "=== Contents of EFI FAT /arch/boot/x86_64/ ==="
+        mdir -i /tmp/efi.img ::/arch/boot/x86_64/ 2>/dev/null
+
+        # Validate required boot files are present
+        mdir -i /tmp/efi.img ::/arch/boot/x86_64/ 2>/dev/null | grep -q "vmlinuz-linux-zen" || \
+          (echo "❌ FATAL: vmlinuz-linux-zen missing from EFI image!" && exit 1)
+        mdir -i /tmp/efi.img ::/arch/boot/x86_64/ 2>/dev/null | grep -q "initramfs-linux-zen" || \
+          (echo "❌ FATAL: initramfs-linux-zen.img missing from EFI image!" && exit 1)
+
+        # Confirm no dangling ucode references in loader entries
+        echo "=== Loader entries ==="
+        7z e -so "$ISO" loader/entries/01-zohara.conf 2>/dev/null
+        echo ""
+        if 7z e -so "$ISO" loader/entries/01-zohara.conf 2>/dev/null | grep -q "ucode.img"; then
+          echo "❌ FATAL: Boot entry still references ucode.img (which is not in EFI image)!"
+          exit 1
+        fi
+
+        echo "✅ Boot validation passed! ISO is ready."
+
+    - name: Show ISO info
+      run: |
+        ls -lh out/*.iso
+        isoinfo -d -i out/*.iso | grep -E "Volume id|Volume size|Logical block"
+
+    - name: Upload ISO as artifact
       uses: actions/upload-artifact@v4
       with:
-        name: zohara-os-x86_64.iso
+        name: zohara-os-x86_64
         path: out/*.iso
         retention-days: 7
+
+    # Only publish a GitHub Release when a version tag (v*) is pushed
+    - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: out/*.iso
+        name: "Zohara OS ${{ github.ref_name }}"
+        body: |
+          ## Zohara OS ${{ github.ref_name }}
+
+          Built from commit ${{ github.sha }}.
+
+          ### Boot Notes
+          - UEFI: systemd-boot with linux-zen kernel
+          - Microcode is baked into initramfs (no separate ucode.img needed)
+          - Label: `ZOHARA_ISO`
+
+          ### Download
+          Flash to USB with:
+          ```bash
+          sudo dd if=zohara-os-*.iso of=/dev/sdX bs=4M status=progress oflag=sync
+          ```
