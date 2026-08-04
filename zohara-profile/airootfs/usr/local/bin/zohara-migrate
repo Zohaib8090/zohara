@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
+"""
+Zohara OS Migration Tool
+─────────────────────────
+Incremental move-verify-delete migration for low-storage environments.
+Files are moved one at a time, checksummed, and only deleted from the
+source after the copy is verified. This ensures migration can succeed
+even when the disk is >50% full.
+"""
+
 import sys
 import os
+import hashlib
+import shutil
 import subprocess
-import json
+from pathlib import Path
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton,
                               QLabel, QListWidget, QMessageBox, QProgressBar,
-                              QTextEdit, QStackedWidget, QHBoxLayout)
+                              QTextEdit, QStackedWidget)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 
@@ -13,60 +24,34 @@ from PyQt5.QtGui import QFont
 # Debian -> Arch package translation table
 # ──────────────────────────────────────────────
 DEB_TO_ARCH = {
-    "python3": "python",
-    "python3-pip": "python-pip",
-    "python3-dev": "python",
-    "python3-venv": "python",
-    "libqt5core5a": "qt5-base",
-    "libqt5gui5": "qt5-base",
-    "libgtk-3-0": "gtk3",
-    "libgtk-4-1": "gtk4",
-    "libnss3": "nss",
-    "ffmpeg": "ffmpeg",
-    "vlc": "vlc",
-    "gimp": "gimp",
-    "inkscape": "inkscape",
+    "python3": "python", "python3-pip": "python-pip",
+    "python3-dev": "python", "python3-venv": "python",
+    "libqt5core5a": "qt5-base", "libqt5gui5": "qt5-base",
+    "libgtk-3-0": "gtk3", "libgtk-4-1": "gtk4",
+    "libnss3": "nss", "ffmpeg": "ffmpeg", "vlc": "vlc",
+    "gimp": "gimp", "inkscape": "inkscape",
     "libreoffice-common": "libreoffice-still",
     "libreoffice-core": "libreoffice-still",
     "libreoffice-writer": "libreoffice-still",
     "libreoffice-calc": "libreoffice-still",
     "libreoffice-impress": "libreoffice-still",
-    "git": "git",
-    "curl": "curl",
-    "wget": "wget",
-    "vim": "vim",
-    "nano": "nano",
-    "htop": "htop",
-    "btop": "btop",
-    "neofetch": "fastfetch",
-    "chromium-browser": "chromium",
-    "google-chrome-stable": "google-chrome",
-    "firefox": "firefox",
-    "thunderbird": "thunderbird",
-    "code": "code",
-    "discord": "discord",
-    "telegram-desktop": "telegram-desktop",
-    "obs-studio": "obs-studio",
-    "audacity": "audacity",
-    "krita": "krita",
-    "kdenlive": "kdenlive",
-    "docker": "docker",
-    "docker-ce": "docker",
-    "nodejs": "nodejs",
-    "npm": "npm",
-    "default-jdk": "jdk-openjdk",
-    "openjdk-11-jdk": "jdk11-openjdk",
+    "git": "git", "curl": "curl", "wget": "wget",
+    "vim": "vim", "nano": "nano", "htop": "htop", "btop": "btop",
+    "neofetch": "fastfetch", "chromium-browser": "chromium",
+    "google-chrome-stable": "google-chrome", "firefox": "firefox",
+    "thunderbird": "thunderbird", "code": "code",
+    "discord": "discord", "telegram-desktop": "telegram-desktop",
+    "obs-studio": "obs-studio", "audacity": "audacity",
+    "krita": "krita", "kdenlive": "kdenlive",
+    "docker": "docker", "docker-ce": "docker",
+    "nodejs": "nodejs", "npm": "npm",
+    "default-jdk": "jdk-openjdk", "openjdk-11-jdk": "jdk11-openjdk",
     "openjdk-17-jdk": "jdk17-openjdk",
-    "mysql-server": "mariadb",
-    "postgresql": "postgresql",
-    "nginx": "nginx",
-    "openssh-server": "openssh",
-    "ufw": "ufw",
-    "wine": "wine",
-    "steam": "steam",
-    "lutris": "lutris",
-    "flatpak": "flatpak",
-    "snap": None,  # No snap on Arch — intentionally unmapped
+    "mysql-server": "mariadb", "postgresql": "postgresql",
+    "nginx": "nginx", "openssh-server": "openssh",
+    "ufw": "ufw", "wine": "wine", "steam": "steam",
+    "lutris": "lutris", "flatpak": "flatpak",
+    "snap": None,  # No snap on Arch
 }
 
 EXCLUDED_DEB_PREFIXES = [
@@ -77,56 +62,169 @@ EXCLUDED_DEB_PREFIXES = [
 
 
 def is_excluded(pkg_name):
-    for prefix in EXCLUDED_DEB_PREFIXES:
-        if pkg_name.startswith(prefix):
-            return True
-    return False
+    return any(pkg_name.startswith(p) for p in EXCLUDED_DEB_PREFIXES)
+
+
+def sha256_file(filepath, chunk_size=65536):
+    """Compute SHA-256 hash of a file without loading it entirely into memory."""
+    h = hashlib.sha256()
+    with open(filepath, 'rb') as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def human_size(nbytes):
+    """Convert byte count to human-readable string."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if nbytes < 1024:
+            return f"{nbytes:.1f} {unit}"
+        nbytes /= 1024
+    return f"{nbytes:.1f} TB"
 
 
 class MigrationWorker(QThread):
-    progress = pyqtSignal(int, str)
-    finished = pyqtSignal(list, list)  # (installed, unmapped)
+    """
+    Incremental Move-Verify-Delete migration worker.
+
+    Instead of copying everything first, this worker:
+      1. Walks the source /home tree file by file.
+      2. Copies each file to the destination.
+      3. Computes SHA-256 of both source and destination.
+      4. If hashes match → deletes the source file immediately.
+      5. If hashes don't match → keeps the source, logs the error.
+
+    This means the migration only ever needs enough free space for
+    ONE file at a time, making it safe on nearly-full disks.
+    """
+    progress = pyqtSignal(int, str)           # (percent, message)
+    file_progress = pyqtSignal(str, str)      # (filename, status)
+    finished = pyqtSignal(list, list, list)    # (installed_pkgs, unmapped_pkgs, failed_files)
 
     def __init__(self, dev_path):
         super().__init__()
         self.dev_path = dev_path
+        self.mount_point = '/mnt/zohara_old'
 
     def run(self):
+        failed_files = []
         try:
-            self.progress.emit(5, "Mounting old OS partition...")
-            os.makedirs('/mnt/zohara_old', exist_ok=True)
-            subprocess.run(['mount', self.dev_path, '/mnt/zohara_old'], check=True)
+            # ── Phase 1: Mount ──
+            self.progress.emit(2, "Mounting old OS partition...")
+            os.makedirs(self.mount_point, exist_ok=True)
+            subprocess.run(['mount', self.dev_path, self.mount_point], check=True)
 
-            self.progress.emit(15, "Scanning installed packages on old OS...")
+            # ── Phase 2: Scan packages ──
+            self.progress.emit(5, "Scanning installed packages on old OS...")
             deb_packages = self.get_deb_packages()
 
-            self.progress.emit(30, "Translating Debian packages to Arch Linux packages...")
+            self.progress.emit(10, "Translating Debian → Arch packages...")
             installed, unmapped = self.translate_packages(deb_packages)
 
-            self.progress.emit(50, "Copying home directory...")
-            self.copy_home()
+            # ── Phase 3: Incremental file migration ──
+            self.progress.emit(15, "Scanning files to migrate...")
+            old_home = Path(self.mount_point) / 'home'
 
-            self.progress.emit(75, "Installing equivalent Arch packages...")
+            if old_home.exists():
+                all_files = []
+                for root, dirs, files in os.walk(str(old_home)):
+                    for fname in files:
+                        full = os.path.join(root, fname)
+                        try:
+                            size = os.path.getsize(full)
+                        except OSError:
+                            size = 0
+                        all_files.append((full, size))
+
+                total_files = len(all_files)
+                total_bytes = sum(s for _, s in all_files)
+                migrated_bytes = 0
+
+                self.progress.emit(15, f"Migrating {total_files} files ({human_size(total_bytes)})...")
+
+                for i, (src_path, fsize) in enumerate(all_files):
+                    # Calculate destination path
+                    rel_path = os.path.relpath(src_path, str(old_home))
+                    dst_path = os.path.join('/home', rel_path)
+
+                    short_name = rel_path if len(rel_path) < 60 else '…' + rel_path[-57:]
+                    self.file_progress.emit(short_name, "copying")
+
+                    try:
+                        # 1. Create destination directory
+                        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+
+                        # 2. Copy file (preserving metadata)
+                        shutil.copy2(src_path, dst_path)
+
+                        # 3. Verify: compare SHA-256 checksums
+                        src_hash = sha256_file(src_path)
+                        dst_hash = sha256_file(dst_path)
+
+                        if src_hash == dst_hash:
+                            # 4. Hashes match → safe to delete source
+                            os.remove(src_path)
+                            self.file_progress.emit(short_name, "✓ verified & deleted")
+                        else:
+                            # Hash mismatch — keep source, log failure
+                            os.remove(dst_path)  # remove bad copy
+                            failed_files.append(f"{rel_path}  [checksum mismatch]")
+                            self.file_progress.emit(short_name, "✗ checksum mismatch")
+
+                    except PermissionError:
+                        failed_files.append(f"{rel_path}  [permission denied]")
+                        self.file_progress.emit(short_name, "✗ permission denied")
+                    except OSError as e:
+                        failed_files.append(f"{rel_path}  [{str(e)}]")
+                        self.file_progress.emit(short_name, f"✗ {e}")
+
+                    migrated_bytes += fsize
+                    pct = 15 + int((migrated_bytes / max(total_bytes, 1)) * 55)
+                    self.progress.emit(min(pct, 70),
+                        f"File {i+1}/{total_files} — {human_size(migrated_bytes)}/{human_size(total_bytes)}")
+
+                # Clean up empty directories left behind in old /home
+                self.progress.emit(72, "Cleaning empty directories on source...")
+                for root, dirs, files in os.walk(str(old_home), topdown=False):
+                    for d in dirs:
+                        dirpath = os.path.join(root, d)
+                        try:
+                            os.rmdir(dirpath)  # only removes if empty
+                        except OSError:
+                            pass
+
+            # ── Phase 4: Install Arch packages ──
+            self.progress.emit(75, f"Installing {len(installed)} equivalent Arch packages...")
             self.install_arch_packages(installed)
 
-            self.progress.emit(90, "Deleting old OS partition data...")
-            self.delete_old_os()
+            # ── Phase 5: Delete remaining old OS system files ──
+            self.progress.emit(90, "Deleting old OS system files...")
+            self.delete_old_os_system()
 
-            subprocess.run(['umount', '/mnt/zohara_old'])
+            # ── Phase 6: Unmount ──
+            self.progress.emit(95, "Unmounting old partition...")
+            subprocess.run(['umount', self.mount_point], check=True)
 
             self.progress.emit(100, "Migration complete!")
-            self.finished.emit(installed, unmapped)
+            self.finished.emit(installed, unmapped, failed_files)
 
         except Exception as e:
-            self.progress.emit(0, f"Error: {str(e)}")
-            self.finished.emit([], [str(e)])
+            try:
+                subprocess.run(['umount', self.mount_point])
+            except Exception:
+                pass
+            self.progress.emit(0, f"Fatal error: {str(e)}")
+            self.finished.emit([], [str(e)], failed_files)
 
     def get_deb_packages(self):
-        dpkg_status = '/mnt/zohara_old/var/lib/dpkg/status'
+        dpkg_status = os.path.join(self.mount_point, 'var/lib/dpkg/status')
         packages = []
         if not os.path.exists(dpkg_status):
             return packages
-        with open(dpkg_status, 'r') as f:
+        with open(dpkg_status, 'r', errors='replace') as f:
             content = f.read()
         for block in content.split('\n\n'):
             pkg_name = None
@@ -149,15 +247,10 @@ class MigrationWorker(QThread):
                 if arch_pkg is not None:
                     installed.append(arch_pkg)
                 else:
-                    unmapped.append(f"{pkg}  [No Arch equivalent — snap/ubuntu-specific]")
+                    unmapped.append(f"{pkg}  →  [No Arch equivalent — snap/ubuntu-specific]")
             else:
-                unmapped.append(f"{pkg}  [Not found in translation table]")
+                unmapped.append(f"{pkg}  →  [Not in translation table]")
         return list(set(installed)), unmapped
-
-    def copy_home(self):
-        old_home = '/mnt/zohara_old/home/'
-        if os.path.exists(old_home):
-            subprocess.run(['rsync', '-a', '--progress', old_home, '/home/'], check=True)
 
     def install_arch_packages(self, packages):
         if packages:
@@ -166,18 +259,21 @@ class MigrationWorker(QThread):
                 capture_output=True
             )
 
-    def delete_old_os(self):
-        """
-        Delete all old OS files EXCEPT /home (already migrated) and EFI bootloader.
-        We wipe root dirs only, preserving the partition table entry itself.
-        """
-        dirs_to_delete = ['bin', 'boot', 'etc', 'lib', 'lib64', 'opt',
-                          'root', 'sbin', 'srv', 'usr', 'var']
+    def delete_old_os_system(self):
+        """Delete old OS system directories (not /home, that was already migrated)."""
+        dirs_to_delete = [
+            'bin', 'boot', 'etc', 'lib', 'lib32', 'lib64',
+            'opt', 'root', 'sbin', 'srv', 'usr', 'var'
+        ]
         for d in dirs_to_delete:
-            target = f'/mnt/zohara_old/{d}'
+            target = os.path.join(self.mount_point, d)
             if os.path.exists(target):
-                subprocess.run(['rm', '-rf', target])
+                shutil.rmtree(target, ignore_errors=True)
 
+
+# ══════════════════════════════════════════════
+#  GUI
+# ══════════════════════════════════════════════
 
 class MigrationTool(QWidget):
     def __init__(self):
@@ -188,7 +284,7 @@ class MigrationTool(QWidget):
 
     def initUI(self):
         self.setWindowTitle('Zohara OS Migration Wizard')
-        self.setFixedSize(640, 480)
+        self.setFixedSize(680, 520)
         self.setStyleSheet("background-color: #1e1e2e; color: #cdd6f4;")
         self.setFont(QFont('Inter', 11))
 
@@ -199,9 +295,9 @@ class MigrationTool(QWidget):
         if self.is_live:
             self.stack.addWidget(self.build_live_page())
         else:
-            self.stack.addWidget(self.build_select_page())
-            self.stack.addWidget(self.build_progress_page())
-            self.stack.addWidget(self.build_results_page())
+            self.stack.addWidget(self.build_select_page())     # 0
+            self.stack.addWidget(self.build_progress_page())   # 1
+            self.stack.addWidget(self.build_results_page())    # 2
 
     # ──────────────── Live USB page ────────────────
     def build_live_page(self):
@@ -218,11 +314,13 @@ class MigrationTool(QWidget):
         info = QLabel(
             "You're currently on the Live USB.\n\n"
             "Install Zohara OS on your disk first, then boot into it.\n"
-            "After booting, run Zohara Migration Tool again to automatically:\n\n"
-            "  ✔  Copy all your files from your old OS\n"
-            "  ✔  Install equivalent apps (Zorin/Ubuntu → Arch)\n"
-            "  ✔  Delete the old OS data after successful migration\n"
-            "  ✔  Show you a report of any apps that couldn't be found"
+            "After booting, run this Migration Tool again to:\n\n"
+            "  ✔  Move your files incrementally (safe for low storage)\n"
+            "  ✔  Verify every file with SHA-256 checksums\n"
+            "  ✔  Free space as it goes — no extra disk needed\n"
+            "  ✔  Install equivalent Arch apps for your Debian apps\n"
+            "  ✔  Delete the old OS after successful migration\n"
+            "  ✔  Show a full report of any apps that couldn't be found"
         )
         info.setWordWrap(True)
         info.setFont(QFont('Inter', 12))
@@ -246,13 +344,19 @@ class MigrationTool(QWidget):
         title.setFont(QFont('Inter', 14, QFont.Bold))
         layout.addWidget(title)
 
-        note = QLabel("⚠  After a successful migration, the old OS data will be permanently deleted.")
+        note = QLabel(
+            "⚠  Files are moved incrementally: copy → verify checksum → delete source.\n"
+            "    This works safely even on nearly-full disks.\n"
+            "    After success, the old OS system files will be permanently deleted."
+        )
         note.setStyleSheet("color: #f38ba8;")
         note.setWordWrap(True)
         layout.addWidget(note)
 
         self.part_list = QListWidget()
-        self.part_list.setStyleSheet("background-color: #313244; border-radius: 5px; padding: 5px;")
+        self.part_list.setStyleSheet(
+            "background-color: #313244; border-radius: 5px; padding: 5px; font-size: 13px;"
+        )
         self.populate_partitions()
         layout.addWidget(self.part_list)
 
@@ -268,7 +372,7 @@ class MigrationTool(QWidget):
     def build_progress_page(self):
         page = QWidget()
         layout = QVBoxLayout()
-        layout.setSpacing(15)
+        layout.setSpacing(12)
 
         title = QLabel('Migration in Progress...')
         title.setFont(QFont('Inter', 16, QFont.Bold))
@@ -277,7 +381,7 @@ class MigrationTool(QWidget):
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setStyleSheet("""
-            QProgressBar { background: #313244; border-radius: 5px; }
+            QProgressBar { background: #313244; border-radius: 5px; height: 20px; }
             QProgressBar::chunk { background: #89b4fa; border-radius: 5px; }
         """)
         layout.addWidget(self.progress_bar)
@@ -286,6 +390,15 @@ class MigrationTool(QWidget):
         self.progress_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.progress_label)
 
+        layout.addWidget(QLabel('File activity:'))
+        self.file_log = QTextEdit()
+        self.file_log.setReadOnly(True)
+        self.file_log.setMaximumHeight(200)
+        self.file_log.setStyleSheet(
+            "background-color: #11111b; border-radius: 5px; font-family: monospace; font-size: 11px; color: #a6adc8;"
+        )
+        layout.addWidget(self.file_log)
+
         page.setLayout(layout)
         return page
 
@@ -293,38 +406,53 @@ class MigrationTool(QWidget):
     def build_results_page(self):
         page = QWidget()
         layout = QVBoxLayout()
-        layout.setSpacing(15)
+        layout.setSpacing(12)
 
         self.result_title = QLabel('Migration Complete!')
         self.result_title.setFont(QFont('Inter', 16, QFont.Bold))
         self.result_title.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.result_title)
 
-        layout.addWidget(QLabel('The following packages could not be automatically installed\n(no Arch Linux equivalent found):'))
+        layout.addWidget(QLabel('Unmapped packages (no Arch equivalent found):'))
 
         self.unmapped_list = QTextEdit()
         self.unmapped_list.setReadOnly(True)
-        self.unmapped_list.setStyleSheet("background-color: #313244; border-radius: 5px; color: #f9e2af;")
+        self.unmapped_list.setStyleSheet(
+            "background-color: #313244; border-radius: 5px; color: #f9e2af; font-size: 12px;"
+        )
         layout.addWidget(self.unmapped_list)
 
-        btn_close = QPushButton('Done')
+        self.failed_label = QLabel('')
+        self.failed_label.setStyleSheet("color: #f38ba8;")
+        self.failed_label.setWordWrap(True)
+        layout.addWidget(self.failed_label)
+
+        self.failed_list = QTextEdit()
+        self.failed_list.setReadOnly(True)
+        self.failed_list.setMaximumHeight(120)
+        self.failed_list.setStyleSheet(
+            "background-color: #313244; border-radius: 5px; color: #f38ba8; font-size: 12px;"
+        )
+        self.failed_list.hide()
+        layout.addWidget(self.failed_list)
+
+        btn_close = QPushButton('Done — Reboot Now')
         btn_close.setStyleSheet(self.btn_style('#89b4fa'))
-        btn_close.clicked.connect(self.close)
+        btn_close.clicked.connect(self.reboot)
         layout.addWidget(btn_close)
 
         page.setLayout(layout)
         return page
 
+    # ──────────────── Helpers ────────────────
     def btn_style(self, color):
         return f"""
             QPushButton {{
-                background-color: {color};
-                color: #1e1e2e;
-                border-radius: 8px;
-                padding: 12px;
-                font-size: 14px;
-                font-weight: bold;
+                background-color: {color}; color: #1e1e2e;
+                border-radius: 8px; padding: 12px;
+                font-size: 14px; font-weight: bold;
             }}
+            QPushButton:hover {{ background-color: {color}cc; }}
         """
 
     def populate_partitions(self):
@@ -345,6 +473,10 @@ class MigrationTool(QWidget):
         subprocess.Popen(['pkexec', 'calamares'])
         self.close()
 
+    def reboot(self):
+        subprocess.Popen(['reboot'])
+        self.close()
+
     def start_migration(self):
         selected = self.part_list.currentItem()
         if not selected:
@@ -356,18 +488,18 @@ class MigrationTool(QWidget):
 
         confirm = QMessageBox.question(
             self, "Confirm Migration",
-            f"This will:\n\n"
-            f"  1. Copy all files from {dev_path} to your current Zohara OS\n"
-            f"  2. Install equivalent Arch packages for your old apps\n"
-            f"  3. Permanently DELETE the old OS data from {dev_path}\n\n"
-            "This action cannot be undone. Continue?",
+            f"This will incrementally migrate all data from {dev_path}.\n\n"
+            f"Each file is: copied → SHA-256 verified → source deleted.\n"
+            f"Old OS system files will be permanently removed after success.\n\n"
+            "Continue?",
             QMessageBox.Yes | QMessageBox.No
         )
 
         if confirm == QMessageBox.Yes:
-            self.stack.setCurrentIndex(1)  # show progress page
+            self.stack.setCurrentIndex(1)
             self.worker = MigrationWorker(dev_path)
             self.worker.progress.connect(self.on_progress)
+            self.worker.file_progress.connect(self.on_file_progress)
             self.worker.finished.connect(self.on_finished)
             self.worker.start()
 
@@ -375,17 +507,35 @@ class MigrationTool(QWidget):
         self.progress_bar.setValue(value)
         self.progress_label.setText(message)
 
-    def on_finished(self, installed, unmapped):
-        self.stack.setCurrentIndex(2)  # results page
+    def on_file_progress(self, filename, status):
+        self.file_log.append(f"{status}  {filename}")
+        # Auto-scroll to bottom
+        sb = self.file_log.verticalScrollBar()
+        sb.setValue(sb.maximum())
+
+    def on_finished(self, installed, unmapped, failed_files):
+        self.stack.setCurrentIndex(2)
+
+        inst_count = len(installed)
+        unmap_count = len(unmapped)
+        fail_count = len(failed_files)
+
+        self.result_title.setText(
+            f"Migration Complete!\n"
+            f"{inst_count} apps installed  •  {unmap_count} apps not found  •  {fail_count} files failed"
+        )
+
         if unmapped:
             self.unmapped_list.setPlainText('\n'.join(unmapped))
         else:
-            self.unmapped_list.setPlainText("All packages were successfully installed! 🎉")
-        installed_count = len(installed)
-        unmapped_count = len(unmapped)
-        self.result_title.setText(
-            f"Migration Complete!\n{installed_count} apps installed  |  {unmapped_count} apps not found"
-        )
+            self.unmapped_list.setPlainText("All packages were successfully mapped! 🎉")
+
+        if failed_files:
+            self.failed_label.setText(
+                f"⚠ {fail_count} file(s) could not be migrated (kept on source):"
+            )
+            self.failed_list.setPlainText('\n'.join(failed_files))
+            self.failed_list.show()
 
 
 if __name__ == '__main__':
