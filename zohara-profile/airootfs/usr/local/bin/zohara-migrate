@@ -470,7 +470,8 @@ class MigrationTool(QWidget):
             pass
 
     def launch_calamares(self):
-        subprocess.Popen(['pkexec', 'calamares'])
+        cmd = ['calamares'] if os.geteuid() == 0 else ['pkexec', 'calamares']
+        subprocess.Popen(cmd)
         self.close()
 
     def reboot(self):
