@@ -1,0 +1,27 @@
+---
+componentName:  zohara
+welcomeStyleCalamares: true
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 800px,520px
+windowPlacement: center
+
+strings:
+    productName:         Zohara OS
+    shortProductName:    Zohara
+    version:             2026.08
+    shortVersion:        2026.08
+    versionedName:       Zohara OS 2026.08
+    shortVersionedName:  Zohara 2026.08
+    bootloaderEntryName: Zohara OS
+    productUrl:          https://github.com/zohara-os
+    supportUrl:          https://github.com/zohara-os
+    knownIssuesUrl:      https://github.com/zohara-os
+    releaseNotesUrl:     https://github.com/zohara-os
+    donateUrl:           https://github.com/zohara-os
+
+style:
+   sidebarBackground:    "#1e1e2e"
+   sidebarText:          "#cdd6f4"
+   sidebarTextSelect:    "#89b4fa"
+   sidebarTextHighlight: "#f38ba8"
