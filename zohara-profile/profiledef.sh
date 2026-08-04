@@ -3,7 +3,7 @@
 
 iso_name="zohara-os"
 iso_label="ZOHARA_ISO"
-iso_publisher="Zohara OS <https://github.com/zohara-os>"
+iso_publisher="Zohara OS <https://github.com/Zohaib8090/zohara>"
 iso_application="Zohara OS Live/Install CD"
 iso_version="$(date +%Y.%m.%d)"
 install_dir="arch"

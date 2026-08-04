@@ -14,11 +14,11 @@ strings:
     versionedName:       Zohara OS 2026.08
     shortVersionedName:  Zohara 2026.08
     bootloaderEntryName: Zohara OS
-    productUrl:          https://github.com/zohara-os
-    supportUrl:          https://github.com/zohara-os
-    knownIssuesUrl:      https://github.com/zohara-os
-    releaseNotesUrl:     https://github.com/zohara-os
-    donateUrl:           https://github.com/zohara-os
+    productUrl:          https://github.com/Zohaib8090/zohara
+    supportUrl:          https://github.com/Zohaib8090/zohara
+    knownIssuesUrl:      https://github.com/Zohaib8090/zohara
+    releaseNotesUrl:     https://github.com/Zohaib8090/zohara
+    donateUrl:           https://github.com/Zohaib8090/zohara
 
 style:
    sidebarBackground:    "#1e1e2e"
