@@ -72,6 +72,7 @@ nvidia-settings
 
 # Theming Engines & Icon Packs (selectable via System Settings → Appearance)
 kvantum
+kvantum-theme-materia
 plasma-integration
 breeze-gtk
 latte-dock-ng

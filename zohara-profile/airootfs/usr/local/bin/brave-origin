@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Brave Origin wrapper — auto-applies --no-sandbox when running as root (live USB)
+if [ "$(id -u)" = "0" ]; then
+    exec /usr/bin/brave-origin --no-sandbox "$@"
+else
+    exec /usr/bin/brave-origin "$@"
+fi
