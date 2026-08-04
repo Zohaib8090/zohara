@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Exec=/usr/local/bin/zohara-theme-switcher
+Icon=preferences-desktop-theme
+Name=Zohara Theme Switcher
+GenericName=Theme Selector
+Comment=Switch between Windows, macOS, and custom Plasma layouts
+Categories=Qt;KDE;Settings;DesktopSettings;
+Terminal=false
+StartupNotify=false

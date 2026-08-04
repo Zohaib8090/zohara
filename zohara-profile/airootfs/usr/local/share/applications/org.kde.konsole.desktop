@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Exec=konsole %U
+Icon=utilities-terminal
+Name=Console
+GenericName=Terminal
+Comment=Command line access
+Categories=Qt;KDE;System;TerminalEmulator;
+Terminal=false
+StartupNotify=true

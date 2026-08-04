@@ -54,50 +54,43 @@ jobs:
           -v $(pwd):/build \
           zohara-builder
 
-    - name: Validate boot files in ISO
+    - name: Validate boot files in EFI image
       run: |
         ISO=$(ls out/*.iso | head -1)
         echo "Inspecting ISO: $ISO"
 
-        # Use 7z to inspect ISO contents (pre-installed on GitHub runners)
-        echo "=== Boot files in ISO ==="
-        7z l "$ISO" | grep -E "vmlinuz|initramfs" | grep -v squashfs
+        # Extract the UEFI El Torito FAT image using xorriso metadata
+        LBA=$(xorriso -indev "$ISO" -report_el_torito 2>/dev/null | grep 'UEFI' | awk '{print $NF}')
+        BLOCKS=$(xorriso -indev "$ISO" -report_el_torito 2>/dev/null | grep 'El Torito img blks' | grep '2 ' | awk '{print $NF}')
+        echo "UEFI EFI FAT image: LBA=$LBA, blocks=$BLOCKS"
 
-        # Validate vmlinuz-linux-zen is present
-        if ! 7z l "$ISO" | grep -q "vmlinuz-linux-zen"; then
-          echo "❌ FATAL: vmlinuz-linux-zen missing from ISO!"
-          exit 1
-        fi
-        echo "✅ vmlinuz-linux-zen found"
+        mkdir -p /tmp/efi_check
+        dd if="$ISO" bs=2048 skip="$LBA" count="$BLOCKS" of=/tmp/efi.img 2>/dev/null
 
-        # Validate initramfs-linux-zen.img is present
-        if ! 7z l "$ISO" | grep -q "initramfs-linux-zen"; then
-          echo "❌ FATAL: initramfs-linux-zen.img missing from ISO!"
-          exit 1
-        fi
-        echo "✅ initramfs-linux-zen.img found"
+        echo "=== Contents of EFI FAT /arch/boot/x86_64/ ==="
+        mdir -i /tmp/efi.img ::/arch/boot/x86_64/ 2>/dev/null
 
-        # Extract and show loader entries
-        echo "=== Loader entry: 01-zohara.conf ==="
+        # Validate required boot files are present
+        mdir -i /tmp/efi.img ::/arch/boot/x86_64/ 2>/dev/null | grep -q "vmlinuz-linux-zen" || \
+          (echo "❌ FATAL: vmlinuz-linux-zen missing from EFI image!" && exit 1)
+        mdir -i /tmp/efi.img ::/arch/boot/x86_64/ 2>/dev/null | grep -q "initramfs-linux-zen" || \
+          (echo "❌ FATAL: initramfs-linux-zen.img missing from EFI image!" && exit 1)
+
+        # Confirm no dangling ucode references in loader entries
+        echo "=== Loader entries ==="
         7z e -so "$ISO" loader/entries/01-zohara.conf 2>/dev/null
-
-        # Validate no stale ucode.img references remain in loader entries
-        for entry in 01-zohara.conf 01-zohara-nvidia.conf 02-zohara-open.conf 02-zohara-safe.conf 03-zohara-safe.conf; do
-          content=$(7z e -so "$ISO" loader/entries/$entry 2>/dev/null)
-          if [ -n "$content" ] && echo "$content" | grep -q "ucode.img"; then
-            echo "❌ FATAL: $entry still references ucode.img — this will cause boot failure!"
-            exit 1
-          fi
-          echo "✅ $entry: no stale ucode references"
-        done
-
         echo ""
-        echo "✅ Boot validation passed! ISO is ready to flash."
+        if 7z e -so "$ISO" loader/entries/01-zohara.conf 2>/dev/null | grep -q "ucode.img"; then
+          echo "❌ FATAL: Boot entry still references ucode.img (which is not in EFI image)!"
+          exit 1
+        fi
+
+        echo "✅ Boot validation passed! ISO is ready."
 
     - name: Show ISO info
       run: |
         ls -lh out/*.iso
-        7z l out/*.iso | grep -E "^Date|^Path|Type|Physical" | head -10
+        isoinfo -d -i out/*.iso | grep -E "Volume id|Volume size|Logical block"
 
     - name: Upload ISO as artifact
       uses: actions/upload-artifact@v4

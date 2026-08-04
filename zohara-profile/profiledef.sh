@@ -17,4 +17,5 @@ efiboot_efi_img_size='512M'
 file_permissions=(
   ["/usr/bin/zohara-deb-engine"]="0:0:755"
   ["/usr/local/bin/zohara-setup-desktop"]="0:0:755"
+  ["/usr/local/bin/zohara-theme-switcher"]="0:0:755"
 )
