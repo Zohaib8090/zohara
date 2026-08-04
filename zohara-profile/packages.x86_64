@@ -69,6 +69,8 @@ plymouth
 brave-origin-bin
 fastfetch
 nvidia-settings
+
+# Theming Engines & Icon Packs (selectable via System Settings → Appearance)
 kvantum
 plasma-integration
 breeze-gtk
