@@ -62,7 +62,7 @@ memtest86+
 memtest86+-efi
 mkinitcpio-archiso
 plasma-desktop
-plasma-workspace-x11
+kwin-x11
 plasma-nm
 plasma-pa
 powerdevil
