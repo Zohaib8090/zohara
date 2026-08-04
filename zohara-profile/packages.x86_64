@@ -35,6 +35,7 @@ xf86-video-nouveau
 xf86-video-intel
 alsa-utils
 pipewire
+wireplumber
 pipewire-pulse
 pipewire-alsa
 pipewire-jack
