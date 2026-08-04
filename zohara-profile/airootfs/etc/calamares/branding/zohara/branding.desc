@@ -25,3 +25,11 @@ style:
    sidebarText:          "#cdd6f4"
    sidebarTextSelect:    "#89b4fa"
    sidebarTextHighlight: "#f38ba8"
+
+images:
+    productLogo:         "logo.png"
+    productIcon:         "logo.png"
+    productWelcome:      "welcome.png"
+
+slideshow:               "show.qml"
+slideshowAPI: 2
