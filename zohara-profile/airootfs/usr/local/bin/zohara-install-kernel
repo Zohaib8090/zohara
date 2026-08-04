@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Zohara OS Offline Kernel Installer
+# Calamares unpackfs copies the squashfs, but the kernel is on the boot partition.
+# This script finds the target disk and copies the kernel over offline.
+
+TARGET=$(ls -d /tmp/calamares-root-* 2>/dev/null | head -1)
+
+if [ -z "$TARGET" ]; then
+    echo "Error: Could not find Calamares target directory."
+    exit 1
+fi
+
+mkdir -p "$TARGET/boot"
+
+if cp /run/archiso/bootmnt/arch/boot/x86_64/vmlinuz-linux-zen "$TARGET/boot/vmlinuz-linux-zen"; then
+    echo "Kernel successfully copied to $TARGET/boot/vmlinuz-linux-zen"
+    exit 0
+else
+    echo "Error: Failed to copy kernel."
+    exit 1
+fi
