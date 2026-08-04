@@ -34,6 +34,10 @@ rm -f "$TARGET/etc/systemd/system/multi-user.target.wants/pacman-init.service"
 rm -f "$TARGET/etc/systemd/system/multi-user.target.wants/livecd-alsa-unmuter.service"
 rm -f "$TARGET/etc/systemd/system/sysinit.target.wants/etc-pacman.d-gnupg.mount"
 
+# Remove Live USB SDDM autologin configurations so the installed OS prompts for the created user
+rm -f "$TARGET/etc/sddm.conf.d/99-autologin.conf"
+rm -f "$TARGET/etc/sddm.conf.d/99-root-login.conf"
+
 echo "Cleanup complete."
 
 if cp /run/archiso/bootmnt/arch/boot/x86_64/vmlinuz-linux-zen "$TARGET/boot/vmlinuz-linux-zen"; then
