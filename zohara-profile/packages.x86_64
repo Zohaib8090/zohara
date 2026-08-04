@@ -65,6 +65,8 @@ podman
 debtap
 
 # Boot & ISO Tools
+grub
+efibootmgr
 syslinux
 edk2-shell
 memtest86+
