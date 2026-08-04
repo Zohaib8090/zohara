@@ -76,6 +76,8 @@ plymouth
 brave-origin-bin
 fastfetch
 nvidia-settings
+nvidia-dkms
+linux-zen-headers
 
 # Theming Engines & Icon Packs (selectable via System Settings → Appearance)
 kvantum
