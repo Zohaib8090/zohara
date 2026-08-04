@@ -12,6 +12,30 @@ fi
 
 mkdir -p "$TARGET/boot"
 
+# --- ZOHARA OFFLINE INSTALL CLEANUP ---
+# Because we used unpackfs (which clones the live USB environment),
+# we MUST remove live-cd specific files from the installed system.
+# Otherwise, mkinitcpio will try to build live USB hooks,
+# and systemd will try to autologin as the live user.
+
+echo "Cleaning up live-environment artifacts..."
+
+rm -f "$TARGET/etc/mkinitcpio.conf.d/archiso.conf"
+rm -f "$TARGET/etc/systemd/system/choose-mirror.service"
+rm -f "$TARGET/etc/systemd/system/etc-pacman.d-gnupg.mount"
+rm -f "$TARGET/etc/systemd/system/livecd-alsa-unmuter.service"
+rm -f "$TARGET/etc/systemd/system/livecd-talk.service"
+rm -f "$TARGET/etc/systemd/system/pacman-init.service"
+rm -rf "$TARGET/etc/systemd/system/getty@tty1.service.d"
+
+# Also remove them from multi-user.target.wants if they exist
+rm -f "$TARGET/etc/systemd/system/multi-user.target.wants/choose-mirror.service"
+rm -f "$TARGET/etc/systemd/system/multi-user.target.wants/pacman-init.service"
+rm -f "$TARGET/etc/systemd/system/multi-user.target.wants/livecd-alsa-unmuter.service"
+rm -f "$TARGET/etc/systemd/system/sysinit.target.wants/etc-pacman.d-gnupg.mount"
+
+echo "Cleanup complete."
+
 if cp /run/archiso/bootmnt/arch/boot/x86_64/vmlinuz-linux-zen "$TARGET/boot/vmlinuz-linux-zen"; then
     echo "Kernel successfully copied to $TARGET/boot/vmlinuz-linux-zen"
     exit 0
