@@ -45,6 +45,15 @@ pipewire-pulse
 pipewire-alsa
 pipewire-jack
 
+# Filesystem Tools (needed by Calamares partition editor)
+dosfstools
+e2fsprogs
+ntfs-3g
+btrfs-progs
+exfatprogs
+f2fs-tools
+gptfdisk
+
 # Installer
 calamares
 
