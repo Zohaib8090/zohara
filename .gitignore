@@ -24,3 +24,6 @@ Thumbs.db
 localrepo/
 out/
 .work/
+out/
+work/
+pkg-cache/
