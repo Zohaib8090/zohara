@@ -19,4 +19,6 @@ file_permissions=(
   ["/usr/local/bin/zohara-setup-desktop"]="0:0:755"
   ["/usr/local/bin/zohara-appearance"]="0:0:755"
   ["/usr/local/bin/brave-origin"]="0:0:755"
+  ["/usr/local/bin/zohara-welcome"]="0:0:755"
+  ["/usr/local/bin/zohara-migrate"]="0:0:755"
 )

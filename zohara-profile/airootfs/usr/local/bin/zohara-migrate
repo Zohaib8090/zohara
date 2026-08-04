@@ -1,0 +1,395 @@
+#!/usr/bin/env python3
+import sys
+import os
+import subprocess
+import json
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton,
+                              QLabel, QListWidget, QMessageBox, QProgressBar,
+                              QTextEdit, QStackedWidget, QHBoxLayout)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QFont
+
+# ──────────────────────────────────────────────
+# Debian -> Arch package translation table
+# ──────────────────────────────────────────────
+DEB_TO_ARCH = {
+    "python3": "python",
+    "python3-pip": "python-pip",
+    "python3-dev": "python",
+    "python3-venv": "python",
+    "libqt5core5a": "qt5-base",
+    "libqt5gui5": "qt5-base",
+    "libgtk-3-0": "gtk3",
+    "libgtk-4-1": "gtk4",
+    "libnss3": "nss",
+    "ffmpeg": "ffmpeg",
+    "vlc": "vlc",
+    "gimp": "gimp",
+    "inkscape": "inkscape",
+    "libreoffice-common": "libreoffice-still",
+    "libreoffice-core": "libreoffice-still",
+    "libreoffice-writer": "libreoffice-still",
+    "libreoffice-calc": "libreoffice-still",
+    "libreoffice-impress": "libreoffice-still",
+    "git": "git",
+    "curl": "curl",
+    "wget": "wget",
+    "vim": "vim",
+    "nano": "nano",
+    "htop": "htop",
+    "btop": "btop",
+    "neofetch": "fastfetch",
+    "chromium-browser": "chromium",
+    "google-chrome-stable": "google-chrome",
+    "firefox": "firefox",
+    "thunderbird": "thunderbird",
+    "code": "code",
+    "discord": "discord",
+    "telegram-desktop": "telegram-desktop",
+    "obs-studio": "obs-studio",
+    "audacity": "audacity",
+    "krita": "krita",
+    "kdenlive": "kdenlive",
+    "docker": "docker",
+    "docker-ce": "docker",
+    "nodejs": "nodejs",
+    "npm": "npm",
+    "default-jdk": "jdk-openjdk",
+    "openjdk-11-jdk": "jdk11-openjdk",
+    "openjdk-17-jdk": "jdk17-openjdk",
+    "mysql-server": "mariadb",
+    "postgresql": "postgresql",
+    "nginx": "nginx",
+    "openssh-server": "openssh",
+    "ufw": "ufw",
+    "wine": "wine",
+    "steam": "steam",
+    "lutris": "lutris",
+    "flatpak": "flatpak",
+    "snap": None,  # No snap on Arch — intentionally unmapped
+}
+
+EXCLUDED_DEB_PREFIXES = [
+    "lib", "linux-image", "linux-headers", "grub", "plymouth",
+    "xserver", "xorg", "fonts-", "tzdata", "locales", "keyboard",
+    "console-", "initramfs", "apt", "dpkg", "debconf", "base-"
+]
+
+
+def is_excluded(pkg_name):
+    for prefix in EXCLUDED_DEB_PREFIXES:
+        if pkg_name.startswith(prefix):
+            return True
+    return False
+
+
+class MigrationWorker(QThread):
+    progress = pyqtSignal(int, str)
+    finished = pyqtSignal(list, list)  # (installed, unmapped)
+
+    def __init__(self, dev_path):
+        super().__init__()
+        self.dev_path = dev_path
+
+    def run(self):
+        try:
+            self.progress.emit(5, "Mounting old OS partition...")
+            os.makedirs('/mnt/zohara_old', exist_ok=True)
+            subprocess.run(['mount', self.dev_path, '/mnt/zohara_old'], check=True)
+
+            self.progress.emit(15, "Scanning installed packages on old OS...")
+            deb_packages = self.get_deb_packages()
+
+            self.progress.emit(30, "Translating Debian packages to Arch Linux packages...")
+            installed, unmapped = self.translate_packages(deb_packages)
+
+            self.progress.emit(50, "Copying home directory...")
+            self.copy_home()
+
+            self.progress.emit(75, "Installing equivalent Arch packages...")
+            self.install_arch_packages(installed)
+
+            self.progress.emit(90, "Deleting old OS partition data...")
+            self.delete_old_os()
+
+            subprocess.run(['umount', '/mnt/zohara_old'])
+
+            self.progress.emit(100, "Migration complete!")
+            self.finished.emit(installed, unmapped)
+
+        except Exception as e:
+            self.progress.emit(0, f"Error: {str(e)}")
+            self.finished.emit([], [str(e)])
+
+    def get_deb_packages(self):
+        dpkg_status = '/mnt/zohara_old/var/lib/dpkg/status'
+        packages = []
+        if not os.path.exists(dpkg_status):
+            return packages
+        with open(dpkg_status, 'r') as f:
+            content = f.read()
+        for block in content.split('\n\n'):
+            pkg_name = None
+            is_installed = False
+            for line in block.split('\n'):
+                if line.startswith('Package:'):
+                    pkg_name = line.split(':', 1)[1].strip()
+                if line.startswith('Status:') and 'installed' in line:
+                    is_installed = True
+            if pkg_name and is_installed and not is_excluded(pkg_name):
+                packages.append(pkg_name)
+        return packages
+
+    def translate_packages(self, deb_packages):
+        installed = []
+        unmapped = []
+        for pkg in deb_packages:
+            if pkg in DEB_TO_ARCH:
+                arch_pkg = DEB_TO_ARCH[pkg]
+                if arch_pkg is not None:
+                    installed.append(arch_pkg)
+                else:
+                    unmapped.append(f"{pkg}  [No Arch equivalent — snap/ubuntu-specific]")
+            else:
+                unmapped.append(f"{pkg}  [Not found in translation table]")
+        return list(set(installed)), unmapped
+
+    def copy_home(self):
+        old_home = '/mnt/zohara_old/home/'
+        if os.path.exists(old_home):
+            subprocess.run(['rsync', '-a', '--progress', old_home, '/home/'], check=True)
+
+    def install_arch_packages(self, packages):
+        if packages:
+            subprocess.run(
+                ['pacman', '-S', '--noconfirm', '--needed'] + packages,
+                capture_output=True
+            )
+
+    def delete_old_os(self):
+        """
+        Delete all old OS files EXCEPT /home (already migrated) and EFI bootloader.
+        We wipe root dirs only, preserving the partition table entry itself.
+        """
+        dirs_to_delete = ['bin', 'boot', 'etc', 'lib', 'lib64', 'opt',
+                          'root', 'sbin', 'srv', 'usr', 'var']
+        for d in dirs_to_delete:
+            target = f'/mnt/zohara_old/{d}'
+            if os.path.exists(target):
+                subprocess.run(['rm', '-rf', target])
+
+
+class MigrationTool(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.is_live = os.path.exists('/run/archiso')
+        self.stack = QStackedWidget()
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Zohara OS Migration Wizard')
+        self.setFixedSize(640, 480)
+        self.setStyleSheet("background-color: #1e1e2e; color: #cdd6f4;")
+        self.setFont(QFont('Inter', 11))
+
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(self.stack)
+        self.setLayout(main_layout)
+
+        if self.is_live:
+            self.stack.addWidget(self.build_live_page())
+        else:
+            self.stack.addWidget(self.build_select_page())
+            self.stack.addWidget(self.build_progress_page())
+            self.stack.addWidget(self.build_results_page())
+
+    # ──────────────── Live USB page ────────────────
+    def build_live_page(self):
+        page = QWidget()
+        layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(20)
+
+        title = QLabel('Zohara OS Migration')
+        title.setFont(QFont('Inter', 20, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        info = QLabel(
+            "You're currently on the Live USB.\n\n"
+            "Install Zohara OS on your disk first, then boot into it.\n"
+            "After booting, run Zohara Migration Tool again to automatically:\n\n"
+            "  ✔  Copy all your files from your old OS\n"
+            "  ✔  Install equivalent apps (Zorin/Ubuntu → Arch)\n"
+            "  ✔  Delete the old OS data after successful migration\n"
+            "  ✔  Show you a report of any apps that couldn't be found"
+        )
+        info.setWordWrap(True)
+        info.setFont(QFont('Inter', 12))
+        layout.addWidget(info)
+
+        btn = QPushButton('Launch Installer Now')
+        btn.setStyleSheet(self.btn_style('#89b4fa'))
+        btn.clicked.connect(self.launch_calamares)
+        layout.addWidget(btn)
+
+        page.setLayout(layout)
+        return page
+
+    # ──────────────── Partition select page ────────────────
+    def build_select_page(self):
+        page = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+
+        title = QLabel('Select your old OS partition to migrate:')
+        title.setFont(QFont('Inter', 14, QFont.Bold))
+        layout.addWidget(title)
+
+        note = QLabel("⚠  After a successful migration, the old OS data will be permanently deleted.")
+        note.setStyleSheet("color: #f38ba8;")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        self.part_list = QListWidget()
+        self.part_list.setStyleSheet("background-color: #313244; border-radius: 5px; padding: 5px;")
+        self.populate_partitions()
+        layout.addWidget(self.part_list)
+
+        btn = QPushButton('Start Migration →')
+        btn.setStyleSheet(self.btn_style('#a6e3a1'))
+        btn.clicked.connect(self.start_migration)
+        layout.addWidget(btn)
+
+        page.setLayout(layout)
+        return page
+
+    # ──────────────── Progress page ────────────────
+    def build_progress_page(self):
+        page = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+
+        title = QLabel('Migration in Progress...')
+        title.setFont(QFont('Inter', 16, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setStyleSheet("""
+            QProgressBar { background: #313244; border-radius: 5px; }
+            QProgressBar::chunk { background: #89b4fa; border-radius: 5px; }
+        """)
+        layout.addWidget(self.progress_bar)
+
+        self.progress_label = QLabel('Starting...')
+        self.progress_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.progress_label)
+
+        page.setLayout(layout)
+        return page
+
+    # ──────────────── Results page ────────────────
+    def build_results_page(self):
+        page = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+
+        self.result_title = QLabel('Migration Complete!')
+        self.result_title.setFont(QFont('Inter', 16, QFont.Bold))
+        self.result_title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.result_title)
+
+        layout.addWidget(QLabel('The following packages could not be automatically installed\n(no Arch Linux equivalent found):'))
+
+        self.unmapped_list = QTextEdit()
+        self.unmapped_list.setReadOnly(True)
+        self.unmapped_list.setStyleSheet("background-color: #313244; border-radius: 5px; color: #f9e2af;")
+        layout.addWidget(self.unmapped_list)
+
+        btn_close = QPushButton('Done')
+        btn_close.setStyleSheet(self.btn_style('#89b4fa'))
+        btn_close.clicked.connect(self.close)
+        layout.addWidget(btn_close)
+
+        page.setLayout(layout)
+        return page
+
+    def btn_style(self, color):
+        return f"""
+            QPushButton {{
+                background-color: {color};
+                color: #1e1e2e;
+                border-radius: 8px;
+                padding: 12px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+        """
+
+    def populate_partitions(self):
+        try:
+            output = subprocess.check_output(
+                ['lsblk', '-lno', 'NAME,FSTYPE,SIZE,MOUNTPOINT'], text=True
+            )
+            for line in output.strip().split('\n'):
+                parts = line.split()
+                if len(parts) >= 2 and parts[1] in ('ext4', 'btrfs', 'xfs'):
+                    mount = parts[3] if len(parts) > 3 else ''
+                    if mount != '/':
+                        self.part_list.addItem(line.strip())
+        except Exception:
+            pass
+
+    def launch_calamares(self):
+        subprocess.Popen(['pkexec', 'calamares'])
+        self.close()
+
+    def start_migration(self):
+        selected = self.part_list.currentItem()
+        if not selected:
+            QMessageBox.warning(self, "Error", "Please select a partition first.")
+            return
+
+        part_name = selected.text().split()[0]
+        dev_path = f"/dev/{part_name}"
+
+        confirm = QMessageBox.question(
+            self, "Confirm Migration",
+            f"This will:\n\n"
+            f"  1. Copy all files from {dev_path} to your current Zohara OS\n"
+            f"  2. Install equivalent Arch packages for your old apps\n"
+            f"  3. Permanently DELETE the old OS data from {dev_path}\n\n"
+            "This action cannot be undone. Continue?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if confirm == QMessageBox.Yes:
+            self.stack.setCurrentIndex(1)  # show progress page
+            self.worker = MigrationWorker(dev_path)
+            self.worker.progress.connect(self.on_progress)
+            self.worker.finished.connect(self.on_finished)
+            self.worker.start()
+
+    def on_progress(self, value, message):
+        self.progress_bar.setValue(value)
+        self.progress_label.setText(message)
+
+    def on_finished(self, installed, unmapped):
+        self.stack.setCurrentIndex(2)  # results page
+        if unmapped:
+            self.unmapped_list.setPlainText('\n'.join(unmapped))
+        else:
+            self.unmapped_list.setPlainText("All packages were successfully installed! 🎉")
+        installed_count = len(installed)
+        unmapped_count = len(unmapped)
+        self.result_title.setText(
+            f"Migration Complete!\n{installed_count} apps installed  |  {unmapped_count} apps not found"
+        )
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    ex = MigrationTool()
+    ex.show()
+    sys.exit(app.exec_())

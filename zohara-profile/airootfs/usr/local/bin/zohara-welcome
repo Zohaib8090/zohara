@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+import sys
+import os
+import subprocess
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QHBoxLayout
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont, QPixmap, QIcon
+
+class WelcomeWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Welcome to Zohara OS')
+        self.setFixedSize(600, 400)
+        self.setStyleSheet("background-color: #1e1e2e; color: #cdd6f4;")
+
+        layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(20)
+
+        title = QLabel('Welcome to Zohara OS')
+        title.setFont(QFont('Inter', 24, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        subtitle = QLabel('What would you like to do?')
+        subtitle.setFont(QFont('Inter', 14))
+        subtitle.setAlignment(Qt.AlignCenter)
+        layout.addWidget(subtitle)
+
+        # Buttons layout
+        btn_layout = QVBoxLayout()
+        btn_layout.setSpacing(15)
+
+        btn_install = QPushButton('Install Zohara OS')
+        btn_install.setStyleSheet(self.get_btn_style('#89b4fa', '#1e1e2e'))
+        btn_install.setCursor(Qt.PointingHandCursor)
+        btn_install.clicked.connect(self.install_os)
+
+        btn_migrate = QPushButton('Migrate from another OS')
+        btn_migrate.setStyleSheet(self.get_btn_style('#a6e3a1', '#1e1e2e'))
+        btn_migrate.setCursor(Qt.PointingHandCursor)
+        btn_migrate.clicked.connect(self.migrate_os)
+
+        btn_try = QPushButton('Try Zohara OS')
+        btn_try.setStyleSheet(self.get_btn_style('#f38ba8', '#1e1e2e'))
+        btn_try.setCursor(Qt.PointingHandCursor)
+        btn_try.clicked.connect(self.try_os)
+
+        btn_layout.addWidget(btn_install)
+        btn_layout.addWidget(btn_migrate)
+        btn_layout.addWidget(btn_try)
+
+        layout.addLayout(btn_layout)
+        self.setLayout(layout)
+
+    def get_btn_style(self, bg_color, fg_color):
+        return f"""
+            QPushButton {{
+                background-color: {bg_color};
+                color: {fg_color};
+                border-radius: 8px;
+                padding: 12px;
+                font-size: 16px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {bg_color}cc;
+            }}
+        """
+
+    def install_os(self):
+        # Calamares is usually started via pkexec in live environments
+        subprocess.Popen(['pkexec', 'calamares'])
+        self.close()
+
+    def migrate_os(self):
+        subprocess.Popen(['pkexec', '/usr/local/bin/zohara-migrate'])
+        self.close()
+
+    def try_os(self):
+        self.close()
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    ex = WelcomeWindow()
+    ex.show()
+    sys.exit(app.exec_())

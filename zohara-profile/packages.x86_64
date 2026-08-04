@@ -19,6 +19,10 @@ zsh
 sudo
 arch-install-scripts
 pacman-contrib
+os-prober
+rsync
+python
+python-pyqt5
 
 # Display Manager & DE Base
 sddm
