@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Zohara OS Theme & Layout Switcher
+# Zohara OS Appearance Settings
 
 # Present GUI dialog to select theme preset
-PRESET=$(kdialog --title "Zohara OS Theme Switcher" --combobox "Select your desired interface layout and theme:" "Win11" "Win10" "Win8" "macOS" "Liquid Glass" "KDE Native" --default "Win11")
+PRESET=$(kdialog --title "Zohara Appearance" --combobox "Select your desired interface layout and theme:" "Win11" "Win10" "Win8" "macOS" "Liquid Glass" "KDE Native" --default "Win11")
 
 if [ $? -ne 0 ] || [ -z "$PRESET" ]; then
     exit 0
