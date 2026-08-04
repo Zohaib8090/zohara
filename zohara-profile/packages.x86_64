@@ -27,6 +27,7 @@ python-pyqt5
 # Display Manager & DE Base
 sddm
 xorg-server
+xorg-xwayland
 wayland
 xorg-xinit
 
@@ -61,6 +62,7 @@ memtest86+
 memtest86+-efi
 mkinitcpio-archiso
 plasma-desktop
+plasma-workspace-x11
 plasma-nm
 plasma-pa
 powerdevil
