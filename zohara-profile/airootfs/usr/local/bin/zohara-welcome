@@ -90,6 +90,8 @@ class WelcomeWindow(QWidget):
         btn_layout = QVBoxLayout()
         btn_layout.setSpacing(15)
 
+        is_live = os.path.exists('/run/archiso')
+
         btn_install = QPushButton('Install Zohara OS')
         btn_install.setStyleSheet(self.get_btn_style('#89b4fa'))
         btn_install.setCursor(Qt.PointingHandCursor)
@@ -100,12 +102,13 @@ class WelcomeWindow(QWidget):
         btn_migrate.setCursor(Qt.PointingHandCursor)
         btn_migrate.clicked.connect(self.migrate_os)
 
-        btn_try = QPushButton('Try Zohara OS')
+        btn_try = QPushButton('Try Zohara OS' if is_live else 'Close Welcome')
         btn_try.setStyleSheet(self.get_btn_style('#f38ba8'))
         btn_try.setCursor(Qt.PointingHandCursor)
         btn_try.clicked.connect(self.try_os)
 
-        btn_layout.addWidget(btn_install)
+        if is_live:
+            btn_layout.addWidget(btn_install)
         btn_layout.addWidget(btn_migrate)
         btn_layout.addWidget(btn_try)
 
