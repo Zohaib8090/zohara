@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Zohara Software
+Comment=Manage packages and software for Zohara OS
+Exec=/usr/local/bin/zohara-software
+Icon=system-software-install
+Terminal=false
+Type=Application
+Categories=System;Settings;

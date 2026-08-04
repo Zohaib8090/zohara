@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""
+Zohara Software App
+───────────────────
+This will be the custom package manager/store for Zohara OS.
+It will pull CLI installation scripts directly from:
+https://github.com/Zohaib8090/zohara-packages.git
+"""
+import sys
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel
+from PyQt5.QtCore import Qt
+
+class SoftwareApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('Zohara Software')
+        self.setFixedSize(800, 600)
+        self.setStyleSheet("background-color: #1e1e2e; color: #cdd6f4;")
+
+        layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignCenter)
+
+        title = QLabel('Zohara Software Center')
+        title.setStyleSheet("font-size: 24px; font-weight: bold;")
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        subtitle = QLabel('Coming soon! Packages will be synced from:\nhttps://github.com/Zohaib8090/zohara-packages.git')
+        subtitle.setStyleSheet("font-size: 14px;")
+        subtitle.setAlignment(Qt.AlignCenter)
+        layout.addWidget(subtitle)
+
+        self.setLayout(layout)
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    ex = SoftwareApp()
+    ex.show()
+    sys.exit(app.exec_())
