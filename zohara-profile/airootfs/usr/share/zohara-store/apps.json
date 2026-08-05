@@ -1,15 +1,14 @@
 {
   "store_name": "Zohara Packages",
   "version": "1.0",
-  "featured": ["firefox", "vscodium", "lutris"],
   "apps": [
     {
       "id": "firefox",
       "name": "Mozilla Firefox",
       "publisher": "Mozilla",
-      "description": "A fast, privacy-focused web browser.",
+      "description": "A fast, privacy-focused web browser built for security and speed. Firefox blocks trackers, loads pages faster, and respects your privacy.",
       "category": "App",
-      "icon_url": "https://upload.wikimedia.org/wikipedia/commons/a/a0/Firefox_logo%2C_2019.svg",
+      "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.mozilla.firefox.png",
       "type": "pacman",
       "package": "firefox"
     },
@@ -17,9 +16,9 @@
       "id": "vscodium",
       "name": "VSCodium",
       "publisher": "VSCodium Contributors",
-      "description": "Free/Libre Open Source Software Binaries of VS Code.",
+      "description": "Free/Libre Open Source Software Binaries of VS Code. A fully open-source code editor with IntelliSense, debugging, and Git integration.",
       "category": "App",
-      "icon_url": "https://upload.wikimedia.org/wikipedia/commons/6/60/VSCodium_logo.svg",
+      "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/com.vscodium.codium.png",
       "type": "flatpak",
       "package": "com.vscodium.codium"
     },
@@ -27,9 +26,9 @@
       "id": "spotify",
       "name": "Spotify",
       "publisher": "Spotify Ltd.",
-      "description": "Music and podcast streaming platform.",
+      "description": "Music and podcast streaming platform. Discover, manage and share over 80 million tracks for free, or subscribe to Spotify Premium.",
       "category": "App",
-      "icon_url": "https://upload.wikimedia.org/wikipedia/commons/2/26/Spotify_logo_with_text.svg",
+      "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/com.spotify.Client.png",
       "type": "flatpak",
       "package": "com.spotify.Client"
     },
@@ -37,19 +36,39 @@
       "id": "discord",
       "name": "Discord",
       "publisher": "Discord Inc.",
-      "description": "Chat for communities and friends.",
+      "description": "All-in-one voice, video, and text chat for communities and friends. Used by millions of people for gaming, education, and staying connected.",
       "category": "App",
-      "icon_url": "https://upload.wikimedia.org/wikipedia/commons/9/98/Discord_logo.svg",
+      "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/com.discordapp.Discord.png",
       "type": "flatpak",
       "package": "com.discordapp.Discord"
+    },
+    {
+      "id": "vlc",
+      "name": "VLC Media Player",
+      "publisher": "VideoLAN",
+      "description": "A free and open source cross-platform multimedia player that plays most multimedia files as well as DVDs, Audio CDs, VCDs, and various streaming protocols.",
+      "category": "App",
+      "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.videolan.VLC.png",
+      "type": "pacman",
+      "package": "vlc"
+    },
+    {
+      "id": "gimp",
+      "name": "GIMP",
+      "publisher": "GNOME Project",
+      "description": "GNU Image Manipulation Program. A freely distributed program for photo retouching, image composition, and image authoring.",
+      "category": "App",
+      "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gimp.GIMP.png",
+      "type": "pacman",
+      "package": "gimp"
     },
     {
       "id": "lutris",
       "name": "Lutris",
       "publisher": "Lutris Team",
-      "description": "Open Source gaming platform for Linux.",
+      "description": "Open Source gaming platform for Linux. Install and play any game on Linux using runners including Wine, Steam, DOSBox, ScummVM, and more.",
       "category": "Game",
-      "icon_url": "https://upload.wikimedia.org/wikipedia/commons/9/93/Lutris_logo.png",
+      "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/net.lutris.Lutris.png",
       "type": "pacman",
       "package": "lutris"
     },
@@ -57,9 +76,9 @@
       "id": "supertuxkart",
       "name": "SuperTuxKart",
       "publisher": "SuperTuxKart Team",
-      "description": "3D open-source arcade racing game.",
+      "description": "A fun 3D open-source arcade racing game. Race in karts with various characters and compete in story mode, time trials, and multiplayer.",
       "category": "Game",
-      "icon_url": "https://upload.wikimedia.org/wikipedia/commons/a/a1/Supertuxkart_logo.png",
+      "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/net.supertuxkart.SuperTuxKart.png",
       "type": "pacman",
       "package": "supertuxkart"
     },
@@ -67,11 +86,21 @@
       "id": "heroic",
       "name": "Heroic Games Launcher",
       "publisher": "Heroic Games",
-      "description": "A Native GOG and Epic Games Launcher for Linux.",
+      "description": "A Native GOG and Epic Games Launcher for Linux. Supports Wine and Proton for running Windows games natively on Linux.",
       "category": "Game",
-      "icon_url": "https://upload.wikimedia.org/wikipedia/commons/6/64/Heroic_Games_Launcher_Icon.png",
+      "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/com.heroicgameslauncher.hgl.png",
       "type": "flatpak",
       "package": "com.heroicgameslauncher.hgl"
+    },
+    {
+      "id": "steam",
+      "name": "Steam",
+      "publisher": "Valve Corporation",
+      "description": "The ultimate gaming platform. Access thousands of games, automatic updates, cloud storage, and the Steam community.",
+      "category": "Game",
+      "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/com.valvesoftware.Steam.png",
+      "type": "flatpak",
+      "package": "com.valvesoftware.Steam"
     }
   ]
 }

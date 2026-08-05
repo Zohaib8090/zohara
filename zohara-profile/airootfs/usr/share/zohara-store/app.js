@@ -234,11 +234,11 @@ function renderDummyData() {
                 "id": "firefox",
                 "name": "Mozilla Firefox",
                 "publisher": "Mozilla",
-                "description": "Fast and private web browser built for speed, privacy, and security.",
+                "description": "A fast, privacy-focused web browser built for speed, privacy, and security.",
                 "category": "App",
                 "type": "pacman",
                 "package": "firefox",
-                "icon_url": "https://upload.wikimedia.org/wikipedia/commons/a/a0/Firefox_logo%2C_2019.svg"
+                "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.mozilla.firefox.png"
             },
             {
                 "id": "vscodium",
@@ -248,7 +248,7 @@ function renderDummyData() {
                 "category": "App",
                 "type": "flatpak",
                 "package": "com.vscodium.codium",
-                "icon_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/VSCodium_logo.svg/240px-VSCodium_logo.svg.png"
+                "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/com.vscodium.codium.png"
             },
             {
                 "id": "spotify",
@@ -258,7 +258,7 @@ function renderDummyData() {
                 "category": "App",
                 "type": "flatpak",
                 "package": "com.spotify.Client",
-                "icon_url": "https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg"
+                "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/com.spotify.Client.png"
             },
             {
                 "id": "discord",
@@ -268,7 +268,17 @@ function renderDummyData() {
                 "category": "App",
                 "type": "flatpak",
                 "package": "com.discordapp.Discord",
-                "icon_url": "https://upload.wikimedia.org/wikipedia/commons/9/98/Discord_logo.svg"
+                "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/com.discordapp.Discord.png"
+            },
+            {
+                "id": "vlc",
+                "name": "VLC Media Player",
+                "publisher": "VideoLAN",
+                "description": "A free and open source cross-platform multimedia player.",
+                "category": "App",
+                "type": "pacman",
+                "package": "vlc",
+                "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.videolan.VLC.png"
             },
             {
                 "id": "lutris",
@@ -278,7 +288,7 @@ function renderDummyData() {
                 "category": "Game",
                 "type": "pacman",
                 "package": "lutris",
-                "icon_url": "https://lutris.net/static/favicon.png"
+                "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/net.lutris.Lutris.png"
             },
             {
                 "id": "supertuxkart",
@@ -288,7 +298,17 @@ function renderDummyData() {
                 "category": "Game",
                 "type": "pacman",
                 "package": "supertuxkart",
-                "icon_url": "https://supertuxkart.net/images/6/67/STK_logo.svg"
+                "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/net.supertuxkart.SuperTuxKart.png"
+            },
+            {
+                "id": "steam",
+                "name": "Steam",
+                "publisher": "Valve Corporation",
+                "description": "The ultimate gaming platform. Access thousands of games.",
+                "category": "Game",
+                "type": "flatpak",
+                "package": "com.valvesoftware.Steam",
+                "icon_url": "https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/com.valvesoftware.Steam.png"
             }
         ]
     };
