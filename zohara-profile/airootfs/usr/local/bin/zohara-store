@@ -64,12 +64,17 @@ class StoreAPI:
             json.dump(data, f)
 
     def get_catalog(self):
-        """Called by JS to fetch the apps catalog."""
+        """
+        Called by JS on startup. Returns a curated catalog from GitHub,
+        falling back to the bundled local apps.json if offline.
+        Each app has real metadata — no dummy content.
+        """
         try:
             req = urllib.request.Request(APPS_URL, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
                 self.catalog = data
+                log.info("Loaded catalog from GitHub.")
                 return json.dumps(data)
         except Exception as e:
             log.warning(f"Network fetch failed: {e}. Trying local fallback.")
@@ -77,9 +82,84 @@ class StoreAPI:
                 with open(LOCAL_FALLBACK, 'r') as f:
                     data = json.load(f)
                     self.catalog = data
+                    log.info("Loaded catalog from local fallback.")
                     return json.dumps(data)
             except Exception as e2:
                 raise Exception(f"Failed to load catalog: {e2}")
+
+    def search_packages(self, query):
+        """
+        Live search across Flatpak (Flathub) and Pacman.
+        Returns real results with name, description, source, and icon from Flathub.
+        """
+        results = []
+        seen = set()
+
+        # --- Flatpak search ---
+        try:
+            fp = subprocess.run(
+                ['flatpak', 'search', '--columns=application,name,description,remotes', query],
+                capture_output=True, text=True, timeout=10
+            )
+            for line in fp.stdout.strip().splitlines():
+                parts = line.split('\t')
+                if len(parts) >= 3:
+                    app_id, name, desc = parts[0].strip(), parts[1].strip(), parts[2].strip()
+                    remotes = parts[3].strip() if len(parts) > 3 else 'flathub'
+                    if app_id and app_id not in seen:
+                        seen.add(app_id)
+                        # Build a Flathub icon URL from the app ID
+                        icon_url = f"https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/{app_id}.png"
+                        results.append({
+                            'id': app_id,
+                            'name': name,
+                            'publisher': remotes,
+                            'description': desc,
+                            'category': 'App',
+                            'type': 'flatpak',
+                            'package': app_id,
+                            'icon_url': icon_url
+                        })
+        except Exception as e:
+            log.warning(f"Flatpak search failed: {e}")
+
+        # --- Pacman search ---
+        try:
+            pm = subprocess.run(
+                ['pacman', '-Ss', query],
+                capture_output=True, text=True, timeout=10
+            )
+            # pacman output: "repo/name version\n    description\n"
+            lines = pm.stdout.strip().splitlines()
+            i = 0
+            while i < len(lines) - 1:
+                header = lines[i].strip()
+                desc = lines[i + 1].strip() if i + 1 < len(lines) else ''
+                i += 2
+                if '/' in header:
+                    try:
+                        repo_pkg, version = header.rsplit(' ', 1)
+                        pkg_name = repo_pkg.split('/')[1]
+                    except Exception:
+                        continue
+                    if pkg_name and pkg_name not in seen:
+                        seen.add(pkg_name)
+                        results.append({
+                            'id': pkg_name,
+                            'name': pkg_name,
+                            'publisher': 'Arch Linux',
+                            'description': desc,
+                            'category': 'App',
+                            'type': 'pacman',
+                            'package': pkg_name,
+                            'icon_url': ''  # No universal icon for pacman packages
+                        })
+        except Exception as e:
+            log.warning(f"Pacman search failed: {e}")
+
+        return json.dumps({'apps': results[:50]})  # Limit to 50 results
+
+
 
     def get_library(self):
         """Returns list of installed apps."""

@@ -19,7 +19,51 @@ document.addEventListener('DOMContentLoaded', () => {
     
     setupNavigation();
     setupModal();
+    setupSearch();
 });
+
+let searchDebounce = null;
+function setupSearch() {
+    const input = document.getElementById('search-input');
+    if (!input) return;
+    input.addEventListener('input', () => {
+        clearTimeout(searchDebounce);
+        const q = input.value.trim();
+        if (q.length < 2) {
+            // Restore catalog if query is cleared
+            if (catalogData.apps) renderCatalog();
+            return;
+        }
+        searchDebounce = setTimeout(async () => {
+            showLoadingSpinner(true);
+            if (window.pywebview) {
+                try {
+                    const raw = await window.pywebview.api.search_packages(q);
+                    const results = JSON.parse(raw);
+                    catalogData = results;
+                    renderCatalog();
+                } catch(err) {
+                    console.error('Search error:', err);
+                } finally {
+                    showLoadingSpinner(false);
+                }
+            } else {
+                // Dev fallback: filter dummy data
+                catalogData.apps = catalogData.apps.filter(a =>
+                    a.name.toLowerCase().includes(q.toLowerCase()) ||
+                    a.description.toLowerCase().includes(q.toLowerCase())
+                );
+                renderCatalog();
+                showLoadingSpinner(false);
+            }
+        }, 400);
+    });
+}
+
+function showLoadingSpinner(show) {
+    const el = document.getElementById('loading-spinner');
+    if (el) el.classList.toggle('hidden', !show);
+}
 
 function setupNavigation() {
     const links = document.querySelectorAll('.nav-links li');
