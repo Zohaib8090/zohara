@@ -1,42 +1,190 @@
 #!/usr/bin/env python3
 """
-Zohara Software App
-───────────────────
-This will be the custom package manager/store for Zohara OS.
-It will pull CLI installation scripts directly from:
-https://github.com/Zohaib8090/zohara-packages.git
+Zohara Software Store - Hybrid Backend
+──────────────────────────────────────
+Powered by PyWebView, rendering local HTML/CSS/JS assets.
+Provides a native bridge API to pacman, flatpak, and WINE.
 """
+
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel
-from PyQt5.QtCore import Qt
+import os
+import json
+import urllib.request
+import subprocess
+import threading
+import webview
+import logging
 
-class SoftwareApp(QWidget):
+LOG_FILE = '/tmp/zohara-store.log'
+logging.basicConfig(filename=LOG_FILE, level=logging.DEBUG,
+                    format='%(asctime)s [%(levelname)s] %(message)s')
+log = logging.getLogger('zohara-store')
+
+APPS_URL = "https://raw.githubusercontent.com/Zohaib8090/zohara-packages/master/apps.json"
+LOCAL_FALLBACK = "/home/zohaib/Documents/my/zohara-packages/apps.json"
+
+# File to track installed apps via Store
+LIBRARY_FILE = os.path.expanduser("~/.config/zohara-store/library.json")
+
+class StoreAPI:
     def __init__(self):
-        super().__init__()
-        self.initUI()
+        self.catalog = None
+        self._ensure_library_file()
 
-    def initUI(self):
-        self.setWindowTitle('Zohara Software')
-        self.setFixedSize(800, 600)
-        self.setStyleSheet("background-color: #1e1e2e; color: #cdd6f4;")
+    def _ensure_library_file(self):
+        os.makedirs(os.path.dirname(LIBRARY_FILE), exist_ok=True)
+        if not os.path.exists(LIBRARY_FILE):
+            with open(LIBRARY_FILE, 'w') as f:
+                json.dump([], f)
 
-        layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignCenter)
+    def _get_library_data(self):
+        try:
+            with open(LIBRARY_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return []
 
-        title = QLabel('Zohara Software Center')
-        title.setStyleSheet("font-size: 24px; font-weight: bold;")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+    def _save_library_data(self, data):
+        with open(LIBRARY_FILE, 'w') as f:
+            json.dump(data, f)
 
-        subtitle = QLabel('Coming soon! Packages will be synced from:\nhttps://github.com/Zohaib8090/zohara-packages.git')
-        subtitle.setStyleSheet("font-size: 14px;")
-        subtitle.setAlignment(Qt.AlignCenter)
-        layout.addWidget(subtitle)
+    def get_catalog(self):
+        """Called by JS to fetch the apps catalog."""
+        try:
+            req = urllib.request.Request(APPS_URL, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+                self.catalog = data
+                return json.dumps(data)
+        except Exception as e:
+            log.warning(f"Network fetch failed: {e}. Trying local fallback.")
+            try:
+                with open(LOCAL_FALLBACK, 'r') as f:
+                    data = json.load(f)
+                    self.catalog = data
+                    return json.dumps(data)
+            except Exception as e2:
+                raise Exception(f"Failed to load catalog: {e2}")
 
-        self.setLayout(layout)
+    def get_library(self):
+        """Returns list of installed apps."""
+        # Clean up library list by checking actual system status
+        lib = self._get_library_data()
+        verified = []
+        for app in lib:
+            if self.is_installed(app['id']):
+                verified.append(app)
+        self._save_library_data(verified)
+        return json.dumps(verified)
+
+    def is_installed(self, app_id):
+        # We find the app in the catalog to know how to check it
+        if not self.catalog:
+            return False
+        
+        app = next((a for a in self.catalog.get('apps', []) if a['id'] == app_id), None)
+        if not app:
+            return False
+
+        pkg_type = app.get('type')
+        pkg = app.get('package')
+
+        if pkg_type == 'pacman':
+            return subprocess.run(['pacman', '-Q', pkg], capture_output=True).returncode == 0
+        elif pkg_type == 'flatpak':
+            return subprocess.run(['flatpak', 'info', pkg], capture_output=True).returncode == 0
+        elif pkg_type == 'windows':
+            # Basic check for wine shortcut or prefix
+            prefix = os.path.expanduser(f"~/.wine_zohara_{app_id}")
+            return os.path.exists(prefix)
+            
+        return False
+
+    def install_app(self, app_id, source):
+        """Called by JS to install an app. Runs in a background thread."""
+        app = next((a for a in self.catalog.get('apps', []) if a['id'] == app_id), None)
+        if not app:
+            raise Exception("App not found in catalog.")
+
+        # Run installation in a separate thread to not block the PyWebView window
+        threading.Thread(target=self._run_install, args=(app, source), daemon=True).start()
+        return "Installation started."
+
+    def _run_install(self, app, source):
+        pkg = app.get('package')
+        cmd = []
+
+        if source == 'pacman':
+            cmd = ['pkexec', 'pacman', '-S', '--noconfirm', pkg]
+        elif source == 'flatpak':
+            cmd = ['flatpak', 'install', '-y', 'flathub', pkg]
+        elif source == 'windows':
+            installer_url = app.get('installer_url')
+            prefix = os.path.expanduser(f"~/.wine_zohara_{app['id']}")
+            cmd = [
+                'bash', '-c',
+                f"mkdir -p {prefix} && "
+                f"WINEPREFIX={prefix} wget -qO /tmp/installer.exe {installer_url} && "
+                f"WINEPREFIX={prefix} wine /tmp/installer.exe /S"
+            ]
+        else:
+            webview.windows[0].evaluate_js(f"appendLog('Unknown source: {source}')")
+            webview.windows[0].evaluate_js("installationComplete(false)")
+            return
+
+        try:
+            webview.windows[0].evaluate_js(f"appendLog('Executing: {' '.join(cmd)}')")
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            for line in proc.stdout:
+                webview.windows[0].evaluate_js(f"appendLog({json.dumps(line.strip())})")
+            
+            proc.wait()
+            if proc.returncode == 0:
+                webview.windows[0].evaluate_js("appendLog('Installation successful.')")
+                webview.windows[0].evaluate_js("installationComplete(true)")
+                
+                # Add to library
+                lib = self._get_library_data()
+                if not any(a['id'] == app['id'] for a in lib):
+                    lib.append({
+                        'id': app['id'],
+                        'name': app['name'],
+                        'source': source,
+                        'version': 'latest'
+                    })
+                    self._save_library_data(lib)
+            else:
+                webview.windows[0].evaluate_js(f"appendLog('Process exited with code {proc.returncode}')")
+                webview.windows[0].evaluate_js("installationComplete(false)")
+        except Exception as e:
+            webview.windows[0].evaluate_js(f"appendLog({json.dumps('Exception: ' + str(e))})")
+            webview.windows[0].evaluate_js("installationComplete(false)")
+
+    def remove_app(self, app_id, source):
+        # Implementation for removal
+        pass
+
 
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    ex = SoftwareApp()
-    ex.show()
-    sys.exit(app.exec_())
+    log.info("Starting Zohara Store Hybrid...")
+    
+    # Check if local assets exist
+    assets_path = '/usr/share/zohara-store/index.html'
+    if not os.path.exists(assets_path):
+        # Fallback for dev mode
+        assets_path = os.path.join(os.path.dirname(__file__), 'index.html')
+        
+    url = f"file://{assets_path}" if os.path.exists(assets_path) else "https://zohaib8090.github.io/zohara-store-website/"
+
+    api = StoreAPI()
+    
+    window = webview.create_window(
+        'Zohara Software Store', 
+        url=url, 
+        js_api=api,
+        width=1100, 
+        height=750,
+        background_color='#1e1e2e'
+    )
+    
+    webview.start(debug=True)

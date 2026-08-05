@@ -102,3 +102,5 @@ fluent-cursor-theme-git
 fluent-gtk-theme-git
 fluent-icon-theme-git
 nordzy-icon-theme-git
+python-pywebview
+python-gobject
