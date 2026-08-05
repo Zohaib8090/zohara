@@ -1,7 +1,0 @@
-[Desktop Entry]
-Name=Zohara Store
-Name[en_US]=Zohara Store
-Exec=plasma-discover %U
-Icon=plasmadiscover
-Type=Application
-Categories=System;Settings;
