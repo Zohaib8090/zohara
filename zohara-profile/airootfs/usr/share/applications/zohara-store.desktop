@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Zohara Store
+GenericName=App Store
+Comment=Discover and install amazing apps
+Exec=/usr/local/bin/zohara-store
+Icon=zohara-store
+Terminal=false
+Type=Application
+Categories=System;Utility;Core;
+Keywords=store;software;install;app;

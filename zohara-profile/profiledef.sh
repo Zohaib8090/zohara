@@ -26,7 +26,7 @@ file_permissions=(
   ["/usr/local/bin/zohara-welcome"]="0:0:755"
   ["/usr/local/bin/zohara-migrate"]="0:0:755"
   ["/usr/local/bin/zohara-install-kernel"]="0:0:755"
-  ["/usr/local/bin/zohara-software"]="0:0:755"
+  ["/usr/local/bin/zohara-store"]="0:0:755"
   ["/usr/local/bin/zohara-usermgr"]="0:0:755"
   ["/usr/local/bin/zohara-update"]="0:0:755"
 )

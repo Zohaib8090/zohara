@@ -174,7 +174,7 @@ if __name__ == '__main__':
         # Fallback for dev mode
         assets_path = os.path.join(os.path.dirname(__file__), 'index.html')
         
-    url = f"file://{assets_path}" if os.path.exists(assets_path) else "https://zohaib8090.github.io/zohara-store-website/"
+    url = assets_path if os.path.exists(assets_path) else "https://zohaib8090.github.io/zohara-store-website/"
 
     api = StoreAPI()
     

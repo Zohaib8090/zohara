@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#89b4fa"/>
+      <stop offset="100%" stop-color="#74c7ec"/>
+    </linearGradient>
+    <linearGradient id="bagGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e0e5f2"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer rounded square background -->
+  <rect x="16" y="16" width="224" height="224" rx="56" fill="url(#bgGradient)"/>
+  
+  <!-- Store Bag / Tote graphic -->
+  <path d="M72,112 v80 a24,24 0 0,0 24,24 h64 a24,24 0 0,0 24,-24 v-80 Z" fill="url(#bagGradient)" />
+  
+  <!-- Bag Handle -->
+  <path d="M96,112 v-16 a32,32 0 0,1 64,0 v16" fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Center symbol inside bag (maybe a Z) -->
+  <path d="M110,140 h36 l-36,36 h36" fill="none" stroke="#89b4fa" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
