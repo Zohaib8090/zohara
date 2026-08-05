@@ -3,23 +3,29 @@
 let catalogData = {};
 let currentApp = null;
 
+let isPyWebViewReady = false;
+
 // Initialize when DOM is ready and pywebview is available
 window.addEventListener('pywebviewready', function() {
+    isPyWebViewReady = true;
     console.log("PyWebView is ready. Fetching catalog...");
     fetchCatalog();
 });
 
 // Fallback for browser testing without PyWebView
 document.addEventListener('DOMContentLoaded', () => {
-    if (!window.pywebview) {
-        console.warn("PyWebView not detected. Using dummy data for testing.");
-        document.getElementById('loading-spinner').classList.add('hidden');
-        renderDummyData();
-    }
-    
     setupNavigation();
     setupModal();
     setupSearch();
+    
+    // Wait briefly for pywebview to inject before falling back
+    setTimeout(() => {
+        if (!window.pywebview && !isPyWebViewReady) {
+            console.warn("PyWebView not detected. Using dummy data for testing.");
+            document.getElementById('loading-spinner').classList.add('hidden');
+            renderDummyData();
+        }
+    }, 1500);
 });
 
 let searchDebounce = null;
