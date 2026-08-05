@@ -4,12 +4,27 @@ let catalogData = {};
 let currentApp = null;
 
 let isPyWebViewReady = false;
+let _originalCatalog = {};
 
 // Initialize when DOM is ready and pywebview is available
 window.addEventListener('pywebviewready', function() {
     isPyWebViewReady = true;
     console.log("PyWebView is ready. Fetching catalog...");
-    fetchCatalog();
+    // Retry a few times in case the API isn't fully ready yet
+    let attempts = 0;
+    const tryFetch = () => {
+        attempts++;
+        fetchCatalog().catch(err => {
+            console.warn(`Catalog fetch attempt ${attempts} failed: ${err}`);
+            if (attempts < 5) setTimeout(tryFetch, 1000);
+            else {
+                console.error('All catalog fetch attempts failed.');
+                const el = document.getElementById('loading-spinner');
+                if (el) el.innerHTML = `<p style="color:var(--accent-red)">Could not load catalog.<br>Check /tmp/zohara-store.log</p>`;
+            }
+        });
+    };
+    tryFetch();
 });
 
 // Fallback for browser testing without PyWebView
@@ -35,30 +50,55 @@ function setupSearch() {
     input.addEventListener('input', () => {
         clearTimeout(searchDebounce);
         const q = input.value.trim();
-        if (q.length < 2) {
-            // Restore catalog if query is cleared
-            if (catalogData.apps) renderCatalog();
+        if (q.length === 0) {
+            // Restore full catalog when search is cleared
+            catalogData = _originalCatalog;
+            renderCatalog();
             return;
         }
+        if (q.length < 2) return; // Wait for at least 2 chars
         searchDebounce = setTimeout(async () => {
             showLoadingSpinner(true);
             if (window.pywebview) {
                 try {
                     const raw = await window.pywebview.api.search_packages(q);
                     const results = JSON.parse(raw);
-                    catalogData = results;
+                    // If search returns nothing, filter from loaded catalog instead
+                    if (results.apps && results.apps.length > 0) {
+                        catalogData = results;
+                    } else {
+                        const lower = q.toLowerCase();
+                        catalogData = {
+                            apps: (_originalCatalog.apps || []).filter(a =>
+                                a.name.toLowerCase().includes(lower) ||
+                                (a.description || '').toLowerCase().includes(lower)
+                            )
+                        };
+                    }
                     renderCatalog();
                 } catch(err) {
                     console.error('Search error:', err);
+                    // Fallback: filter in-memory catalog
+                    const lower = q.toLowerCase();
+                    catalogData = {
+                        apps: (_originalCatalog.apps || []).filter(a =>
+                            a.name.toLowerCase().includes(lower) ||
+                            (a.description || '').toLowerCase().includes(lower)
+                        )
+                    };
+                    renderCatalog();
                 } finally {
                     showLoadingSpinner(false);
                 }
             } else {
                 // Dev fallback: filter dummy data
-                catalogData.apps = catalogData.apps.filter(a =>
-                    a.name.toLowerCase().includes(q.toLowerCase()) ||
-                    a.description.toLowerCase().includes(q.toLowerCase())
-                );
+                const lower = q.toLowerCase();
+                catalogData = {
+                    apps: (_originalCatalog.apps || []).filter(a =>
+                        a.name.toLowerCase().includes(lower) ||
+                        (a.description || '').toLowerCase().includes(lower)
+                    )
+                };
                 renderCatalog();
                 showLoadingSpinner(false);
             }
@@ -147,15 +187,14 @@ function installationComplete(success) {
 }
 
 async function fetchCatalog() {
-    try {
-        const data = await window.pywebview.api.get_catalog();
-        catalogData = JSON.parse(data);
-        renderCatalog();
-        document.getElementById('loading-spinner').classList.add('hidden');
-    } catch (err) {
-        console.error("Failed to fetch catalog:", err);
-        document.getElementById('loading-spinner').innerHTML = `<p style="color:var(--accent-red)">Error loading catalog:<br>${err}</p>`;
-    }
+    const data = await window.pywebview.api.get_catalog();
+    if (!data) throw new Error('Empty response from get_catalog');
+    catalogData = JSON.parse(data);
+    _originalCatalog = catalogData;
+    if (!catalogData.apps || catalogData.apps.length === 0) throw new Error('Catalog returned 0 apps');
+    console.log(`Catalog loaded: ${catalogData.apps.length} apps`);
+    renderCatalog();
+    document.getElementById('loading-spinner').classList.add('hidden');
 }
 
 function renderCatalog() {
