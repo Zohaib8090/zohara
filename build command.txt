@@ -1,0 +1,13 @@
+# 1. Clean previous build output
+sudo rm -rf ~/Documents/my/zohara/out/ ~/Documents/my/zohara/work/
+
+# 2. Remove any old build container
+sudo docker rm -f zohara-build
+
+# 3. Run the builder (takes ~5-8 minutes)
+sudo docker run --name zohara-build \
+  --privileged \
+  -v ~/Documents/my/zohara:/build \
+  -v ~/Documents/my/zohara/pkg-cache:/var/cache/pacman/pkg \
+  zohara-builder
+

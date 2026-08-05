@@ -55,17 +55,11 @@ LOGO=distributor-logo-zohara
 EOF
 
 
-# ── Hide unwanted KDE apps from the launcher ───────────────────────────────
-# These packages are pulled in as dependencies of KDE Plasma but we don't
-# want them visible. We patch their .desktop files with NoDisplay=true instead
-# of fighting dependency chains.
-echo "  -> Hiding unwanted KDE app launcher entries..."
+# ── Purge unwanted KDE apps from the system ───────────────────────────────
+echo "  -> Purging unwanted KDE apps..."
+pacman -Rdd --noconfirm discover packagekit-qt6 || true
 
 HIDE_APPS=(
-    "org.kde.discover"
-    "org.kde.discover.urlhandler"
-    "kde-discover"
-    "plasma-discover"
     "org.kde.kdeconnect.daemon"
     "org.kde.kdeconnect-handler"
     "org.kde.kdeconnect.settings"
