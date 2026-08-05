@@ -108,11 +108,11 @@ async function fetchCatalog() {
 }
 
 function renderCatalog() {
-    const featuredGrid = document.getElementById('featured-grid');
-    const toolsGrid = document.getElementById('tools-grid');
+    const appsGrid = document.getElementById('apps-grid');
+    const gamesGrid = document.getElementById('games-grid');
     
-    featuredGrid.innerHTML = '';
-    toolsGrid.innerHTML = '';
+    if (appsGrid) appsGrid.innerHTML = '';
+    if (gamesGrid) gamesGrid.innerHTML = '';
     
     catalogData.apps.forEach(app => {
         const card = document.createElement('div');
@@ -129,10 +129,10 @@ function renderCatalog() {
         
         card.addEventListener('click', () => openAppDetails(app));
         
-        if (catalogData.featured && catalogData.featured.includes(app.id)) {
-            featuredGrid.appendChild(card);
+        if (app.category && app.category.toLowerCase() === 'game') {
+            if (gamesGrid) gamesGrid.appendChild(card);
         } else {
-            toolsGrid.appendChild(card);
+            if (appsGrid) appsGrid.appendChild(card);
         }
     });
 }

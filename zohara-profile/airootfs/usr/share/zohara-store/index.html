@@ -35,13 +35,13 @@
       </ul>
       
       <div class="sidebar-footer">
-        <div class="user-profile">
+        <div class="user-profile" id="btn-login-store" style="cursor: pointer;">
           <div class="avatar">
-            <span class="material-icons-round">person</span>
+            <span class="material-icons-round">account_circle</span>
           </div>
           <div class="user-info">
-            <span class="username" id="sys-username">Local User</span>
-            <span class="status">Online</span>
+            <span class="username" id="sys-username">Sign In</span>
+            <span class="status">Sync apps & comments</span>
           </div>
         </div>
       </div>
@@ -57,7 +57,6 @@
           <input type="text" id="search-input" placeholder="Search apps, games, and packages...">
         </div>
         <div class="window-controls">
-          <!-- Window controls handled natively by pywebview, but we can put settings here -->
           <button class="icon-btn" id="btn-settings" title="Settings">
             <span class="material-icons-round">settings</span>
           </button>
@@ -76,23 +75,13 @@
         <!-- Home Page -->
         <section id="page-home" class="page-section active">
           
-          <!-- Hero Banner -->
-          <div class="hero-banner">
-            <div class="hero-content">
-              <h1>Discover amazing apps.</h1>
-              <p>Carefully curated for Zohara OS, natively supporting Arch, Flatpak, and Windows apps.</p>
-              <button class="primary-btn">Browse Collection</button>
-            </div>
-            <!-- The CSS background image will provide the graphical element -->
-          </div>
-
-          <h2 class="section-title">Featured Applications</h2>
-          <div class="app-grid" id="featured-grid">
+          <h2 class="section-title">Applications</h2>
+          <div class="app-grid" id="apps-grid">
             <!-- App cards injected here via JS -->
           </div>
           
-          <h2 class="section-title mt-4">Essential Tools</h2>
-          <div class="app-grid" id="tools-grid">
+          <h2 class="section-title mt-4">Games</h2>
+          <div class="app-grid" id="games-grid">
             <!-- App cards injected here via JS -->
           </div>
 
@@ -144,6 +133,9 @@
               <div class="detail-info">
                 <h1 id="detail-title">App Title</h1>
                 <p id="detail-publisher" class="publisher">Publisher</p>
+                <div class="ratings-stars" style="color: #f5c211; font-size: 18px; margin-bottom: 16px;">
+                  ★★★★☆ <span style="color: var(--text-muted); font-size: 14px;">(4.2)</span>
+                </div>
                 
                 <div class="action-row">
                   <div class="source-selector" id="detail-source-container">
@@ -160,6 +152,12 @@
             <div class="details-body">
               <h3 class="section-title">Description</h3>
               <p id="detail-description" class="description-text">...</p>
+              
+              <h3 class="section-title mt-4">Reviews & Comments</h3>
+              <div class="comments-section" style="background: rgba(0,0,0,0.1); padding: 16px; border-radius: 8px;">
+                <p style="color: var(--text-muted); font-style: italic;">Log in to leave a review and sync your apps across devices.</p>
+                <!-- Placeholder for future comments -->
+              </div>
               
               <!-- Console Output block (hidden by default) -->
               <div id="detail-console" class="console-box hidden">
