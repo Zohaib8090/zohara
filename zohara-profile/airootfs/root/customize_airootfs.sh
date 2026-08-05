@@ -54,4 +54,35 @@ BUG_REPORT_URL="https://github.com/Zohaib8090/zohara/issues"
 LOGO=distributor-logo-zohara
 EOF
 
+
+# ── Hide unwanted KDE apps from the launcher ───────────────────────────────
+# These packages are pulled in as dependencies of KDE Plasma but we don't
+# want them visible. We patch their .desktop files with NoDisplay=true instead
+# of fighting dependency chains.
+echo "  -> Hiding unwanted KDE app launcher entries..."
+
+HIDE_APPS=(
+    "org.kde.discover"
+    "org.kde.discover.urlhandler"
+    "kde-discover"
+    "plasma-discover"
+    "org.kde.kdeconnect.daemon"
+    "org.kde.kdeconnect-handler"
+    "org.kde.kdeconnect.settings"
+    "org.kde.kdeconnect-indicator"
+)
+
+for app in "${HIDE_APPS[@]}"; do
+    DESKTOP_FILE="/usr/share/applications/${app}.desktop"
+    if [[ -f "$DESKTOP_FILE" ]]; then
+        echo "  -> Hiding: $DESKTOP_FILE"
+        # Append NoDisplay=true if not already present
+        if ! grep -q "^NoDisplay=true" "$DESKTOP_FILE"; then
+            echo "NoDisplay=true" >> "$DESKTOP_FILE"
+        fi
+    fi
+done
+
+echo "  -> Launcher cleanup complete."
+
 echo "==> Zohara OS: Post-install customizations complete."
