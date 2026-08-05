@@ -101,4 +101,5 @@ fluent-gtk-theme-git
 fluent-icon-theme-git
 nordzy-icon-theme-git
 python-pywebview
+webkit2gtk-4.1
 python-gobject

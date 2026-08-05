@@ -12,8 +12,23 @@ import json
 import urllib.request
 import subprocess
 import threading
-import webview
 import logging
+
+try:
+    import webview
+except ImportError as e:
+    # pywebview or webkit2gtk-4.1 not installed — show a clear error
+    try:
+        from PyQt5.QtWidgets import QApplication, QMessageBox
+        app = QApplication(sys.argv)
+        QMessageBox.critical(None, "Zohara Store — Missing Dependency",
+            f"Could not start Zohara Store.\n\n"
+            f"Missing package: python-pywebview / webkit2gtk-4.1\n\n"
+            f"Install with:\n  sudo pacman -S python-pywebview webkit2gtk-4.1\n\n"
+            f"Error: {e}")
+    except Exception:
+        print(f"FATAL: pywebview not available: {e}", file=sys.stderr)
+    sys.exit(1)
 
 LOG_FILE = '/tmp/zohara-store.log'
 logging.basicConfig(filename=LOG_FILE, level=logging.DEBUG,
