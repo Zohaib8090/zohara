@@ -32,7 +32,8 @@ function setupNavigation() {
             // Switch page
             const targetPage = link.getAttribute('data-page');
             document.querySelectorAll('.page-section').forEach(p => p.classList.remove('active'));
-            document.getElementById('page-' + targetPage).classList.add('active');
+            const target = document.getElementById('page-' + targetPage);
+            if (target) target.classList.add('active');
             
             if (targetPage === 'library') {
                 refreshLibrary();
@@ -225,34 +226,69 @@ async function removeApp(app_id) {
 }
 
 
-// Dummy data for testing UI without python
+// Dummy data for testing UI without python (no Windows apps)
 function renderDummyData() {
     catalogData = {
-        "featured": ["firefox", "vscodium"],
         "apps": [
             {
                 "id": "firefox",
                 "name": "Mozilla Firefox",
                 "publisher": "Mozilla",
-                "description": "Fast and private browser.",
+                "description": "Fast and private web browser built for speed, privacy, and security.",
+                "category": "App",
                 "type": "pacman",
+                "package": "firefox",
                 "icon_url": "https://upload.wikimedia.org/wikipedia/commons/a/a0/Firefox_logo%2C_2019.svg"
             },
             {
                 "id": "vscodium",
                 "name": "VSCodium",
                 "publisher": "VSCodium Contributors",
-                "description": "Free open source VS Code.",
+                "description": "Free/Libre open source software binaries of VS Code.",
+                "category": "App",
                 "type": "flatpak",
-                "icon_url": "https://upload.wikimedia.org/wikipedia/commons/6/60/VSCodium_logo.svg"
+                "package": "com.vscodium.codium",
+                "icon_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/VSCodium_logo.svg/240px-VSCodium_logo.svg.png"
             },
             {
-                "id": "photoshop-wine",
-                "name": "Adobe Photoshop CS6",
-                "publisher": "Adobe Systems",
-                "description": "Windows binary running seamlessly via Zohara Proton Layer.",
-                "type": "windows",
-                "icon_url": "https://upload.wikimedia.org/wikipedia/commons/2/20/Photoshop_CC_icon.png"
+                "id": "spotify",
+                "name": "Spotify",
+                "publisher": "Spotify Ltd.",
+                "description": "Music and podcast streaming platform.",
+                "category": "App",
+                "type": "flatpak",
+                "package": "com.spotify.Client",
+                "icon_url": "https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg"
+            },
+            {
+                "id": "discord",
+                "name": "Discord",
+                "publisher": "Discord Inc.",
+                "description": "Chat for communities and friends.",
+                "category": "App",
+                "type": "flatpak",
+                "package": "com.discordapp.Discord",
+                "icon_url": "https://upload.wikimedia.org/wikipedia/commons/9/98/Discord_logo.svg"
+            },
+            {
+                "id": "lutris",
+                "name": "Lutris",
+                "publisher": "Lutris Team",
+                "description": "Open Source gaming platform for Linux — run any game from any era.",
+                "category": "Game",
+                "type": "pacman",
+                "package": "lutris",
+                "icon_url": "https://lutris.net/static/favicon.png"
+            },
+            {
+                "id": "supertuxkart",
+                "name": "SuperTuxKart",
+                "publisher": "SuperTuxKart Team",
+                "description": "A fun 3D open-source arcade racing game.",
+                "category": "Game",
+                "type": "pacman",
+                "package": "supertuxkart",
+                "icon_url": "https://supertuxkart.net/images/6/67/STK_logo.svg"
             }
         ]
     };

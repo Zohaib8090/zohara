@@ -36,7 +36,7 @@ logging.basicConfig(filename=LOG_FILE, level=logging.DEBUG,
 log = logging.getLogger('zohara-store')
 
 APPS_URL = "https://raw.githubusercontent.com/Zohaib8090/zohara-packages/master/apps.json"
-LOCAL_FALLBACK = "/home/zohaib/Documents/my/zohara-packages/apps.json"
+LOCAL_FALLBACK = "/usr/share/zohara-store/apps.json"
 
 # File to track installed apps via Store
 LIBRARY_FILE = os.path.expanduser("~/.config/zohara-store/library.json")
