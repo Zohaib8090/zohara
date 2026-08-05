@@ -102,7 +102,17 @@ class WelcomeWindow(QWidget):
         btn_migrate.setCursor(Qt.PointingHandCursor)
         btn_migrate.clicked.connect(self.migrate_os)
 
-        btn_try = QPushButton('Try Zohara OS' if is_live else 'Close Welcome')
+        btn_users = QPushButton('👤  Manage Users')
+        btn_users.setStyleSheet(self.get_btn_style('#cba6f7'))
+        btn_users.setCursor(Qt.PointingHandCursor)
+        btn_users.clicked.connect(self.manage_users)
+
+        btn_update = QPushButton('🔄  Update System')
+        btn_update.setStyleSheet(self.get_btn_style('#f9e2af'))
+        btn_update.setCursor(Qt.PointingHandCursor)
+        btn_update.clicked.connect(self.update_system)
+
+        btn_try = QPushButton('Try Zohara OS' if is_live else 'Close')
         btn_try.setStyleSheet(self.get_btn_style('#f38ba8'))
         btn_try.setCursor(Qt.PointingHandCursor)
         btn_try.clicked.connect(self.try_os)
@@ -110,6 +120,9 @@ class WelcomeWindow(QWidget):
         if is_live:
             btn_layout.addWidget(btn_install)
         btn_layout.addWidget(btn_migrate)
+        if not is_live:
+            btn_layout.addWidget(btn_users)
+            btn_layout.addWidget(btn_update)
         btn_layout.addWidget(btn_try)
 
         layout.addLayout(btn_layout)
@@ -154,6 +167,20 @@ class WelcomeWindow(QWidget):
             self.close()
         else:
             self.show_error("Could not launch the Migration Tool.", err)
+
+    def manage_users(self):
+        log.info("User clicked: Manage Users")
+        self.status_label.setText("Launching User Manager...")
+        ok, err = launch(['/usr/local/bin/zohara-usermgr'], "User Manager")
+        if not ok:
+            self.show_error("Could not launch the User Manager.", err)
+
+    def update_system(self):
+        log.info("User clicked: Update System")
+        self.status_label.setText("Launching System Updater...")
+        ok, err = launch(['/usr/local/bin/zohara-update'], "System Updater")
+        if not ok:
+            self.show_error("Could not launch the System Updater.", err)
 
     def try_os(self):
         log.info("User clicked: Try Zohara OS")

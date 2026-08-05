@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Zohara Update
+GenericName=System Update Manager
+Comment=Check and install system updates
+Exec=/usr/local/bin/zohara-update
+Icon=system-software-update
+Terminal=false
+Type=Application
+Categories=Settings;System;Qt;
+Keywords=update;upgrade;pacman;packages;
+X-KDE-System-Settings-Parent-Category=system

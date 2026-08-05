@@ -1,0 +1,437 @@
+#!/usr/bin/env python3
+"""
+Zohara OS – User Manager
+────────────────────────
+Lets the user create, list, and delete system accounts through a simple GUI.
+Requires root (launched via pkexec or sudo from the welcome app).
+"""
+
+import sys
+import os
+import subprocess
+import logging
+import re
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QLabel, QLineEdit, QCheckBox, QListWidget,
+    QListWidgetItem, QMessageBox, QFrame, QStackedWidget
+)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QFont, QColor
+
+LOG_FILE = '/tmp/zohara-usermgr.log'
+logging.basicConfig(filename=LOG_FILE, level=logging.DEBUG,
+                    format='%(asctime)s [%(levelname)s] %(message)s')
+log = logging.getLogger('zohara-usermgr')
+
+# ── Helpers ───────────────────────────────────────────────────────────────
+
+def run(cmd, check=True):
+    log.info(f"Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if check and result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip())
+    return result.stdout.strip()
+
+
+def get_human_users():
+    """Return list of (username, uid, groups) for UID >= 1000 (real users)."""
+    users = []
+    try:
+        with open('/etc/passwd') as f:
+            for line in f:
+                parts = line.strip().split(':')
+                if len(parts) < 7:
+                    continue
+                name, _, uid, _, gecos, home, shell = parts
+                if int(uid) >= 1000 and int(uid) < 65534:
+                    try:
+                        grp_out = run(['id', '-nG', name], check=False)
+                        groups = grp_out
+                    except Exception:
+                        groups = ''
+                    users.append({'name': name, 'uid': uid,
+                                  'gecos': gecos, 'groups': groups})
+    except Exception as e:
+        log.error(f"Failed to read /etc/passwd: {e}")
+    return users
+
+
+# ── Styles ────────────────────────────────────────────────────────────────
+
+BG        = "#1e1e2e"
+SURFACE   = "#313244"
+BORDER    = "#45475a"
+TEXT      = "#cdd6f4"
+SUBTEXT   = "#a6adc8"
+BLUE      = "#89b4fa"
+GREEN     = "#a6e3a1"
+RED       = "#f38ba8"
+YELLOW    = "#f9e2af"
+
+STYLE = f"""
+QWidget {{
+    background-color: {BG};
+    color: {TEXT};
+    font-family: 'Inter', 'Noto Sans', sans-serif;
+    font-size: 13px;
+}}
+QFrame#card {{
+    background-color: {SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: 12px;
+}}
+QLineEdit {{
+    background-color: {SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: {TEXT};
+    font-size: 13px;
+}}
+QLineEdit:focus {{
+    border-color: {BLUE};
+}}
+QListWidget {{
+    background-color: {SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+    padding: 4px;
+    font-size: 13px;
+}}
+QListWidget::item {{
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin: 2px;
+}}
+QListWidget::item:selected {{
+    background-color: {BLUE};
+    color: #1e1e2e;
+}}
+QCheckBox {{ spacing: 8px; color: {TEXT}; }}
+QCheckBox::indicator {{
+    width: 18px; height: 18px;
+    border: 2px solid {BORDER};
+    border-radius: 4px;
+    background: {SURFACE};
+}}
+QCheckBox::indicator:checked {{
+    background: {BLUE};
+    border-color: {BLUE};
+}}
+"""
+
+def btn_style(color):
+    return f"""
+        QPushButton {{
+            background-color: {color};
+            color: #1e1e2e;
+            border-radius: 8px;
+            padding: 9px 18px;
+            font-weight: bold;
+            font-size: 13px;
+            border: none;
+        }}
+        QPushButton:hover {{ opacity: 0.85; background-color: {color}dd; }}
+        QPushButton:disabled {{ background-color: {BORDER}; color: {SUBTEXT}; }}
+    """
+
+
+# ── Create User Page ──────────────────────────────────────────────────────
+
+class CreateUserPage(QWidget):
+    user_created = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._build()
+
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(32, 24, 32, 24)
+        root.setSpacing(20)
+
+        # Title
+        title = QLabel("Create New User")
+        title.setFont(QFont('Inter', 18, QFont.Bold))
+        root.addWidget(title)
+
+        # Card
+        card = QFrame()
+        card.setObjectName("card")
+        card_l = QVBoxLayout(card)
+        card_l.setSpacing(14)
+        card_l.setContentsMargins(20, 20, 20, 20)
+
+        def field(label, placeholder, echo=QLineEdit.Normal):
+            lbl = QLabel(label)
+            lbl.setStyleSheet(f"color: {SUBTEXT}; font-size: 12px;")
+            inp = QLineEdit()
+            inp.setPlaceholderText(placeholder)
+            inp.setEchoMode(echo)
+            card_l.addWidget(lbl)
+            card_l.addWidget(inp)
+            return inp
+
+        self.inp_fullname = field("Full Name", "e.g. Ali Hassan")
+        self.inp_username = field("Username", "e.g. ali  (lowercase, no spaces)")
+        self.inp_password = field("Password", "Enter password", QLineEdit.Password)
+        self.inp_confirm  = field("Confirm Password", "Re-enter password", QLineEdit.Password)
+
+        self.chk_admin = QCheckBox("Make this user an administrator (add to wheel group)")
+        self.chk_admin.setChecked(True)
+        card_l.addWidget(self.chk_admin)
+
+        self.status = QLabel("")
+        self.status.setWordWrap(True)
+        self.status.setStyleSheet(f"color: {RED}; font-size: 12px;")
+        card_l.addWidget(self.status)
+
+        root.addWidget(card)
+
+        # Buttons
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        self.btn_create = QPushButton("✚  Create User")
+        self.btn_create.setStyleSheet(btn_style(BLUE))
+        self.btn_create.setCursor(Qt.PointingHandCursor)
+        self.btn_create.clicked.connect(self._create)
+        row.addStretch()
+        row.addWidget(self.btn_create)
+        root.addLayout(row)
+        root.addStretch()
+
+    def _create(self):
+        fullname = self.inp_fullname.text().strip()
+        username = self.inp_username.text().strip().lower()
+        password = self.inp_password.text()
+        confirm  = self.inp_confirm.text()
+
+        # Validation
+        if not username:
+            self.status.setText("⚠ Username cannot be empty.")
+            return
+        if not re.match(r'^[a-z][a-z0-9_-]{0,30}$', username):
+            self.status.setText("⚠ Username must start with a letter, only lowercase letters, numbers, _ or -")
+            return
+        if not password:
+            self.status.setText("⚠ Password cannot be empty.")
+            return
+        if password != confirm:
+            self.status.setText("⚠ Passwords do not match.")
+            return
+
+        self.btn_create.setEnabled(False)
+        self.status.setStyleSheet(f"color: {YELLOW}; font-size: 12px;")
+        self.status.setText("Creating user...")
+
+        try:
+            # Create the user
+            cmd = ['useradd', '-m', '-s', '/bin/bash']
+            if fullname:
+                cmd += ['-c', fullname]
+            cmd.append(username)
+            run(cmd)
+
+            # Set password
+            proc = subprocess.run(['chpasswd'], input=f"{username}:{password}",
+                                  capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise RuntimeError(f"chpasswd failed: {proc.stderr.strip()}")
+
+            # Add to wheel if admin
+            if self.chk_admin.isChecked():
+                run(['usermod', '-aG', 'wheel', username])
+
+            self.status.setStyleSheet(f"color: {GREEN}; font-size: 12px;")
+            self.status.setText(f"✔ User '{username}' created successfully!")
+            log.info(f"User '{username}' created OK")
+
+            # Clear fields
+            for w in [self.inp_fullname, self.inp_username, self.inp_password, self.inp_confirm]:
+                w.clear()
+
+            self.user_created.emit(username)
+
+        except Exception as e:
+            log.error(f"Failed to create user: {e}")
+            self.status.setStyleSheet(f"color: {RED}; font-size: 12px;")
+            self.status.setText(f"✖ Error: {e}")
+        finally:
+            self.btn_create.setEnabled(True)
+
+
+# ── Manage Users Page ─────────────────────────────────────────────────────
+
+class ManageUsersPage(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._build()
+
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(32, 24, 32, 24)
+        root.setSpacing(16)
+
+        title = QLabel("Manage Users")
+        title.setFont(QFont('Inter', 18, QFont.Bold))
+        root.addWidget(title)
+
+        self.user_list = QListWidget()
+        self.user_list.setMinimumHeight(220)
+        root.addWidget(self.user_list)
+
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        btn_refresh = QPushButton("⟳  Refresh")
+        btn_refresh.setStyleSheet(btn_style(BLUE))
+        btn_refresh.setCursor(Qt.PointingHandCursor)
+        btn_refresh.clicked.connect(self.refresh)
+
+        self.btn_delete = QPushButton("✖  Delete Selected User")
+        self.btn_delete.setStyleSheet(btn_style(RED))
+        self.btn_delete.setCursor(Qt.PointingHandCursor)
+        self.btn_delete.clicked.connect(self._delete)
+
+        row.addWidget(btn_refresh)
+        row.addStretch()
+        row.addWidget(self.btn_delete)
+        root.addLayout(row)
+
+        self.status = QLabel("")
+        self.status.setWordWrap(True)
+        self.status.setStyleSheet(f"color: {SUBTEXT}; font-size: 12px;")
+        root.addWidget(self.status)
+        root.addStretch()
+
+        self.refresh()
+
+    def refresh(self):
+        self.user_list.clear()
+        users = get_human_users()
+        for u in users:
+            admin = 'wheel' in u['groups'].split()
+            badge = " 🛡 Admin" if admin else ""
+            item = QListWidgetItem(f"  {u['name']}{badge}   (UID {u['uid']})")
+            item.setData(Qt.UserRole, u['name'])
+            self.user_list.addItem(item)
+        self.status.setText(f"{len(users)} user(s) found.")
+
+    def _delete(self):
+        item = self.user_list.currentItem()
+        if not item:
+            self.status.setText("Select a user first.")
+            return
+        username = item.data(Qt.UserRole)
+        reply = QMessageBox.question(
+            self, "Confirm Delete",
+            f"Permanently delete user '{username}' and their home directory?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            run(['userdel', '-r', username])
+            self.status.setStyleSheet(f"color: {GREEN}; font-size: 12px;")
+            self.status.setText(f"✔ User '{username}' deleted.")
+            self.refresh()
+        except Exception as e:
+            self.status.setStyleSheet(f"color: {RED}; font-size: 12px;")
+            self.status.setText(f"✖ Error: {e}")
+
+
+# ── Main Window ───────────────────────────────────────────────────────────
+
+class UserManagerWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Zohara User Manager")
+        self.setMinimumSize(640, 500)
+        self.setStyleSheet(STYLE)
+
+        main = QHBoxLayout(self)
+        main.setContentsMargins(0, 0, 0, 0)
+        main.setSpacing(0)
+
+        # ── Sidebar ──────────────────────────────────────────────────────
+        sidebar = QWidget()
+        sidebar.setFixedWidth(200)
+        sidebar.setStyleSheet(f"background-color: #181825;")
+        sidebar_l = QVBoxLayout(sidebar)
+        sidebar_l.setContentsMargins(0, 24, 0, 24)
+        sidebar_l.setSpacing(4)
+
+        logo_lbl = QLabel("👤 Users")
+        logo_lbl.setFont(QFont('Inter', 15, QFont.Bold))
+        logo_lbl.setAlignment(Qt.AlignCenter)
+        logo_lbl.setStyleSheet(f"color: {BLUE}; padding: 12px 0;")
+        sidebar_l.addWidget(logo_lbl)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet(f"color: {BORDER};")
+        sidebar_l.addWidget(sep)
+        sidebar_l.addSpacing(8)
+
+        self.nav_btns = []
+        pages = [("✚  Create User", 0), ("⚙  Manage Users", 1)]
+        for label, idx in pages:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    color: {SUBTEXT};
+                    border: none;
+                    text-align: left;
+                    padding: 10px 20px;
+                    border-radius: 0px;
+                    font-size: 13px;
+                }}
+                QPushButton:checked {{
+                    background-color: {BLUE}22;
+                    color: {BLUE};
+                    border-left: 3px solid {BLUE};
+                }}
+                QPushButton:hover:!checked {{ background-color: {SURFACE}; color: {TEXT}; }}
+            """)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(lambda _, i=idx: self._nav(i))
+            sidebar_l.addWidget(btn)
+            self.nav_btns.append(btn)
+
+        sidebar_l.addStretch()
+
+        # ── Pages ────────────────────────────────────────────────────────
+        self.stack = QStackedWidget()
+        self.create_page  = CreateUserPage()
+        self.manage_page  = ManageUsersPage()
+        self.stack.addWidget(self.create_page)
+        self.stack.addWidget(self.manage_page)
+
+        self.create_page.user_created.connect(lambda _: self.manage_page.refresh())
+
+        main.addWidget(sidebar)
+        main.addWidget(self.stack, 1)
+
+        self._nav(0)
+
+    def _nav(self, idx):
+        self.stack.setCurrentIndex(idx)
+        for i, btn in enumerate(self.nav_btns):
+            btn.setChecked(i == idx)
+
+
+# ── Entry Point ───────────────────────────────────────────────────────────
+
+if __name__ == '__main__':
+    log.info("=== Zohara User Manager starting ===")
+    if os.geteuid() != 0:
+        # Re-launch with pkexec
+        os.execvp('pkexec', ['pkexec', sys.executable] + sys.argv)
+
+    app = QApplication(sys.argv)
+    app.setApplicationName("Zohara User Manager")
+    win = UserManagerWindow()
+    win.show()
+    sys.exit(app.exec_())
