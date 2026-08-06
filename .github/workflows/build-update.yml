@@ -30,30 +30,28 @@ jobs:
         VERSION="${{ github.event.inputs.version || github.ref_name }}"
         VERSION=${VERSION#v} # strip 'v' if present
         
-        # We will use an Arch Linux docker container to build the pacman package and repo
-        docker run --rm -v $(pwd):/work archlinux:base /bin/bash -c "
+        docker run --rm -v $(pwd):/work -e VERSION="$VERSION" archlinux:base /bin/bash -c '
           pacman -Sy --noconfirm base-devel
           useradd -m builduser
           chown -R builduser:builduser /work
           
           cd /work
           
-          # Create PKGBUILD dynamically
-          cat << 'EOF' > PKGBUILD
+          cat << EOF > PKGBUILD
         pkgname=zohara-system
         pkgver=$VERSION
         pkgrel=1
-        pkgdesc='Zohara OS System OTA Updates'
-        arch=('any')
-        url='https://github.com/Zohaib8090/zohara'
-        license=('GPL')
+        pkgdesc="Zohara OS System OTA Updates"
+        arch=("any")
+        url="https://github.com/Zohaib8090/zohara"
+        license=("GPL")
         
         package() {
             # Copy everything from airootfs directly to the root filesystem
-            cp -a \"\${srcdir}/../../zohara-profile/airootfs/.\" \"\${pkgdir}/\"
+            cp -a "/work/zohara-profile/airootfs/." "\${pkgdir}/"
             
-            # Remove custom ISO build scripts that shouldn't be installed via OTA
-            rm -f \"\${pkgdir}/root/customize_airootfs.sh\"
+            # Remove custom ISO build scripts that should not be installed via OTA
+            rm -f "\${pkgdir}/root/customize_airootfs.sh"
         }
         EOF
           
@@ -68,7 +66,7 @@ jobs:
           # repo-add creates symlinks, we need the actual files for github releases
           cp zohara.db.tar.gz zohara.db
           cp zohara.files.tar.gz zohara.files
-        "
+        '
 
     - name: Upload Release Assets
       uses: softprops/action-gh-release@v1
