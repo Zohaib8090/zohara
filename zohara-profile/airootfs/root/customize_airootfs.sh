@@ -85,6 +85,17 @@ done
 
 echo "  -> Launcher cleanup complete."
 
+# ── Install AUR helper (yay) ──────────────────────────────────────────────────
+echo "  -> Installing yay from AUR..."
+# makepkg cannot run as root, so we create a temporary build user
+useradd -m builduser
+echo 'builduser ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builduser
+su - builduser -c "git clone https://aur.archlinux.org/yay-bin.git /tmp/yay-bin && cd /tmp/yay-bin && makepkg -si --noconfirm"
+rm -f /etc/sudoers.d/builduser
+userdel -r builduser
+rm -rf /tmp/yay-bin
+echo "  -> yay installed successfully."
+
 # ── Setup Zohara OTA Repository ───────────────────────────────────────────────
 echo "  -> Configuring Zohara OTA repository..."
 cat << 'REPO_EOF' >> /etc/pacman.conf
