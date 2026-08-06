@@ -87,6 +87,9 @@ echo "  -> Launcher cleanup complete."
 
 # ── Install AUR helper (yay) ──────────────────────────────────────────────────
 echo "  -> Installing yay from AUR..."
+# Disable CheckSpace because pacman inside systemd-nspawn sometimes fails to determine root mount point
+sed -i 's/^CheckSpace/#CheckSpace/' /etc/pacman.conf
+
 # makepkg cannot run as root, so we create a temporary build user
 useradd -m builduser
 echo 'builduser ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builduser
@@ -94,6 +97,9 @@ su - builduser -c "git clone https://aur.archlinux.org/yay-bin.git /tmp/yay-bin 
 rm -f /etc/sudoers.d/builduser
 userdel -r builduser
 rm -rf /tmp/yay-bin
+
+# Re-enable CheckSpace
+sed -i 's/^#CheckSpace/CheckSpace/' /etc/pacman.conf
 echo "  -> yay installed successfully."
 
 # ── Setup Zohara OTA Repository ───────────────────────────────────────────────

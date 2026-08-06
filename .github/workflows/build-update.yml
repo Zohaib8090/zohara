@@ -11,6 +11,9 @@ on:
         required: true
         default: '1.0.1'
 
+permissions:
+  contents: write
+
 jobs:
   build-ota:
     runs-on: ubuntu-latest
