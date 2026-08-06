@@ -7,6 +7,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -91,7 +94,6 @@ jobs:
     - name: Show ISO info
       run: |
         ls -lh out/*.iso
-        isoinfo -d -i out/*.iso | grep -E "Volume id|Volume size|Logical block"
 
     - name: Upload ISO as artifact
       uses: actions/upload-artifact@v4
