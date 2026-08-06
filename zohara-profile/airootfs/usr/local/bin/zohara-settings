@@ -126,7 +126,7 @@ class UpdatePanel(QWidget):
             l.addWidget(self.log)
             row=QHBoxLayout(); row.setSpacing(8)
             self.b_check=btn("  Check",BLUE); self.b_check.clicked.connect(self._check)
-            self.b_install=btn("⬆  Install",color); self.b_install.setEnabled(False); self.b_install.clicked.connect(self._install)
+            self.b_install=btn("⬆  Install",self.color); self.b_install.setEnabled(False); self.b_install.clicked.connect(self._install)
             self.b_cancel=btn("Cancel",RED); self.b_cancel.setEnabled(False); self.b_cancel.clicked.connect(self._cancel)
             row.addWidget(self.b_check); row.addWidget(self.b_install); row.addWidget(self.b_cancel); row.addStretch()
             l.addLayout(row)
@@ -308,12 +308,14 @@ def make_about_page():
             row.addWidget(lbl); row.addWidget(val_lbl); row.addStretch()
             l.addLayout(row)
     lo.addWidget(card(fill))
-    links_card=card(lambda l: [
-        l.addWidget(subtitle("Links")),
-        *[l.addWidget(lambda t=t,c=c: (b:=btn(t,BLUE), b.clicked.connect(lambda _,x=c: subprocess.Popen(['xdg-open',x])), b)[2])()
-          for t,c in [("GitHub","https://github.com/Zohaib8090/zohara"),
-                      ("Report a Bug","https://github.com/Zohaib8090/zohara/issues")]]
-    ])
+    def fill_links(l):
+        l.addWidget(subtitle("Links"))
+        for t, c in [("GitHub", "https://github.com/Zohaib8090/zohara"),
+                     ("Report a Bug", "https://github.com/Zohaib8090/zohara/issues")]:
+            b = btn(t, BLUE)
+            b.clicked.connect(lambda _, x=c: subprocess.Popen(['xdg-open', x]))
+            l.addWidget(b)
+    links_card=card(fill_links)
     lo.addWidget(links_card); lo.addStretch(); return w
 
 # ── Sidebar nav button ────────────────────────────────────────────────────────

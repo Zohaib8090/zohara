@@ -70,10 +70,14 @@ for pkg in discover packagekit-qt6; do
     fi
 done
 
-# Replace Discover with Zohara Store in the default Plasma task manager pins
+# Replace default KDE pins (Discover, System Settings) with Zohara equivalents
 LAYOUT_FILE="/usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js"
 if [[ -f "$LAYOUT_FILE" ]]; then
-    sed -i 's/org.kde.discover.desktop/zohara-store.desktop/g' "$LAYOUT_FILE"
+    # Replace Discover with Zohara Store
+    sed -i -E 's/org\.kde\.discover(\.desktop)?/zohara-store.desktop/g' "$LAYOUT_FILE"
+    
+    # Replace System Settings with Zohara Settings
+    sed -i -E 's/systemsettings(\.desktop)?/zohara-settings.desktop/g' "$LAYOUT_FILE"
 fi
 
 HIDE_APPS=(
