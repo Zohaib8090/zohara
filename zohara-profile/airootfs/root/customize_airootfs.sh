@@ -57,7 +57,13 @@ EOF
 
 # ── Purge unwanted KDE apps from the system ───────────────────────────────
 echo "  -> Purging unwanted KDE apps..."
-pacman -Rdd --noconfirm discover packagekit-qt6 || true
+# Only remove packages that are actually installed (avoid noisy errors for absent packages)
+for pkg in discover packagekit-qt6; do
+    if pacman -Q "$pkg" &>/dev/null; then
+        pacman -Rdd --noconfirm "$pkg"
+        echo "  -> Removed: $pkg"
+    fi
+done
 
 # Replace Discover with Zohara Store in the default Plasma task manager pins
 LAYOUT_FILE="/usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js"
