@@ -40,20 +40,19 @@ rm -f "$TARGET/etc/sddm.conf.d/99-root-login.conf"
 
 echo "Cleanup complete."
 
-# The kernel is already in the target system because unpackfs unpacked the
-# full squashfs (which contains /boot/vmlinuz-linux-zen) into the target.
-# We just verify it exists — no copy needed.
-if [ -f "$TARGET/boot/vmlinuz-linux-zen" ]; then
-    echo "Kernel found at $TARGET/boot/vmlinuz-linux-zen — OK."
+# Archiso removes /boot/vmlinuz-linux-zen from the squashfs (airootfs).
+# However, the 'linux-zen' package also places a copy of the kernel in 
+# /usr/lib/modules/<version>/vmlinuz. Since this is inside the squashfs,
+# Calamares unpacks it into the target system.
+# We just need to copy it from there to /boot/vmlinuz-linux-zen so mkinitcpio can find it.
+
+KERNEL_SRC=$(ls "$TARGET"/usr/lib/modules/*/vmlinuz 2>/dev/null | head -n 1)
+
+if [ -n "$KERNEL_SRC" ] && [ -f "$KERNEL_SRC" ]; then
+    cp "$KERNEL_SRC" "$TARGET/boot/vmlinuz-linux-zen"
+    echo "Kernel successfully copied from modules directory to /boot/vmlinuz-linux-zen."
     exit 0
 else
-    # Last resort: try to find it anywhere on the archiso media
-    KERNEL_SRC=$(find /run/archiso /boot /lib/modules -name "vmlinuz-linux-zen" 2>/dev/null | head -1)
-    if [ -n "$KERNEL_SRC" ]; then
-        cp "$KERNEL_SRC" "$TARGET/boot/vmlinuz-linux-zen"
-        echo "Kernel copied from $KERNEL_SRC"
-        exit 0
-    fi
-    echo "Warning: Kernel not found. Calamares initcpio step will handle it."
-    exit 0  # Don't fail — let Calamares continue
+    echo "Error: Could not find vmlinuz in target modules directory. Kernel copy failed."
+    exit 1
 fi
