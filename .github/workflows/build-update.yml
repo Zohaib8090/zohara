@@ -1,0 +1,82 @@
+name: Build Zohara OTA Update
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Triggers when a new version tag is pushed (e.g., v1.0.1)
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.1)'
+        required: true
+        default: '1.0.1'
+
+jobs:
+  build-ota:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Arch Linux environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y zstd fakeroot libarchive-tools
+        # Install pacman for repo-add via a prebuilt static binary or build it
+        # Actually, let's just use an Arch docker container for native tools!
+
+    - name: Build OTA Package and Repo
+      run: |
+        VERSION="${{ github.event.inputs.version || github.ref_name }}"
+        VERSION=${VERSION#v} # strip 'v' if present
+        
+        # We will use an Arch Linux docker container to build the pacman package and repo
+        docker run --rm -v $(pwd):/work archlinux:base /bin/bash -c "
+          pacman -Sy --noconfirm base-devel
+          useradd -m builduser
+          chown -R builduser:builduser /work
+          
+          cd /work
+          
+          # Create PKGBUILD dynamically
+          cat << 'EOF' > PKGBUILD
+        pkgname=zohara-system
+        pkgver=$VERSION
+        pkgrel=1
+        pkgdesc='Zohara OS System OTA Updates'
+        arch=('any')
+        url='https://github.com/Zohaib8090/zohara'
+        license=('GPL')
+        
+        package() {
+            # Copy everything from airootfs directly to the root filesystem
+            cp -a \"\${srcdir}/../../zohara-profile/airootfs/.\" \"\${pkgdir}/\"
+            
+            # Remove custom ISO build scripts that shouldn't be installed via OTA
+            rm -f \"\${pkgdir}/root/customize_airootfs.sh\"
+        }
+        EOF
+          
+          # Run makepkg as non-root
+          su builduser -c 'makepkg -cf'
+          
+          # Setup repository database
+          mkdir -p ota-repo
+          mv zohara-system-*.pkg.tar.zst ota-repo/
+          cd ota-repo
+          repo-add zohara.db.tar.gz zohara-system-*.pkg.tar.zst
+          # repo-add creates symlinks, we need the actual files for github releases
+          cp zohara.db.tar.gz zohara.db
+          cp zohara.files.tar.gz zohara.files
+        "
+
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: |
+          ota-repo/zohara-system-*.pkg.tar.zst
+          ota-repo/zohara.db
+          ota-repo/zohara.files
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

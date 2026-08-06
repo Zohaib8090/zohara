@@ -127,9 +127,62 @@ function setupNavigation() {
             
             if (targetPage === 'library') {
                 refreshLibrary();
+            } else if (targetPage === 'updates') {
+                checkSystemUpdates();
             }
         });
     });
+
+    document.getElementById('btn-check-updates').addEventListener('click', checkSystemUpdates);
+    document.getElementById('btn-install-updates').addEventListener('click', installSystemUpdates);
+}
+
+async function checkSystemUpdates() {
+    const status = document.getElementById('update-status');
+    const log = document.getElementById('update-log');
+    const installBtn = document.getElementById('btn-install-updates');
+    
+    status.innerHTML = `<h3>Checking for updates...</h3><p style="color: var(--text-muted)">Please wait...</p>`;
+    log.classList.add('hidden');
+    installBtn.classList.add('hidden');
+    log.innerHTML = '';
+    
+    if (!window.pywebview) {
+        status.innerHTML = `<h3 style="color:var(--accent-red)">Updates Unavailable</h3><p>Not running in PyWebView environment.</p>`;
+        return;
+    }
+    
+    try {
+        const result = await window.pywebview.api.check_updates();
+        if (result.includes("zohara-system")) {
+            status.innerHTML = `<h3 style="color:var(--accent-green)">Updates Available!</h3><p>A new version of Zohara OS is available.</p>`;
+            installBtn.classList.remove('hidden');
+        } else {
+            status.innerHTML = `<h3>System is up to date</h3><p style="color: var(--text-muted)">You are running the latest version of Zohara OS.</p>`;
+        }
+    } catch(err) {
+        status.innerHTML = `<h3 style="color:var(--accent-red)">Update Check Failed</h3><p>${err}</p>`;
+    }
+}
+
+async function installSystemUpdates() {
+    const status = document.getElementById('update-status');
+    const log = document.getElementById('update-log');
+    const installBtn = document.getElementById('btn-install-updates');
+    
+    status.innerHTML = `<h3>Installing updates...</h3><p style="color: var(--accent-blue)">Please do not turn off your computer.</p>`;
+    installBtn.classList.add('hidden');
+    log.classList.remove('hidden');
+    log.innerHTML = 'Starting update process...\n';
+    
+    try {
+        const result = await window.pywebview.api.install_updates();
+        log.innerHTML += result + '\n\nUpdate complete!';
+        status.innerHTML = `<h3 style="color:var(--accent-green)">Update Successful!</h3><p>Please restart the app to apply UI changes.</p>`;
+    } catch (err) {
+        log.innerHTML += `\nError: ${err}`;
+        status.innerHTML = `<h3 style="color:var(--accent-red)">Update Failed</h3><p>Check the log for details.</p>`;
+    }
 }
 
 function setupModal() {

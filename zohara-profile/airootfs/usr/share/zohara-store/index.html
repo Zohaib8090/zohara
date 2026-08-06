@@ -29,6 +29,9 @@
         <li data-page="games">
           <span class="material-icons-round">sports_esports</span> Games
         </li>
+        <li data-page="updates">
+          <span class="material-icons-round">system_update_alt</span> Updates
+        </li>
         <li data-page="library">
           <span class="material-icons-round">library_books</span> My Library
         </li>
@@ -100,6 +103,20 @@
           <h2 class="section-title">All Games</h2>
           <div class="app-grid" id="games-only-grid">
             <!-- App cards injected here via JS -->
+          </div>
+        </section>
+
+        <!-- Updates Page -->
+        <section id="page-updates" class="page-section">
+          <h2 class="section-title">System Updates</h2>
+          <div class="update-container glass-panel" style="padding: 2rem; margin-top: 1rem; border-radius: 12px;">
+            <div id="update-status">
+              <h3>Checking for updates...</h3>
+              <p style="color: var(--text-muted)">Please wait while we check the Zohara OTA repository.</p>
+            </div>
+            <button id="btn-check-updates" class="btn-primary mt-4">Check Again</button>
+            <button id="btn-install-updates" class="btn-primary mt-4 hidden">Install Updates</button>
+            <div id="update-log" class="mt-4 hidden" style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.9em; max-height: 200px; overflow-y: auto;"></div>
           </div>
         </section>
 

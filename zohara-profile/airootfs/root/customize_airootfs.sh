@@ -85,4 +85,13 @@ done
 
 echo "  -> Launcher cleanup complete."
 
+# ── Setup Zohara OTA Repository ───────────────────────────────────────────────
+echo "  -> Configuring Zohara OTA repository..."
+cat << 'REPO_EOF' >> /etc/pacman.conf
+
+[zohara]
+SigLevel = Optional TrustAll
+Server = https://github.com/Zohaib8090/zohara/releases/latest/download
+REPO_EOF
+
 echo "==> Zohara OS: Post-install customizations complete."
