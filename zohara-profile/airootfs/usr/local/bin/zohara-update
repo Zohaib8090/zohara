@@ -1,28 +1,24 @@
 #!/usr/bin/env python3
 """
-Zohara OS – System Updater
+Zohara OS – Updates Center
 ──────────────────────────
-A clean GUI wrapper around `pacman -Syu` that shows live output.
-Runs as root (pkexec) and handles the full update lifecycle.
+Dedicated system updater with separate sections for:
+  • Zohara OS updates (OTA via zohara pacman repo)
+  • Full system / package updates (pacman -Syu)
+  • Kernel updates (linux-zen)
+  • Driver updates (mesa, firmware, gpu packages)
 """
 
-import sys
-import os
-import subprocess
-import logging
+import sys, os, subprocess, re
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QTextEdit, QFrame, QProgressBar
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
+    QPushButton, QLabel, QTextEdit, QFrame, QProgressBar,
+    QScrollArea, QSizePolicy, QListWidget, QListWidgetItem, QSplitter
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QProcess
-from PyQt5.QtGui import QFont, QTextCursor, QColor
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize, QTimer
+from PyQt5.QtGui import QFont, QTextCursor, QColor, QIcon
 
-LOG_FILE = '/tmp/zohara-update.log'
-logging.basicConfig(filename=LOG_FILE, level=logging.DEBUG,
-                    format='%(asctime)s [%(levelname)s] %(message)s')
-log = logging.getLogger('zohara-update')
-
-# ── Palette ───────────────────────────────────────────────────────────────
+# ── Palette ────────────────────────────────────────────────────────────────
 BG      = "#1e1e2e"
 SURFACE = "#313244"
 BORDER  = "#45475a"
@@ -32,225 +28,444 @@ BLUE    = "#89b4fa"
 GREEN   = "#a6e3a1"
 RED     = "#f38ba8"
 YELLOW  = "#f9e2af"
+PURPLE  = "#cba6f7"
+TEAL    = "#94e2d5"
+MANTLE  = "#181825"
 
-STYLE = f"""
-QWidget {{ background-color: {BG}; color: {TEXT}; font-family: 'Inter', 'Noto Sans', sans-serif; font-size: 13px; }}
+GLOBAL_STYLE = f"""
+QWidget {{
+    background-color: {BG};
+    color: {TEXT};
+    font-family: 'Inter', 'Noto Sans', sans-serif;
+    font-size: 13px;
+}}
 QTextEdit {{
-    background-color: #11111b;
+    background-color: {MANTLE};
     color: #cdd6f4;
     border: 1px solid {BORDER};
     border-radius: 8px;
-    font-family: 'Hack', 'JetBrains Mono', monospace;
-    font-size: 12px;
+    font-family: 'JetBrains Mono', 'Hack', monospace;
+    font-size: 11px;
     padding: 8px;
 }}
 QProgressBar {{
     background-color: {SURFACE};
     border: 1px solid {BORDER};
-    border-radius: 6px;
-    height: 10px;
+    border-radius: 4px;
+    height: 6px;
     text-align: center;
     color: transparent;
 }}
-QProgressBar::chunk {{
-    background-color: {BLUE};
-    border-radius: 6px;
+QProgressBar::chunk {{ background-color: {BLUE}; border-radius: 4px; }}
+QScrollBar:vertical {{
+    background: {MANTLE}; width: 8px; border-radius: 4px;
 }}
+QScrollBar::handle:vertical {{
+    background: {BORDER}; border-radius: 4px; min-height: 20px;
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 """
 
-def btn_style(color, disabled_color=None):
-    dc = disabled_color or BORDER
-    return f"""
-        QPushButton {{
-            background-color: {color};
-            color: #1e1e2e;
-            border-radius: 8px;
-            padding: 10px 22px;
-            font-weight: bold;
-            font-size: 13px;
-            border: none;
-        }}
-        QPushButton:hover {{ background-color: {color}dd; }}
-        QPushButton:disabled {{ background-color: {dc}; color: {SUBTEXT}; }}
-    """
-
-
-# ── Update Worker Thread ──────────────────────────────────────────────────
-
-class UpdateWorker(QThread):
+# ── Helper: generic worker thread ──────────────────────────────────────────
+class CmdWorker(QThread):
     output   = pyqtSignal(str)
-    finished = pyqtSignal(int)  # exit code
+    finished = pyqtSignal(int)
+
+    def __init__(self, cmd):
+        super().__init__()
+        self.cmd = cmd
+        self._proc = None
 
     def run(self):
         try:
-            proc = subprocess.Popen(
-                ['pacman', '-Syu', '--noconfirm', '--color', 'never'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1
+            self._proc = subprocess.Popen(
+                self.cmd, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, bufsize=1
             )
-            for line in proc.stdout:
+            for line in self._proc.stdout:
                 self.output.emit(line)
-                log.debug(line.rstrip())
-            proc.wait()
-            self.finished.emit(proc.returncode)
+            self._proc.wait()
+            self.finished.emit(self._proc.returncode)
         except Exception as e:
             self.output.emit(f"\n[ERROR] {e}\n")
             self.finished.emit(1)
 
+    def kill(self):
+        if self._proc:
+            self._proc.kill()
 
-# ── Main Window ───────────────────────────────────────────────────────────
 
-class UpdateWindow(QWidget):
-    def __init__(self):
+# ── Helper: check-only worker (returns stdout) ─────────────────────────────
+class CheckWorker(QThread):
+    result = pyqtSignal(list)  # list of (name, current_ver, new_ver) tuples
+
+    def __init__(self, pkgs_filter=None):
         super().__init__()
-        self.setWindowTitle("Zohara System Update")
-        self.setMinimumSize(720, 520)
-        self.setStyleSheet(STYLE)
-        self.worker = None
-        self._build()
+        self.pkgs_filter = pkgs_filter  # None = all, list = filter by name
 
-    def _build(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(16)
+    def run(self):
+        try:
+            subprocess.run(['pacman', '-Sy', '--noconfirm'], capture_output=True)
+            r = subprocess.run(['pacman', '-Qu'], capture_output=True, text=True)
+            updates = []
+            for line in r.stdout.splitlines():
+                # format: "pkgname current_ver -> new_ver"
+                m = re.match(r'^(\S+)\s+(\S+)\s+->\s+(\S+)', line)
+                if m:
+                    name, cur, new = m.group(1), m.group(2), m.group(3)
+                    if self.pkgs_filter is None or any(f in name for f in self.pkgs_filter):
+                        updates.append((name, cur, new))
+            self.result.emit(updates)
+        except Exception as e:
+            self.result.emit([])
 
-        # ── Header ───────────────────────────────────────────────────────
-        hdr = QHBoxLayout()
-        icon = QLabel("🔄")
-        icon.setFont(QFont('Noto Color Emoji', 22))
-        title = QLabel("System Update")
-        title.setFont(QFont('Inter', 20, QFont.Bold))
-        self.status_lbl = QLabel("Ready to check for updates.")
-        self.status_lbl.setStyleSheet(f"color: {SUBTEXT}; font-size: 12px;")
-        hdr.addWidget(icon)
-        hdr.addSpacing(10)
-        title_col = QVBoxLayout()
-        title_col.addWidget(title)
-        title_col.addWidget(self.status_lbl)
-        hdr.addLayout(title_col)
-        hdr.addStretch()
-        layout.addLayout(hdr)
 
-        # ── Info card ────────────────────────────────────────────────────
+# ── Reusable update panel ──────────────────────────────────────────────────
+class UpdatePanel(QWidget):
+    """Generic update card: check → show list → install."""
+
+    def __init__(self, title, icon, description, color,
+                 install_cmd, pkg_filter=None, parent=None):
+        super().__init__(parent)
+        self.title = title
+        self.color = color
+        self.install_cmd = install_cmd
+        self.pkg_filter = pkg_filter
+        self._worker = None
+        self._updates = []
+        self._build(icon, description)
+
+    def _build(self, icon, description):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+
+        # Card
         card = QFrame()
-        card.setStyleSheet(f"background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px;")
-        card_l = QHBoxLayout(card)
-        card_l.setContentsMargins(16, 14, 16, 14)
-        info = QLabel(
-            "Zohara OS is <b>rolling release</b> — updates bring the latest packages directly from "
-            "Arch Linux repositories. It is safe to update anytime."
+        card.setStyleSheet(
+            f"QFrame {{ background-color: {SURFACE}; border: 1px solid {BORDER};"
+            f" border-radius: 12px; }} QLabel {{ border: none; background: transparent; }}"
         )
-        info.setWordWrap(True)
-        info.setStyleSheet(f"color: {SUBTEXT}; border: none; background: transparent;")
-        card_l.addWidget(info)
-        layout.addWidget(card)
+        card_l = QVBoxLayout(card)
+        card_l.setContentsMargins(20, 16, 20, 16)
+        card_l.setSpacing(10)
 
-        # ── Progress bar ─────────────────────────────────────────────────
+        # Header row
+        hdr = QHBoxLayout()
+        ico_lbl = QLabel(icon)
+        ico_lbl.setFont(QFont('Noto Color Emoji', 20))
+        ico_lbl.setFixedWidth(36)
+        title_lbl = QLabel(self.title)
+        title_lbl.setFont(QFont('Inter', 14, QFont.Bold))
+        self.badge = QLabel("Checking…")
+        self.badge.setStyleSheet(
+            f"background-color: {self.color}22; color: {self.color};"
+            f" border: 1px solid {self.color}44; border-radius: 10px;"
+            f" padding: 2px 10px; font-size: 11px; font-weight: bold;"
+        )
+        hdr.addWidget(ico_lbl)
+        hdr.addWidget(title_lbl)
+        hdr.addStretch()
+        hdr.addWidget(self.badge)
+        card_l.addLayout(hdr)
+
+        # Description
+        desc_lbl = QLabel(description)
+        desc_lbl.setWordWrap(True)
+        desc_lbl.setStyleSheet(f"color: {SUBTEXT}; font-size: 12px;")
+        card_l.addWidget(desc_lbl)
+
+        # Progress bar
         self.progress = QProgressBar()
-        self.progress.setRange(0, 0)   # indeterminate
-        self.progress.setFixedHeight(8)
+        self.progress.setRange(0, 0)
+        self.progress.setFixedHeight(4)
         self.progress.setVisible(False)
-        layout.addWidget(self.progress)
+        card_l.addWidget(self.progress)
 
-        # ── Log output ───────────────────────────────────────────────────
-        self.log_box = QTextEdit()
-        self.log_box.setReadOnly(True)
-        self.log_box.setPlaceholderText("Update output will appear here...")
-        layout.addWidget(self.log_box, 1)
+        # Updates list (hidden until populated)
+        self.updates_list = QTextEdit()
+        self.updates_list.setReadOnly(True)
+        self.updates_list.setFixedHeight(100)
+        self.updates_list.setVisible(False)
+        self.updates_list.setStyleSheet(
+            f"background-color: {MANTLE}; border: 1px solid {BORDER};"
+            f" border-radius: 6px; font-size: 11px; padding: 6px;"
+        )
+        card_l.addWidget(self.updates_list)
 
-        # ── Buttons ──────────────────────────────────────────────────────
-        row = QHBoxLayout()
-        row.setSpacing(12)
+        # Log output
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setFixedHeight(120)
+        self.log.setVisible(False)
+        card_l.addWidget(self.log)
 
-        self.btn_update = QPushButton("⬆  Check & Install Updates")
-        self.btn_update.setStyleSheet(btn_style(BLUE))
-        self.btn_update.setCursor(Qt.PointingHandCursor)
-        self.btn_update.clicked.connect(self._start_update)
+        # Buttons
+        btn_row = QHBoxLayout()
+        self.btn_check = QPushButton("  Check")
+        self.btn_check.setStyleSheet(self._btn_style(BLUE))
+        self.btn_check.setCursor(Qt.PointingHandCursor)
+        self.btn_check.clicked.connect(self._check)
+
+        self.btn_install = QPushButton("⬆  Install")
+        self.btn_install.setStyleSheet(self._btn_style(self.color))
+        self.btn_install.setCursor(Qt.PointingHandCursor)
+        self.btn_install.setEnabled(False)
+        self.btn_install.clicked.connect(self._install)
 
         self.btn_cancel = QPushButton("Cancel")
-        self.btn_cancel.setStyleSheet(btn_style(RED))
+        self.btn_cancel.setStyleSheet(self._btn_style(RED))
         self.btn_cancel.setCursor(Qt.PointingHandCursor)
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.clicked.connect(self._cancel)
 
-        self.btn_close = QPushButton("Close")
-        self.btn_close.setStyleSheet(btn_style(SURFACE))
-        self.btn_close.setStyleSheet(f"""
+        btn_row.addWidget(self.btn_check)
+        btn_row.addWidget(self.btn_install)
+        btn_row.addWidget(self.btn_cancel)
+        btn_row.addStretch()
+        card_l.addLayout(btn_row)
+
+        root.addWidget(card)
+
+    def _btn_style(self, color):
+        return f"""
             QPushButton {{
-                background-color: {SURFACE};
-                color: {TEXT};
-                border: 1px solid {BORDER};
-                border-radius: 8px;
-                padding: 10px 22px;
-                font-size: 13px;
+                background-color: {color}22;
+                color: {color};
+                border: 1px solid {color}55;
+                border-radius: 7px;
+                padding: 7px 18px;
+                font-weight: bold;
+                font-size: 12px;
             }}
-            QPushButton:hover {{ background-color: {BORDER}; }}
-        """)
-        self.btn_close.setCursor(Qt.PointingHandCursor)
-        self.btn_close.clicked.connect(self.close)
+            QPushButton:hover {{ background-color: {color}44; }}
+            QPushButton:disabled {{ background-color: {SURFACE}; color: {BORDER}; border-color: {BORDER}; }}
+        """
 
-        row.addWidget(self.btn_update)
-        row.addWidget(self.btn_cancel)
-        row.addStretch()
-        row.addWidget(self.btn_close)
-        layout.addLayout(row)
+    def _check(self):
+        self.badge.setText("Checking…")
+        self.progress.setVisible(True)
+        self.btn_check.setEnabled(False)
+        self.btn_install.setEnabled(False)
+        self.updates_list.setVisible(False)
+        self.log.setVisible(False)
 
-    def _start_update(self):
-        self.log_box.clear()
-        self.btn_update.setEnabled(False)
+        self._check_worker = CheckWorker(self.pkg_filter)
+        self._check_worker.result.connect(self._on_check_result)
+        self._check_worker.start()
+
+    def _on_check_result(self, updates):
+        self.progress.setVisible(False)
+        self.btn_check.setEnabled(True)
+        self._updates = updates
+
+        if updates:
+            self.badge.setText(f"{len(updates)} update{'s' if len(updates)>1 else ''} available")
+            self.badge.setStyleSheet(
+                f"background-color: {self.color}22; color: {self.color};"
+                f" border: 1px solid {self.color}44; border-radius: 10px;"
+                f" padding: 2px 10px; font-size: 11px; font-weight: bold;"
+            )
+            lines = "\n".join(f"  {n}   {c} → {v}" for n, c, v in updates)
+            self.updates_list.setPlainText(lines)
+            self.updates_list.setVisible(True)
+            self.btn_install.setEnabled(True)
+        else:
+            self.badge.setText("Up to date ✓")
+            self.badge.setStyleSheet(
+                f"background-color: {GREEN}22; color: {GREEN};"
+                f" border: 1px solid {GREEN}44; border-radius: 10px;"
+                f" padding: 2px 10px; font-size: 11px; font-weight: bold;"
+            )
+
+    def _install(self):
+        self.log.clear()
+        self.log.setVisible(True)
+        self.btn_install.setEnabled(False)
+        self.btn_check.setEnabled(False)
         self.btn_cancel.setEnabled(True)
         self.progress.setVisible(True)
-        self._set_status("Updating… this may take a few minutes.", YELLOW)
-        self._append_log("==> Running: pacman -Syu --noconfirm\n\n")
+        self.badge.setText("Installing…")
 
-        self.worker = UpdateWorker()
-        self.worker.output.connect(self._append_log)
-        self.worker.finished.connect(self._done)
-        self.worker.start()
+        self._worker = CmdWorker(self.install_cmd)
+        self._worker.output.connect(self._append_log)
+        self._worker.finished.connect(self._done)
+        self._worker.start()
 
     def _cancel(self):
-        if self.worker and self.worker.isRunning():
-            self.worker.terminate()
-            self._set_status("Update cancelled.", RED)
-        self._reset_ui()
+        if self._worker:
+            self._worker.kill()
+        self.badge.setText("Cancelled")
+        self._reset()
 
     def _done(self, code):
         self.progress.setVisible(False)
         if code == 0:
-            self._set_status("✔ System is up to date!", GREEN)
-            self._append_log("\n✔ Update complete. Your system is up to date.\n")
+            self.badge.setText("Done ✓")
+            self._append_log("\n✔ Complete!\n")
         else:
-            self._set_status(f"✖ Update failed (exit code {code}). See log above.", RED)
-            self._append_log(f"\n✖ Update process exited with code {code}.\n")
-        self._reset_ui()
+            self.badge.setText(f"Failed (code {code})")
+            self._append_log(f"\n✖ Failed with exit code {code}\n")
+        self._reset()
 
-    def _reset_ui(self):
-        self.btn_update.setEnabled(True)
+    def _reset(self):
+        self.btn_check.setEnabled(True)
+        self.btn_install.setEnabled(False)
         self.btn_cancel.setEnabled(False)
         self.progress.setVisible(False)
 
-    def _set_status(self, msg, color=None):
-        c = color or SUBTEXT
-        self.status_lbl.setStyleSheet(f"color: {c}; font-size: 12px;")
-        self.status_lbl.setText(msg)
-
     def _append_log(self, text):
-        self.log_box.moveCursor(QTextCursor.End)
-        self.log_box.insertPlainText(text)
-        self.log_box.moveCursor(QTextCursor.End)
+        self.log.moveCursor(QTextCursor.End)
+        self.log.insertPlainText(text)
+        self.log.moveCursor(QTextCursor.End)
+
+    def auto_check(self):
+        QTimer.singleShot(200, self._check)
 
 
-# ── Entry Point ───────────────────────────────────────────────────────────
+# ── Main Window ────────────────────────────────────────────────────────────
+class UpdatesCenter(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Zohara Updates Center")
+        self.setMinimumSize(780, 640)
+        self.setStyleSheet(GLOBAL_STYLE)
+        self._build()
+        QTimer.singleShot(500, self._auto_check_all)
 
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(28, 24, 28, 24)
+        root.setSpacing(18)
+
+        # ── Header ─────────────────────────────────────────────────────
+        hdr = QHBoxLayout()
+        title = QLabel("Zohara Updates Center")
+        title.setFont(QFont('Inter', 22, QFont.Bold))
+        sub = QLabel("Keep your OS, kernel, and drivers up to date")
+        sub.setStyleSheet(f"color: {SUBTEXT}; font-size: 12px;")
+        title_col = QVBoxLayout()
+        title_col.setSpacing(2)
+        title_col.addWidget(title)
+        title_col.addWidget(sub)
+        hdr.addLayout(title_col)
+        hdr.addStretch()
+
+        btn_check_all = QPushButton("  Check All")
+        btn_check_all.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {BLUE}22; color: {BLUE};
+                border: 1px solid {BLUE}55; border-radius: 8px;
+                padding: 9px 20px; font-weight: bold; font-size: 13px;
+            }}
+            QPushButton:hover {{ background-color: {BLUE}44; }}
+        """)
+        btn_check_all.setCursor(Qt.PointingHandCursor)
+        btn_check_all.clicked.connect(self._auto_check_all)
+        hdr.addWidget(btn_check_all)
+        root.addLayout(hdr)
+
+        # Divider
+        div = QFrame()
+        div.setFrameShape(QFrame.HLine)
+        div.setStyleSheet(f"color: {BORDER};")
+        root.addWidget(div)
+
+        # ── Scroll area with panels ─────────────────────────────────────
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
+
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        clo = QVBoxLayout(container)
+        clo.setContentsMargins(0, 0, 8, 0)
+        clo.setSpacing(16)
+
+        # 1. Zohara OS Updates (OTA)
+        self.panel_zohara = UpdatePanel(
+            title="Zohara OS Updates",
+            icon="🔷",
+            description="Official Zohara OS updates: system configs, themes, and built-in apps delivered via the Zohara release channel.",
+            color=PURPLE,
+            install_cmd=['pacman', '-Syu', '--noconfirm', 'zohara-system'],
+            pkg_filter=['zohara']
+        )
+
+        # 2. System Package Updates (all)
+        self.panel_system = UpdatePanel(
+            title="System & Application Updates",
+            icon="🔄",
+            description="Full rolling-release update from Arch Linux and Chaotic-AUR repositories. Keeps all installed packages current.",
+            color=BLUE,
+            install_cmd=['pacman', '-Syu', '--noconfirm'],
+            pkg_filter=None
+        )
+
+        # 3. Kernel Updates
+        self.panel_kernel = UpdatePanel(
+            title="Kernel Updates",
+            icon="⚡",
+            description="Updates the Linux Zen kernel powering Zohara OS. A reboot is required to apply kernel changes.",
+            color=YELLOW,
+            install_cmd=['pacman', '-Syu', '--noconfirm', 'linux-zen', 'linux-zen-headers'],
+            pkg_filter=['linux-zen', 'linux-firmware']
+        )
+
+        # 4. Driver Updates
+        self.panel_drivers = UpdatePanel(
+            title="Driver & Firmware Updates",
+            icon="🔧",
+            description="Updates GPU drivers (Mesa, NVIDIA, AMDGPU), firmware packages, and hardware support modules.",
+            color=TEAL,
+            install_cmd=['pacman', '-Syu', '--noconfirm',
+                         'mesa', 'lib32-mesa', 'vulkan-radeon', 'vulkan-intel',
+                         'libva-mesa-driver', 'linux-firmware'],
+            pkg_filter=['mesa', 'nvidia', 'amdgpu', 'firmware', 'vulkan',
+                        'libva', 'libdrm', 'xf86-video']
+        )
+
+        for panel in [self.panel_zohara, self.panel_system, self.panel_kernel, self.panel_drivers]:
+            clo.addWidget(panel)
+
+        clo.addStretch()
+        scroll.setWidget(container)
+        root.addWidget(scroll, 1)
+
+        # ── Footer ─────────────────────────────────────────────────────
+        footer = QHBoxLayout()
+        self.status_lbl = QLabel("Ready.")
+        self.status_lbl.setStyleSheet(f"color: {SUBTEXT}; font-size: 11px;")
+        btn_close = QPushButton("Close")
+        btn_close.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent; color: {SUBTEXT};
+                border: 1px solid {BORDER}; border-radius: 7px;
+                padding: 7px 20px; font-size: 12px;
+            }}
+            QPushButton:hover {{ background-color: {SURFACE}; color: {TEXT}; }}
+        """)
+        btn_close.setCursor(Qt.PointingHandCursor)
+        btn_close.clicked.connect(self.close)
+        footer.addWidget(self.status_lbl)
+        footer.addStretch()
+        footer.addWidget(btn_close)
+        root.addLayout(footer)
+
+    def _auto_check_all(self):
+        for panel in [self.panel_zohara, self.panel_system, self.panel_kernel, self.panel_drivers]:
+            panel.auto_check()
+
+
+# ── Entry Point ────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    log.info("=== Zohara Update starting ===")
     if os.geteuid() != 0:
         os.execvp('pkexec', ['pkexec', sys.executable] + sys.argv)
 
     app = QApplication(sys.argv)
-    app.setApplicationName("Zohara Update")
-    win = UpdateWindow()
+    app.setApplicationName("Zohara Updates Center")
+    app.setApplicationDisplayName("Zohara Updates Center")
+    win = UpdatesCenter()
     win.show()
     sys.exit(app.exec_())

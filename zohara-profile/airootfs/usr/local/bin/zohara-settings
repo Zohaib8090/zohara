@@ -1,0 +1,397 @@
+#!/usr/bin/env python3
+"""
+Zohara OS — Settings
+A unified settings hub replacing KDE System Settings.
+Sections: Updates · Appearance · Users · Network · About
+"""
+import sys, os, subprocess, re, platform
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
+    QPushButton, QLabel, QFrame, QScrollArea, QTextEdit, QProgressBar,
+    QLineEdit, QCheckBox, QListWidget, QListWidgetItem, QMessageBox,
+    QComboBox, QSizePolicy, QSplitter
+)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
+from PyQt5.QtGui import QFont, QTextCursor, QIcon
+
+# ── Palette ───────────────────────────────────────────────────────────────────
+BG, MANTLE = "#1e1e2e", "#181825"
+SURFACE, BORDER = "#313244", "#45475a"
+TEXT, SUBTEXT = "#cdd6f4", "#a6adc8"
+BLUE, GREEN, RED, YELLOW, PURPLE, TEAL = (
+    "#89b4fa", "#a6e3a1", "#f38ba8", "#f9e2af", "#cba6f7", "#94e2d5"
+)
+
+STYLE = f"""
+QWidget {{ background:{BG}; color:{TEXT}; font-family:'Inter','Noto Sans',sans-serif; font-size:13px; }}
+QScrollArea {{ border:none; background:transparent; }}
+QTextEdit {{ background:{MANTLE}; border:1px solid {BORDER}; border-radius:8px;
+             font-family:'JetBrains Mono',monospace; font-size:11px; padding:8px; }}
+QProgressBar {{ background:{SURFACE}; border:1px solid {BORDER}; border-radius:4px;
+                height:6px; color:transparent; }}
+QProgressBar::chunk {{ background:{BLUE}; border-radius:4px; }}
+QLineEdit {{ background:{SURFACE}; border:1px solid {BORDER}; border-radius:6px;
+             padding:8px 12px; color:{TEXT}; font-size:13px; }}
+QLineEdit:focus {{ border-color:{BLUE}; }}
+QListWidget {{ background:{SURFACE}; border:1px solid {BORDER}; border-radius:8px; padding:4px; }}
+QListWidget::item {{ border-radius:6px; padding:7px 10px; margin:2px; }}
+QListWidget::item:selected {{ background:{BLUE}; color:#1e1e2e; }}
+QCheckBox {{ spacing:8px; }}
+QCheckBox::indicator {{ width:18px; height:18px; border:2px solid {BORDER};
+                         border-radius:4px; background:{SURFACE}; }}
+QCheckBox::indicator:checked {{ background:{BLUE}; border-color:{BLUE}; }}
+QComboBox {{ background:{SURFACE}; border:1px solid {BORDER}; border-radius:6px;
+              padding:7px 12px; color:{TEXT}; }}
+QComboBox::drop-down {{ border:none; }}
+QScrollBar:vertical {{ background:{MANTLE}; width:8px; border-radius:4px; }}
+QScrollBar::handle:vertical {{ background:{BORDER}; border-radius:4px; min-height:20px; }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}
+"""
+
+def card(children_fn):
+    f = QFrame()
+    f.setStyleSheet(f"QFrame{{background:{SURFACE};border:1px solid {BORDER};border-radius:12px;}} QLabel{{border:none;background:transparent;}}")
+    l = QVBoxLayout(f); l.setContentsMargins(20,16,20,16); l.setSpacing(10)
+    children_fn(l)
+    return f
+
+def btn(text, color, solid=False):
+    bg = color if solid else f"{color}22"
+    fg = "#1e1e2e" if solid else color
+    b = QPushButton(text)
+    b.setStyleSheet(f"""QPushButton{{background:{bg};color:{fg};border:1px solid {color}55;
+        border-radius:7px;padding:8px 18px;font-weight:bold;font-size:12px;}}
+        QPushButton:hover{{background:{color}44;}}
+        QPushButton:disabled{{background:{SURFACE};color:{BORDER};border-color:{BORDER};}}""")
+    b.setCursor(Qt.PointingHandCursor)
+    return b
+
+def section_title(text):
+    l = QLabel(text); l.setFont(QFont('Inter',16,QFont.Bold)); return l
+
+def subtitle(text):
+    l = QLabel(text); l.setStyleSheet(f"color:{SUBTEXT};font-size:12px;"); l.setWordWrap(True); return l
+
+# ── Worker thread ─────────────────────────────────────────────────────────────
+class Worker(QThread):
+    output = pyqtSignal(str); done = pyqtSignal(int)
+    def __init__(self, cmd): super().__init__(); self.cmd=cmd; self._p=None
+    def run(self):
+        try:
+            self._p=subprocess.Popen(self.cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
+            for line in self._p.stdout: self.output.emit(line)
+            self._p.wait(); self.done.emit(self._p.returncode)
+        except Exception as e: self.output.emit(f"[ERROR] {e}\n"); self.done.emit(1)
+    def kill(self):
+        if self._p: self._p.kill()
+
+class CheckWorker(QThread):
+    result = pyqtSignal(list)
+    def __init__(self, filt=None): super().__init__(); self.filt=filt
+    def run(self):
+        try:
+            subprocess.run(['pacman','-Sy','--noconfirm'],capture_output=True)
+            r=subprocess.run(['pacman','-Qu'],capture_output=True,text=True)
+            out=[]
+            for ln in r.stdout.splitlines():
+                m=re.match(r'^(\S+)\s+(\S+)\s+->\s+(\S+)',ln)
+                if m:
+                    n,c,v=m.groups()
+                    if self.filt is None or any(f in n for f in self.filt): out.append((n,c,v))
+            self.result.emit(out)
+        except: self.result.emit([])
+
+# ── Update Panel ──────────────────────────────────────────────────────────────
+class UpdatePanel(QWidget):
+    def __init__(self, title, icon, desc, color, cmd, filt=None):
+        super().__init__(); self.color=color; self.cmd=cmd; self.filt=filt
+        self._w=None; self._build(title,icon,desc)
+    def _build(self,title,icon,desc):
+        lo=QVBoxLayout(self); lo.setContentsMargins(0,0,0,0); lo.setSpacing(0)
+        def fill(l):
+            hdr=QHBoxLayout()
+            il=QLabel(icon); il.setFont(QFont('Noto Color Emoji',18)); il.setFixedWidth(32)
+            tl=QLabel(title); tl.setFont(QFont('Inter',13,QFont.Bold))
+            self.badge=QLabel("—"); self.badge.setStyleSheet(
+                f"background:{self.color}22;color:{self.color};border:1px solid {self.color}44;"
+                f"border-radius:10px;padding:2px 10px;font-size:11px;font-weight:bold;")
+            hdr.addWidget(il); hdr.addWidget(tl); hdr.addStretch(); hdr.addWidget(self.badge)
+            l.addLayout(hdr)
+            l.addWidget(subtitle(desc))
+            self.prog=QProgressBar(); self.prog.setRange(0,0); self.prog.setFixedHeight(4); self.prog.hide()
+            l.addWidget(self.prog)
+            self.pkg_list=QTextEdit(); self.pkg_list.setReadOnly(True); self.pkg_list.setFixedHeight(80); self.pkg_list.hide()
+            l.addWidget(self.pkg_list)
+            self.log=QTextEdit(); self.log.setReadOnly(True); self.log.setFixedHeight(100); self.log.hide()
+            l.addWidget(self.log)
+            row=QHBoxLayout(); row.setSpacing(8)
+            self.b_check=btn("  Check",BLUE); self.b_check.clicked.connect(self._check)
+            self.b_install=btn("⬆  Install",color); self.b_install.setEnabled(False); self.b_install.clicked.connect(self._install)
+            self.b_cancel=btn("Cancel",RED); self.b_cancel.setEnabled(False); self.b_cancel.clicked.connect(self._cancel)
+            row.addWidget(self.b_check); row.addWidget(self.b_install); row.addWidget(self.b_cancel); row.addStretch()
+            l.addLayout(row)
+        lo.addWidget(card(fill))
+    def _check(self):
+        self.badge.setText("Checking…"); self.prog.show(); self.b_check.setEnabled(False)
+        self.pkg_list.hide(); self.log.hide()
+        self._cw=CheckWorker(self.filt); self._cw.result.connect(self._on_check); self._cw.start()
+    def _on_check(self,updates):
+        self.prog.hide(); self.b_check.setEnabled(True)
+        if updates:
+            self.badge.setText(f"{len(updates)} available")
+            self.pkg_list.setPlainText("\n".join(f"  {n}  {c} → {v}" for n,c,v in updates))
+            self.pkg_list.show(); self.b_install.setEnabled(True)
+        else:
+            self.badge.setText("Up to date ✓")
+            self.badge.setStyleSheet(f"background:{GREEN}22;color:{GREEN};border:1px solid {GREEN}44;border-radius:10px;padding:2px 10px;font-size:11px;font-weight:bold;")
+    def _install(self):
+        self.log.clear(); self.log.show(); self.prog.show()
+        self.b_install.setEnabled(False); self.b_check.setEnabled(False); self.b_cancel.setEnabled(True)
+        self._w=Worker(self.cmd); self._w.output.connect(self._append); self._w.done.connect(self._done); self._w.start()
+    def _cancel(self):
+        if self._w: self._w.kill()
+        self.badge.setText("Cancelled"); self._reset()
+    def _done(self,code):
+        self.prog.hide()
+        self.badge.setText("Done ✓" if code==0 else f"Failed ({code})")
+        self._reset()
+    def _reset(self): self.b_check.setEnabled(True); self.b_install.setEnabled(False); self.b_cancel.setEnabled(False); self.prog.hide()
+    def _append(self,t): self.log.moveCursor(QTextCursor.End); self.log.insertPlainText(t); self.log.moveCursor(QTextCursor.End)
+    def auto_check(self): QTimer.singleShot(100,self._check)
+
+# ── Pages ─────────────────────────────────────────────────────────────────────
+def make_updates_page():
+    w=QWidget(); lo=QVBoxLayout(w); lo.setContentsMargins(32,24,32,24); lo.setSpacing(16)
+    lo.addWidget(section_title("Updates")); lo.addWidget(subtitle("Keep your OS, kernel, and drivers current."))
+    scroll=QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
+    inner=QWidget(); inner.setStyleSheet("background:transparent;")
+    ilo=QVBoxLayout(inner); ilo.setContentsMargins(0,0,8,0); ilo.setSpacing(14)
+    panels=[
+        UpdatePanel("Zohara OS Updates","🔷","Official Zohara configs, themes, and built-in apps.",PURPLE,
+                    ['pacman','-Syu','--noconfirm','zohara-system'],['zohara']),
+        UpdatePanel("System & App Updates","🔄","All packages from Arch and Chaotic-AUR repos.",BLUE,
+                    ['pacman','-Syu','--noconfirm'],None),
+        UpdatePanel("Kernel Updates","⚡","Linux Zen kernel — reboot required to apply.",YELLOW,
+                    ['pacman','-Syu','--noconfirm','linux-zen','linux-zen-headers'],['linux-zen','linux-firmware']),
+        UpdatePanel("Driver & Firmware Updates","🔧","GPU drivers, firmware, and hardware modules.",TEAL,
+                    ['pacman','-Syu','--noconfirm','mesa','lib32-mesa','vulkan-radeon','vulkan-intel','linux-firmware'],
+                    ['mesa','nvidia','amdgpu','firmware','vulkan','libdrm']),
+    ]
+    for p in panels: ilo.addWidget(p)
+    ilo.addStretch(); scroll.setWidget(inner); lo.addWidget(scroll,1)
+    check_all_btn=btn("  Check All",BLUE)
+    def check_all():
+        for p in panels: p.auto_check()
+    check_all_btn.clicked.connect(check_all)
+    lo.addWidget(check_all_btn)
+    QTimer.singleShot(600, check_all)
+    return w
+
+def make_appearance_page():
+    w=QWidget(); lo=QVBoxLayout(w); lo.setContentsMargins(32,24,32,24); lo.setSpacing(16)
+    lo.addWidget(section_title("Appearance"))
+    lo.addWidget(subtitle("Switch between Zohara OS layout presets. Your screen may flicker while applying."))
+    themes=[("Win 11","org.kde.breeze.desktop","Breeze","Fluent"),
+            ("Win 10","org.kde.breezedark.desktop","Breeze-Dark",""),
+            ("macOS","org.kde.breeze.desktop","Breeze","Materia"),
+            ("KDE Native","org.kde.breezedark.desktop","Breeze-Dark","")]
+    icons=["🪟","🪟","🍎","🐧"]
+    status=QLabel(""); status.setStyleSheet(f"color:{SUBTEXT};font-size:12px;")
+    def apply(global_theme, gtk_theme, kv):
+        status.setText("Applying theme…")
+        cmds=[['lookandfeeltool','-a',global_theme],
+              ['gsettings','set','org.gnome.desktop.interface','gtk-theme',gtk_theme]]
+        if kv: cmds.append(['kvantummanager','--set',kv])
+        for c in cmds: subprocess.Popen(c)
+        subprocess.Popen(['plasmashell','--replace'])
+        status.setText("✔ Theme applied — Plasma is restarting.")
+    def fill(l):
+        grid=QHBoxLayout(); grid.setSpacing(12)
+        for (name,gt,gtk,kv),ico in zip(themes,icons):
+            b=btn(f"{ico}  {name}",BLUE)
+            b.setFixedHeight(56)
+            b.clicked.connect(lambda _,g=gt,k=gtk,v=kv: apply(g,k,v))
+            grid.addWidget(b)
+        l.addLayout(grid)
+        l.addWidget(status)
+        l.addSpacing(8)
+        l.addWidget(subtitle("Open KDE System Settings for more fine-grained appearance options."))
+        adv=btn("⚙  Open KDE Appearance Settings",PURPLE)
+        adv.clicked.connect(lambda: subprocess.Popen(['kcmshell6','kcm_colors']))
+        l.addWidget(adv)
+    lo.addWidget(card(fill)); lo.addStretch(); return w
+
+def get_users():
+    users=[]
+    try:
+        with open('/etc/passwd') as f:
+            for line in f:
+                parts=line.strip().split(':')
+                if len(parts)<7: continue
+                name,_,uid,_,gecos,_,_ = parts
+                if 1000<=int(uid)<65534:
+                    grps=subprocess.run(['id','-nG',name],capture_output=True,text=True).stdout.strip()
+                    users.append({'name':name,'uid':uid,'groups':grps})
+    except: pass
+    return users
+
+def make_users_page():
+    w=QWidget(); lo=QVBoxLayout(w); lo.setContentsMargins(32,24,32,24); lo.setSpacing(16)
+    lo.addWidget(section_title("Users"))
+    status=QLabel(""); status.setWordWrap(True)
+    ulist=QListWidget()
+    def refresh():
+        ulist.clear()
+        for u in get_users():
+            adm=" 🛡 Admin" if 'wheel' in u['groups'].split() else ""
+            item=QListWidgetItem(f"  {u['name']}{adm}   (UID {u['uid']})")
+            item.setData(Qt.UserRole,u['name']); ulist.addItem(item)
+    refresh()
+    def fill_create(l):
+        l.addWidget(QLabel("Create New User")); l.widget={}
+        for label,ph,echo in [("Full Name","e.g. Ali Hassan",QLineEdit.Normal),
+                               ("Username","lowercase, no spaces",QLineEdit.Normal),
+                               ("Password","",QLineEdit.Password),
+                               ("Confirm Password","",QLineEdit.Password)]:
+            lb=QLabel(label); lb.setStyleSheet(f"color:{SUBTEXT};font-size:11px;")
+            inp=QLineEdit(); inp.setPlaceholderText(ph); inp.setEchoMode(echo)
+            l.addWidget(lb); l.addWidget(inp)
+            l.widget[label]=inp
+        chk=QCheckBox("Make administrator (wheel group)"); chk.setChecked(True); l.addWidget(chk)
+        cr=btn("✚  Create User",GREEN,solid=True)
+        def do_create():
+            inp=l.widget; un=inp["Username"].text().strip().lower()
+            pw=inp["Password"].text()
+            if not un or pw!=inp["Confirm Password"].text(): status.setText("⚠ Check username and passwords."); return
+            try:
+                cmd=['useradd','-m','-s','/bin/bash']
+                fn=inp["Full Name"].text().strip()
+                if fn: cmd+=['-c',fn]
+                cmd.append(un); subprocess.run(cmd,check=True)
+                subprocess.run(['chpasswd'],input=f"{un}:{pw}",text=True,check=True)
+                if chk.isChecked(): subprocess.run(['usermod','-aG','wheel',un],check=True)
+                status.setText(f"✔ User '{un}' created."); status.setStyleSheet(f"color:{GREEN};font-size:12px;")
+                [i.clear() for i in inp.values()]; refresh()
+            except Exception as e: status.setText(f"✖ {e}"); status.setStyleSheet(f"color:{RED};font-size:12px;")
+        cr.clicked.connect(do_create); l.addWidget(cr)
+    lo.addWidget(card(fill_create))
+    lo.addWidget(subtitle("Existing Users")); lo.addWidget(ulist)
+    del_btn=btn("✖  Delete Selected",RED)
+    def do_delete():
+        item=ulist.currentItem()
+        if not item: return
+        un=item.data(Qt.UserRole)
+        if QMessageBox.question(w,"Confirm",f"Delete '{un}' and their home directory?",
+                                QMessageBox.Yes|QMessageBox.No)!=QMessageBox.Yes: return
+        try: subprocess.run(['userdel','-r',un],check=True); status.setText(f"✔ Deleted '{un}'"); status.setStyleSheet(f"color:{GREEN};font-size:12px;"); refresh()
+        except Exception as e: status.setText(f"✖ {e}"); status.setStyleSheet(f"color:{RED};font-size:12px;")
+    del_btn.clicked.connect(do_delete)
+    lo.addWidget(del_btn); lo.addWidget(status); lo.addStretch(); return w
+
+def make_about_page():
+    w=QWidget(); lo=QVBoxLayout(w); lo.setContentsMargins(32,24,32,24); lo.setSpacing(16)
+    lo.addWidget(section_title("About Zohara OS"))
+    try: kernel=platform.release()
+    except: kernel="Unknown"
+    try: mem=subprocess.run(['free','-h'],capture_output=True,text=True).stdout.split('\n')[1].split()
+    except: mem=[]
+    mem_info=f"{mem[1]} RAM / {mem[2]} used" if len(mem)>=3 else "Unknown"
+    try: cpu=open('/proc/cpuinfo').read()
+        #
+    except: cpu=""
+    cpu_name=next((l.split(':')[1].strip() for l in cpu.splitlines() if 'model name' in l),"Unknown") if cpu else "Unknown"
+    def fill(l):
+        for label,val in [("OS","Zohara OS (Arch Linux based)"),("Kernel",kernel),("CPU",cpu_name),("RAM",mem_info),("Desktop","KDE Plasma 6"),("Display Server","Wayland / X11")]:
+            row=QHBoxLayout()
+            lbl=QLabel(label); lbl.setStyleSheet(f"color:{SUBTEXT};font-size:12px;"); lbl.setFixedWidth(140)
+            val_lbl=QLabel(val)
+            row.addWidget(lbl); row.addWidget(val_lbl); row.addStretch()
+            l.addLayout(row)
+    lo.addWidget(card(fill))
+    links_card=card(lambda l: [
+        l.addWidget(subtitle("Links")),
+        *[l.addWidget(lambda t=t,c=c: (b:=btn(t,BLUE), b.clicked.connect(lambda _,x=c: subprocess.Popen(['xdg-open',x])), b)[2])()
+          for t,c in [("GitHub","https://github.com/Zohaib8090/zohara"),
+                      ("Report a Bug","https://github.com/Zohaib8090/zohara/issues")]]
+    ])
+    lo.addWidget(links_card); lo.addStretch(); return w
+
+# ── Sidebar nav button ────────────────────────────────────────────────────────
+def nav_btn(icon, label):
+    b=QPushButton(f" {icon}   {label}")
+    b.setCheckable(True)
+    b.setStyleSheet(f"""QPushButton{{background:transparent;color:{SUBTEXT};border:none;
+        text-align:left;padding:12px 20px;font-size:13px;border-radius:0;}}
+        QPushButton:checked{{background:{BLUE}22;color:{BLUE};border-left:3px solid {BLUE};}}
+        QPushButton:hover:!checked{{background:{SURFACE};color:{TEXT};}}""")
+    b.setCursor(Qt.PointingHandCursor)
+    return b
+
+# ── Main Window ───────────────────────────────────────────────────────────────
+class ZoharaSettings(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Zohara Settings")
+        self.setMinimumSize(940,620)
+        self.setStyleSheet(STYLE)
+        self._build()
+
+    def _build(self):
+        root=QHBoxLayout(self); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
+
+        # Sidebar
+        sidebar=QWidget(); sidebar.setFixedWidth(210)
+        sidebar.setStyleSheet(f"background:{MANTLE};")
+        sl=QVBoxLayout(sidebar); sl.setContentsMargins(0,0,0,24); sl.setSpacing(0)
+
+        logo_row=QHBoxLayout()
+        logo=QLabel("⚙  Settings")
+        logo.setFont(QFont('Inter',15,QFont.Bold))
+        logo.setStyleSheet(f"color:{BLUE};padding:20px 20px 16px 20px;")
+        logo_row.addWidget(logo); sl.addLayout(logo_row)
+
+        sep=QFrame(); sep.setFrameShape(QFrame.HLine); sep.setStyleSheet(f"color:{BORDER};"); sl.addWidget(sep)
+        sl.addSpacing(8)
+
+        pages=[
+            ("🔄","Updates",  make_updates_page()),
+            ("🎨","Appearance",make_appearance_page()),
+            ("👥","Users",    make_users_page()),
+            ("ℹ️","About",    make_about_page()),
+        ]
+
+        self.stack=QStackedWidget()
+        self.nav_btns=[]
+        for i,(ico,label,page) in enumerate(pages):
+            b=nav_btn(ico,label)
+            b.clicked.connect(lambda _,idx=i: self._nav(idx))
+            sl.addWidget(b); self.nav_btns.append(b)
+            self.stack.addWidget(page)
+
+        sl.addStretch()
+
+        # Extra link to KDE settings for advanced users
+        adv=QPushButton("  Advanced KDE Settings")
+        adv.setStyleSheet(f"QPushButton{{background:transparent;color:{BORDER};border:none;text-align:left;padding:10px 20px;font-size:11px;}} QPushButton:hover{{color:{SUBTEXT};}}")
+        adv.setCursor(Qt.PointingHandCursor)
+        adv.clicked.connect(lambda: subprocess.Popen(['systemsettings']))
+        sl.addWidget(adv)
+
+        root.addWidget(sidebar)
+
+        divider=QFrame(); divider.setFrameShape(QFrame.VLine); divider.setStyleSheet(f"color:{BORDER};"); root.addWidget(divider)
+        root.addWidget(self.stack,1)
+
+        self._nav(0)
+
+    def _nav(self,idx):
+        self.stack.setCurrentIndex(idx)
+        for i,b in enumerate(self.nav_btns): b.setChecked(i==idx)
+
+
+if __name__=='__main__':
+    app=QApplication(sys.argv)
+    app.setApplicationName("Zohara Settings")
+    win=ZoharaSettings()
+    win.show()
+    sys.exit(app.exec_())
