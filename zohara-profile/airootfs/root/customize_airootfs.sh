@@ -7,6 +7,11 @@ set -e
 
 echo "==> Zohara OS: Running post-install customizations..."
 
+# ── Ensure all Zohara binaries are executable ──────────────────────────────
+# Git sometimes drops execute bits; this guarantees they're always set.
+chmod +x /usr/local/bin/zohara-* 2>/dev/null || true
+echo "  -> Zohara binaries marked executable."
+
 LOGO_SRC="/etc/calamares/branding/zohara/logo.png"
 
 # ── Plymouth Boot Logo ─────────────────────────────────────────────────────
