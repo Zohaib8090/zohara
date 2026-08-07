@@ -10,4 +10,4 @@ sudo docker run --name zohara-build \
   -v ~/Documents/my/zohara:/build \
   -v ~/Documents/my/zohara/pkg-cache:/var/cache/pacman/pkg \
   zohara-builder
-
+  

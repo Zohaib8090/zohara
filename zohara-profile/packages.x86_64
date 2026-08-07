@@ -113,3 +113,7 @@ xdg-utils
 xdg-user-dirs
 polkit-kde-agent
 yay
+pyside6
+qt6-declarative
+python-dbus
+python-pydbus

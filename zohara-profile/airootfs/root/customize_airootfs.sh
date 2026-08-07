@@ -50,6 +50,7 @@ ID=zohara
 ID_LIKE=arch
 VERSION="2026.08"
 VERSION_ID="2026.08"
+ZOHARA_CODENAME="Nexus"
 BUILD_ID=rolling
 ANSI_COLOR="1;36"
 HOME_URL="https://github.com/Zohaib8090/zohara"
@@ -59,6 +60,8 @@ BUG_REPORT_URL="https://github.com/Zohaib8090/zohara/issues"
 LOGO=distributor-logo-zohara
 EOF
 
+# Enable Zohara Settings Helper D-Bus service
+systemctl enable zohara-settings-helper.service || true
 
 # ── Purge unwanted KDE apps from the system ───────────────────────────────
 echo "  -> Purging unwanted KDE apps..."

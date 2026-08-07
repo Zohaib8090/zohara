@@ -1,0 +1,12 @@
+[Unit]
+Description=Zohara Settings D-Bus Helper
+After=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.zohara.settings.Helper
+ExecStart=/usr/bin/python /usr/lib/zohara-settings/zohara_settings_helper.py
+User=root
+
+[Install]
+WantedBy=multi-user.target
