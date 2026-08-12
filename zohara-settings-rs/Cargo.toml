@@ -1,0 +1,31 @@
+[package]
+name = "zohara-settings"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "zohara-settings"
+path = "src/main.rs"
+
+[dependencies]
+# GTK4 + Libadwaita - native UI, renders with the system's GTK theme
+gtk4 = { version = "0.9", features = ["v4_12"] }
+libadwaita = { version = "0.7", package = "libadwaita", features = ["v1_6"] }
+
+# Async runtime — uses GLib's own event loop so no separate thread needed
+glib = "0.20"
+
+# D-Bus for NetworkManager, BlueZ, UPower, etc.
+zbus = { version = "5", features = ["tokio"] }
+
+# Process spawning for pacman, bluetoothctl, etc.
+tokio = { version = "1", features = ["full"] }
+
+# Serialization for JSON parsing (pacman -Qi output, etc.)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

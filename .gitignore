@@ -27,3 +27,19 @@ out/
 out/
 work/
 pkg-cache/
+
+# AI / Agent framework directories (local tooling only, not for repo)
+.agent/
+.agents/
+.gemini/
+.gsd/
+.gsd
+.GSD-STYLE.md
+.MANDATORY-STYLE.md
+.AGENT_STATE.md
+.Agent
+GSD-STYLE.md
+
+# Environment / Secrets
+.env
+.env.local

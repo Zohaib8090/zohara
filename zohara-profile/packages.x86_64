@@ -11,7 +11,6 @@ intel-ucode
 networkmanager
 iwd
 nano
-vim
 git
 curl
 wget
@@ -22,7 +21,6 @@ pacman-contrib
 os-prober
 rsync
 python
-python-pyqt5
 
 # Display Manager & DE Base
 sddm
@@ -39,6 +37,8 @@ xf86-video-amdgpu
 xf86-video-nouveau
 xf86-video-intel
 alsa-utils
+alsa-firmware
+sof-firmware
 pipewire
 wireplumber
 pipewire-pulse
@@ -117,3 +117,13 @@ pyside6
 qt6-declarative
 python-dbus
 python-pydbus
+gtk4
+libadwaita
+
+# Office, Media & Productivity
+libreoffice-fresh
+gwenview
+haruna
+ark
+okular
+kate

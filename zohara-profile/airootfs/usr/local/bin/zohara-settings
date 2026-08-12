@@ -1,2 +1,1 @@
-#!/bin/bash
-exec python /usr/lib/zohara-settings/src/main.py "$@"
+/usr/bin/zohara-settings

@@ -1,1 +1,0 @@
-import QtQuick; import QtQuick.Controls; import QtQuick.Layouts; ScrollView { clip: true; ColumnLayout { width: parent.width - 20; spacing: 16; Text { text: "Accessibility"; font.pixelSize: 28; font.weight: Font.DemiBold } } }

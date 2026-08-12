@@ -1,0 +1,11 @@
+[Unit]
+Description=Zohara Settings Helper (D-Bus polkit agent)
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/zohara-settings-helper
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target

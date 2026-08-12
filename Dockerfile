@@ -54,6 +54,23 @@ RUN repo-add /opt/localrepo/localrepo.db.tar.gz /opt/localrepo/*.pkg.tar.zst && 
     ln -sf localrepo.db.tar.gz /opt/localrepo/localrepo.db && \
     ln -sf localrepo.files.tar.gz /opt/localrepo/localrepo.files
 
-# ── 6. Build entry point ──────────────────────────────────────────────────────
+# ── 6. Install Rust (for building zohara-settings) ───────────────────────────
+USER builder
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+ENV PATH="/home/builder/.cargo/bin:${PATH}"
+
+# Install GTK4 + libadwaita dev libs for cross-compilation
+USER root
+RUN pacman -Sy --noconfirm && pacman -S --noconfirm gtk4 libadwaita pkgconf dbus
+
+# ── 7. Build zohara-settings (Rust/GTK4/libadwaita) ─────────────────────────
+USER builder
+COPY --chown=builder:builder zohara-settings-rs /tmp/zohara-settings-rs
+RUN cd /tmp/zohara-settings-rs && \
+    /home/builder/.cargo/bin/cargo build --release
+
+# ── 8. Build entry point ──────────────────────────────────────────────────────
 WORKDIR /build
-ENTRYPOINT ["bash", "-c", "mkarchiso -v -w ./work -o ./out ./zohara-profile/"]
+ENTRYPOINT ["bash", "-c", "install -Dm755 /tmp/zohara-settings-rs/target/release/zohara-settings /build/zohara-profile/airootfs/usr/bin/zohara-settings && mkdir -p /build/zohara-profile/airootfs/usr/local/bin && ln -sf /usr/bin/zohara-settings /build/zohara-profile/airootfs/usr/local/bin/zohara-settings && install -Dm644 /tmp/zohara-settings-rs/data/zohara-settings.desktop /build/zohara-profile/airootfs/usr/share/applications/zohara-settings.desktop && mkarchiso -v -w ./work -o ./out ./zohara-profile/"]
+
+

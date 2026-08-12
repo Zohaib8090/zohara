@@ -63,6 +63,20 @@ EOF
 # Enable Zohara Settings Helper D-Bus service
 systemctl enable zohara-settings-helper.service || true
 
+# ── Enable System Services (Bluetooth & Network) ────────────────────────────
+echo "  -> Enabling System Services..."
+systemctl enable bluetooth.service || true
+systemctl enable NetworkManager.service || true
+
+# Prevent boot hangs by disabling network wait services
+systemctl disable systemd-networkd.service systemd-networkd-wait-online.service || true
+systemctl mask NetworkManager-wait-online.service systemd-networkd-wait-online.service || true
+
+# ── Enable PipeWire Sound Services for all user sessions ────────────────────
+echo "  -> Enabling PipeWire audio user services..."
+systemctl --global enable pipewire.socket pipewire-pulse.socket || true
+systemctl --global enable pipewire.service pipewire-pulse.service wireplumber.service || true
+
 # ── Purge unwanted KDE apps from the system ───────────────────────────────
 echo "  -> Purging unwanted KDE apps..."
 # Only remove packages that are actually installed (avoid noisy errors for absent packages)
@@ -80,14 +94,32 @@ if [[ -f "$LAYOUT_FILE" ]]; then
     sed -i -E 's/org\.kde\.discover(\.desktop)?/zohara-store.desktop/g' "$LAYOUT_FILE"
     
     # Replace System Settings with Zohara Settings
-    sed -i -E 's/systemsettings(\.desktop)?/zohara-settings.desktop/g' "$LAYOUT_FILE"
+    sed -i -E 's/systemsettings(\.desktop)?/org.zohara.settings.desktop/g' "$LAYOUT_FILE"
 fi
 
 HIDE_APPS=(
+    # KDE System Settings duplicates
+    "systemsettings"
+    "org.kde.systemsettings"
+    "kdesystemsettings"
+    # KDE Connect
     "org.kde.kdeconnect.daemon"
     "org.kde.kdeconnect-handler"
     "org.kde.kdeconnect.settings"
     "org.kde.kdeconnect-indicator"
+    # Avahi browsers
+    "avahi-discover"
+    "bssh"
+    "bvnc"
+    # Qt / Python dev tool launchers
+    "assistant"
+    "designer"
+    "linguist"
+    "qdbusviewer"
+    "org.kde.ksshaskpass"
+    # LibreOffice start center (use individual apps instead)
+    "startcenter"
+    "libreoffice-startcenter"
 )
 
 for app in "${HIDE_APPS[@]}"; do

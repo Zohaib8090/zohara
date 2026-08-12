@@ -1,60 +1,79 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import ".." // Theme
+import "."  // Theme
 
 Rectangle {
     id: root
     Layout.fillWidth: true
-    implicitHeight: layout.implicitHeight + 32
-    radius: 8
+    // Let the height be determined by the inner ColumnLayout
+    implicitHeight: mainLayout.implicitHeight + (Theme.cardPadding * 2)
+    radius: Theme.radius
     color: Theme.surface
     border.color: Theme.border
     border.width: 1
-    
+
     property string title: ""
     property string subtitle: ""
-    property Item control: null
-    
-    RowLayout {
-        id: layout
+    // Any child Item placed here becomes the right-side control
+    default property alias control: controlSlot.data
+
+    // Subtle hover effect to make the UI feel alive
+    MouseArea {
+        id: hoverArea
         anchors.fill: parent
-        anchors.margins: 16
+        hoverEnabled: true
+        // Allow clicks to pass through to controls
+        propagateComposedEvents: true
+        preventStealing: false
+        onClicked: (mouse) => mouse.accepted = false
+        onPressed: (mouse) => mouse.accepted = false
+    }
+
+    Behavior on color { ColorAnimation { duration: 150 } }
+    Behavior on border.color { ColorAnimation { duration: 150 } }
+
+    RowLayout {
+        id: mainLayout
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: Theme.cardPadding
         spacing: 16
-        
+
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 2
-            
+            spacing: 4
+
             Text {
                 text: root.title
                 font.pixelSize: 14
-                font.weight: Font.Medium
+                font.weight: Font.DemiBold
+                font.family: "Inter, Segoe UI, sans-serif"
                 color: Theme.text
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
             }
-            
+
             Text {
                 text: root.subtitle
                 font.pixelSize: 12
+                font.family: "Inter, Segoe UI, sans-serif"
                 color: Theme.textSecondary
                 visible: text !== ""
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+                lineHeight: 1.2
             }
         }
-        
-        // Inject custom control (switch, combo box, button, etc)
+
+        // Right-hand control slot
         Item {
-            id: controlContainer
+            id: controlSlot
             Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-            implicitWidth: root.control ? root.control.implicitWidth : 0
-            implicitHeight: root.control ? root.control.implicitHeight : 0
-            
-            Component.onCompleted: {
-                if (root.control) {
-                    root.control.parent = controlContainer
-                    root.control.anchors.centerIn = controlContainer
-                }
-            }
+            implicitWidth: childrenRect.width
+            implicitHeight: childrenRect.height
+            visible: children.length > 0
         }
     }
 }
-
