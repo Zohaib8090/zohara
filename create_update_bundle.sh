@@ -157,4 +157,37 @@ tar -czf - -C "$BUNDLE_DIR" . >> "$TARGET_SCRIPT"
 chmod +x "$TARGET_SCRIPT"
 cp "$TARGET_SCRIPT" "$LATEST_SCRIPT"
 
+# ── Generate latest.json (consumed by zohara-settings' OTA page) ─────────
+# This file describes the latest published bundle. It must be uploaded to
+# the same release as $TARGET_SCRIPT on GitHub Releases, at:
+#   https://github.com/Zohaib8090/zohara/releases/latest/download/latest.json
+#
+# The settings app's updates page GETs this URL on every "Check for
+# updates" click and compares its `version` field with the local
+# `zohara-settings --version` output.
+LOCAL_VERSION=$("${BUNDLE_DIR}/airootfs/usr/bin/zohara-settings" --version 2>/dev/null | awk '{print $2}')
+if [[ -z "$LOCAL_VERSION" ]]; then
+    # Fallback: if the binary's --version is missing (e.g. an older build
+    # was packaged), leave the field empty so the manifest is still
+    # valid JSON. The settings app will treat an empty local version as
+    # "unknown" and just say "update available" without a strict compare.
+    LOCAL_VERSION=""
+fi
+MANIFEST="$OUT_DIR/latest.json"
+BUNDLE_SHA256=$(sha256sum "$TARGET_SCRIPT" | awk '{print $1}')
+BUNDLE_SIZE=$(stat -c%s "$TARGET_SCRIPT")
+cat > "$MANIFEST" <<EOF
+{
+  "version": "$LOCAL_VERSION",
+  "date": "$DATE",
+  "download_url": "https://github.com/Zohaib8090/zohara/releases/latest/download/zohara-update-$DATE.sh",
+  "size_bytes": $BUNDLE_SIZE,
+  "sha256": "$BUNDLE_SHA256",
+  "changelog": "Zohara OS $DATE build. See GitHub release notes for details.",
+  "min_zohara_settings_version": "$LOCAL_VERSION"
+}
+EOF
+echo "[✓] Wrote manifest: $MANIFEST"
+echo "    (Upload alongside $TARGET_SCRIPT to GitHub Releases)"
+
 echo "[✓] Successfully generated full system upgrade bundle: $TARGET_SCRIPT"

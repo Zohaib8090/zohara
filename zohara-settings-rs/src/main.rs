@@ -27,6 +27,16 @@ pub fn tokio_runtime() -> &'static Runtime {
 const WIN11_CSS: &str = include_str!("../data/win11.css");
 
 fn main() {
+    // `--version` is checked before the GTK app is constructed, because it
+    // doesn't need an event loop or a display. This is the version the
+    // update page reads via `zohara-settings --version` and compares to
+    // the manifest served at https://github.com/Zohaib8090/zohara/releases/
+    // latest/download/latest.json.
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!("zohara-settings {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
     let rt = tokio_runtime();
     let _rt_guard = rt.enter();
 
