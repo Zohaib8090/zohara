@@ -85,7 +85,7 @@ Never use these as justification for completion:
 This skill integrates with:
 - `/verify` — Primary workflow using this skill
 - `/execute` — Must validate before marking tasks complete
-- Rule 4 in `GEMINI.md` — Empirical Validation enforcement
+- `PROJECT_RULES.md` → "Proof Requirements" — Empirical Validation enforcement
 
 ## Failure Handling
 

@@ -76,4 +76,4 @@ For simple tracking:
 
 ---
 
-*Part of GSD v1.6 Token Optimization.*
+*Part of GSD v1.5 Token Optimization.*

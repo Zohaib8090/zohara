@@ -1,11 +1,12 @@
-# 1. Clean previous build artifacts
-sudo rm -rf ~/Documents/my/zohara/out/ ~/Documents/my/zohara/work/
-sudo docker rm -f zohara-build 2>/dev/null
+# 1. Clean build artifacts & clear package cache
+sudo docker kill zohara-build 2>/dev/null || true
+sudo rm -rf ~/Documents/my/zohara/out/ ~/Documents/my/zohara/work/ ~/Documents/my/zohara/pkg-cache/
+mkdir -p ~/Documents/my/zohara/pkg-cache
 
-# 2. Rebuild docker builder image (registers the entrypoint runtime copy step)
-sudo docker build -t zohara-builder .
+# 2. Rebuild the builder Docker container (from scratch)
+sudo docker build --no-cache -t zohara-builder ~/Documents/my/zohara
 
-# 3. Build the ISO
+# 3. Generate the final Zohara OS ISO
 sudo docker run --rm --name zohara-build \
   --privileged \
   -v ~/Documents/my/zohara:/build \

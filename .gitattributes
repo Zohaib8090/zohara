@@ -1,0 +1,52 @@
+# Line-ending policy for Zohara OS.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# This repo is developed on Windows (`core.autocrlf=true` on the dev machine) but every file in
+# zohara-profile/airootfs/ ships to a Linux system, and the build scripts are executed by bash --
+# inside Docker, and inside the mkarchiso chroot. Without this file, any `git checkout` / `git pull`
+# / `git stash` on Windows rewrites those files with CRLF in the working tree, and
+# scripts/build-iso-wsl.sh then rsyncs that working tree into the Linux build clone. The results are
+# not subtle:
+#
+#   * customize_airootfs.sh gets `set -e\r`; bash reports errors on lines that look fine, and the
+#     `cat > ... << 'EOF'` heredocs stop terminating because the terminator becomes `EOF\r`. With
+#     `set -e` at the top of that script, mkarchiso aborts and no ISO is produced.
+#   * Heredocs that *do* survive write CRLF into the generated /etc files (os-release, sddm confs,
+#     pacman.conf), which systemd and pacman parse inconsistently.
+#   * systemd unit files and .desktop entries with trailing CR silently fail to match values.
+#
+# `.gitattributes` takes precedence over `core.autocrlf`, so declaring eol=lf here makes checkouts
+# correct on every platform without each developer having to configure their client.
+#
+# The committed blobs were verified clean (0 of 101 shell/unit/conf blobs contained CR as of
+# 2026-08-24), so this file locks in the current state rather than fixing existing damage. If a CRLF
+# blob ever does get committed, `git add --renormalize .` rewrites them to LF.
+
+# Everything is LF by default: let git detect text vs binary, and never emit CRLF for text.
+* text=auto eol=lf
+
+# Windows-only helper scripts keep CRLF -- they are never run on Linux, and this preserves the
+# behaviour they already have under core.autocrlf=true.
+*.ps1 text eol=crlf
+
+# Binary assets: never apply end-of-line conversion or try to diff them as text.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary
+*.gif  binary
+*.webp binary
+*.ttf  binary
+*.otf  binary
+*.woff binary
+*.woff2 binary
+*.gz   binary
+*.xz   binary
+*.zst  binary
+*.iso  binary
+*.img  binary
+*.pkg.tar.zst binary
+
+# Cargo lockfiles are generated; keep them out of diff noise but still merge-resolvable.
+Cargo.lock -diff

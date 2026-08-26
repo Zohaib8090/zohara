@@ -1,0 +1,18 @@
+[Unit]
+Description=Zohara - Sync Package Database
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/usr/bin/pacman
+
+[Service]
+Type=oneshot
+# The leading '-' makes systemd tolerate a non-zero exit. A database sync depends
+# on network reachability and mirror health, neither of which is guaranteed at
+# boot; without this a single failed sync marks the whole boot as degraded.
+ExecStart=-/usr/bin/pacman -Sy --noconfirm
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

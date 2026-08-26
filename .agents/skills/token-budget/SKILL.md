@@ -163,4 +163,4 @@ This skill integrates with:
 
 ---
 
-*Part of GSD v1.6 Token Optimization. See PROJECT_RULES.md for efficiency rules.*
+*Part of GSD v1.5 Token Optimization. See PROJECT_RULES.md for efficiency rules.*

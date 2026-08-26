@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<providers>
+    <provider>
+        <id>api.kde-look.org</id>
+        <location>https://api.kde-look.org/ocs/v1/</location>
+        <name>api.kde-look.org</name>
+        <termsofuse>https://api.kde-look.org/content/terms</termsofuse>
+        <register>https://api.kde-look.org/register</register>
+        <services>
+            <person ocsversion="1.6"/>
+            <content ocsversion="1.6"/>
+        </services>
+    </provider>
+</providers>

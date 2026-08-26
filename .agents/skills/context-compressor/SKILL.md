@@ -198,4 +198,4 @@ Works with:
 
 ---
 
-*Part of GSD v1.6 Token Optimization. See docs/token-optimization-guide.md for examples.*
+*Part of GSD v1.5 Token Optimization. See docs/token-optimization-guide.md for examples.*

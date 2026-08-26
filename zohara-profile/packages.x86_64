@@ -24,7 +24,13 @@ python
 
 # Display Manager & DE Base
 sddm
-xorg-server
+# xorg-server is installed separately by customize_airootfs.sh AFTER
+# pacstrap. Installing it inside the pacstrap transaction fails with
+# `error: extract: not overwriting dir with file /usr/lib/Xorg` because
+# xorg-server-common (a dep) creates /usr/lib/Xorg/ as a directory
+# first, and xorg-server then tries to install /usr/lib/Xorg/Xorg.wrap
+# as a file. The post-install step is wrapped in `|| true` because
+# some systems (e.g. headless) don't need xorg-server.
 xorg-xwayland
 wayland
 xorg-xinit
@@ -72,6 +78,19 @@ edk2-shell
 memtest86+
 memtest86+-efi
 mkinitcpio-archiso
+# Helper binaries for the archiso_pxe_* hooks. mkinitcpio-archiso enables those hooks by default
+# (the built initramfs carries HOOKS="udev memdisk archiso archiso_loop_mnt archiso_pxe_common
+# archiso_pxe_nbd archiso_pxe_http archiso_pxe_nfs"), but the binaries they pull in live in separate
+# packages that were never listed here. Every build therefore ended pacstrap with three hard errors:
+#     ==> ERROR: file not found: '/usr/lib/initcpio/ipconfig'      (mkinitcpio-nfs-utils)
+#     ==> ERROR: binary not found: 'nbd-client'                    (nbd)
+#     ==> ERROR: file not found: '/usr/lib/initcpio/nfsmount'      (mkinitcpio-nfs-utils)
+#     error: command failed to execute correctly
+# USB/DVD/VM boot was unaffected (that path uses archiso + archiso_loop_mnt, both intact), so this
+# only ever broke PXE netboot -- but it also made every build log look like a failed build.
+# Upstream archiso's own releng profile ships both packages for precisely this reason.
+mkinitcpio-nfs-utils
+nbd
 plasma-desktop
 kwin-x11
 plasma-nm
@@ -85,7 +104,13 @@ plymouth
 brave-origin-bin
 fastfetch
 nvidia-settings
-nvidia-dkms
+# nvidia-open-dkms declares "replaces/provides: nvidia-dkms", so listing
+# nvidia-dkms here made pacman silently resolve to this package anyway -- the
+# built ISO has always shipped nvidia-open-dkms. Naming it explicitly removes
+# that provider-resolution ambiguity so the manifest matches the artifact.
+# (Note: the open modules require Turing or newer; pre-Turing GPUs would need
+# the proprietary nvidia-dkms instead.)
+nvidia-open-dkms
 linux-zen-headers
 
 # Theming Engines & Icon Packs (selectable via System Settings → Appearance)
@@ -115,6 +140,13 @@ polkit-kde-agent
 yay
 pyside6
 qt6-declarative
+# Required by the shipped PyQt5 GUI tools: zohara-welcome (autostarted on every
+# desktop login), zohara-usermgr (app menu entry), zohara-migrate and
+# zohara-update. Without this the ISO contains zero PyQt5 files and all four die
+# instantly with "ModuleNotFoundError: No module named 'PyQt5'".
+# TODO: these tools would ideally be ported to the already-present pyside6 so the
+# image doesn't carry both Qt5 and Qt6 stacks.
+python-pyqt5
 python-dbus
 python-pydbus
 gtk4
@@ -127,3 +159,23 @@ haruna
 ark
 okular
 kate
+
+# System Utilities, Power & Monitors
+usbutils
+pciutils
+power-profiles-daemon
+bluedevil
+plasma-systemmonitor
+plasma-firewall
+ufw
+btop
+grim
+slurp
+
+# KDE Wallet & Online Services Fixes
+kwallet
+kwalletmanager
+kwallet-pam
+ca-certificates
+attica
+knewstuff

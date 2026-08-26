@@ -2,15 +2,30 @@
 
 This document is a comprehensive guide to how **Zohara Store** manages, packages, and automates software installation on Zohara OS. It outlines the store architecture, package resolution strategies for complex software (e.g. DaVinci Resolve, Windows binaries, AppImages), JSON catalog specifications, and AI prompting guidelines.
 
+> **Status (2026-08-23):** Sections 2–4 are a **specification / roadmap**, not a description of
+> shipping behaviour. The store was rewritten in Rust (`zohara-store-rs/`, GTK4 + Libadwaita,
+> ~1,300 LOC) and the current binary contains **no catalog loader at all** — grepping `src/` finds no
+> `apps.json`, no remote URL, and no `~/.config/zohara-store` state. The PyWebView/Python
+> architecture this guide originally described no longer exists in the repo. Treat the schema and
+> strategies below as the target design to implement, and verify against `zohara-store-rs/src/`
+> before assuming any of it is wired up.
+
 ---
 
 ## 1. Architecture Overview
 
-Zohara Store uses a hybrid desktop architecture:
-- **Frontend UI:** HTML5/CSS3/JavaScript rendered via `PyWebView` with a modern dark theme.
-- **Backend API:** Python (`StoreAPI`) bridging system package managers, flatpak, WINE runtime, and custom scripts.
+**As shipped today:**
+- **Implementation:** Rust — `zohara-store-rs/` (4 source files, ~1,300 LOC).
+- **UI toolkit:** GTK4 (`gtk4` 0.9) + Libadwaita (`libadwaita` 0.7), matching `zohara-settings-rs`.
+- **Installed to:** `/usr/bin/zohara-store` by the Dockerfile `ENTRYPOINT` (`install -Dm755`). The
+  same `ENTRYPOINT` deletes `/usr/local/bin/zohara-store` and `rm -rf`s
+  `/usr/share/zohara-store/`, which held the retired web-shell assets.
+- **Catalog:** none wired up yet — see the status note above.
+
+**Target design (not yet implemented):**
 - **Online Catalog URL:** `https://raw.githubusercontent.com/Zohaib8090/zohara-packages/master/apps.json`
-- **Local Fallback Catalog:** `/usr/share/zohara-store/apps.json`
+- **Local Fallback Catalog:** `/usr/share/zohara-store/apps.json` — note this path is currently
+  *removed* at build time, so shipping a bundled catalog means changing the Dockerfile `ENTRYPOINT` too.
 - **User Library State:** `~/.config/zohara-store/library.json`
 
 ---
@@ -91,7 +106,8 @@ Instructions:
 ## 5. Directory & Repository Map
 
 - **Catalog Repository:** `https://github.com/Zohaib8090/zohara-packages`
-- **Store Application Script:** `/usr/local/bin/zohara-store`
-- **Bundled Offline Catalog:** `/usr/share/zohara-store/apps.json`
-- **Custom Desktop Files:** `/usr/share/applications/`
+- **Store Source:** `zohara-store-rs/` (Rust + GTK4)
+- **Store Binary (on the ISO):** `/usr/bin/zohara-store` — *not* `/usr/local/bin/zohara-store`, which the Dockerfile `ENTRYPOINT` deletes
+- **Bundled Offline Catalog:** `/usr/share/zohara-store/apps.json` — **planned**; the directory is currently `rm -rf`'d at build time
+- **Custom Desktop Files:** `/usr/share/applications/` (`zohara-store.desktop` is installed from `zohara-store-rs/data/`)
 - **App Icons Location:** `/usr/share/icons/hicolor/scalable/apps/`

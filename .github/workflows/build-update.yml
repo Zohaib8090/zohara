@@ -33,13 +33,20 @@ jobs:
         VERSION="${{ github.event.inputs.version || github.ref_name }}"
         VERSION=${VERSION#v} # strip 'v' if present
         
-        docker run --rm -v $(pwd):/work -e VERSION="$VERSION" archlinux:base /bin/bash -c '
+        docker run --rm -i -v $(pwd):/work -e VERSION="$VERSION" archlinux:base /bin/bash -s <<'DOCKEREOF'
+          # Without this, a failing makepkg is ignored and the step's exit code comes
+          # from the last command, so the workflow goes green having built nothing.
+          set -euo pipefail
+
           pacman -Sy --noconfirm base-devel
           useradd -m builduser
           chown -R builduser:builduser /work
-          
+
           cd /work
-          
+
+          # The 8-space indent below is the YAML block-scalar base indent, which YAML
+          # strips before bash sees it -- so these lines arrive at column 0 and the
+          # `EOF` terminator matches. Do not dedent them further: that breaks the YAML.
           cat << EOF > PKGBUILD
         pkgname=zohara-system
         pkgver=$VERSION
@@ -48,19 +55,46 @@ jobs:
         arch=("any")
         url="https://github.com/Zohaib8090/zohara"
         license=("GPL")
-        
+
         package() {
             # Copy everything from airootfs directly to the root filesystem
             cp -a "/work/zohara-profile/airootfs/." "\${pkgdir}/"
-            
-            # Remove custom ISO build scripts that should not be installed via OTA
-            rm -f "\${pkgdir}/root/customize_airootfs.sh"
+
+            # airootfs/ is a LIVE ISO overlay. Most of archiso's own scaffolding in there is
+            # destructive on an installed machine -- etc/passwd wipes the user's accounts, etc/shadow
+            # leaves root with an empty password, the getty/SDDM drop-ins autologin root, and
+            # mkinitcpio.conf.d/archiso.conf makes the next kernel update build an unbootable
+            # initramfs. scripts/ota-exclude.txt is the shared list of paths that must never ship in
+            # an update, with the reasoning and the command used to derive it; create_update_bundle.sh
+            # applies the same list to the self-extracting-bundle channel.
+            EXCLUDE_LIST=/work/scripts/ota-exclude.txt
+            if [ ! -f "\$EXCLUDE_LIST" ]; then
+                echo "FATAL: \$EXCLUDE_LIST missing -- refusing to package live-ISO scaffolding" >&2
+                return 1
+            fi
+            while IFS= read -r rel; do
+                rel="\${rel%%#*}"
+                rel="\$(printf '%s' "\$rel" | tr -d '[:space:]')"
+                [ -z "\$rel" ] && continue
+                case "\$rel" in /*|*..*) continue ;; esac
+                rm -f "\${pkgdir}/\$rel"
+            done < "\$EXCLUDE_LIST"
+
+            # Belt and braces: these are the entries that destroy a user's system, so abort rather
+            # than publish a package if the exclusion list was somehow not applied.
+            for critical in etc/passwd etc/shadow root/customize_airootfs.sh \\
+                            etc/systemd/system/getty@tty1.service.d/autologin.conf; do
+                if [ -e "\${pkgdir}/\$critical" ]; then
+                    echo "FATAL: \$critical survived stripping -- refusing to package" >&2
+                    return 1
+                fi
+            done
         }
         EOF
-          
+
           # Run makepkg as non-root
           su builduser -c 'makepkg -cf'
-          
+
           # Setup repository database
           mkdir -p ota-repo
           mv zohara-system-*.pkg.tar.zst ota-repo/
@@ -69,10 +103,10 @@ jobs:
           # repo-add creates symlinks, we need the actual files for github releases
           cp zohara.db.tar.gz zohara.db
           cp zohara.files.tar.gz zohara.files
-        '
+        DOCKEREOF
 
     - name: Upload Release Assets
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |

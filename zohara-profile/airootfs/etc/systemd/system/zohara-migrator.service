@@ -2,12 +2,26 @@
 Description=Zohara OS Background Package Migrator
 After=network-online.target
 Wants=network-online.target
+# ConditionPathExists is a [Unit] directive -- it was previously in [Service],
+# where systemd rejects it as an unknown key and the guard silently never applied.
+# The state file lives under /var/lib (NOT /tmp): this unit runs at boot, and
+# systemd clears /tmp on boot, so a /tmp path could never survive to be read.
+ConditionPathExists=/var/lib/zohara/scan_results.json
+# The daemon hard-fails without its translation table, so don't even start it.
+ConditionPathExists=/etc/zohara/translation_db.json
+# zohara-migrator is NOT built by the Docker pipeline (only zohara-settings-rs and
+# zohara-store-rs are), so this binary is normally absent. Guarding on it turns a
+# 203/EXEC failure on every boot into a clean "condition not met" skip.
+# Deliberately left unbuilt: src/bin/scan.rs currently emits a HARDCODED MOCK
+# package list, so an enabled daemon would pacman -S a canned set of packages
+# that have nothing to do with the user's actual system. Do not enable this unit
+# until zohara-scan performs a real dpkg-query/rpm -qa scan.
+ConditionPathExists=/usr/bin/zohara-migrator-daemon
 
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/zohara-migrator-daemon
 RemainAfterExit=yes
-ConditionPathExists=/tmp/zohara_scan_results.json
 
 [Install]
 WantedBy=multi-user.target

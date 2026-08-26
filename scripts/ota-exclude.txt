@@ -1,0 +1,136 @@
+# Paths that must NEVER enter an OTA update payload.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# zohara-profile/airootfs/ is a *live ISO* overlay. Two separate pipelines take that same tree and
+# copy it onto an *already-installed* user system:
+#
+#   1. create_update_bundle.sh  -> self-extracting zohara-update-*.sh, whose install_update.sh does
+#                                  `cp -a "$DIR/airootfs/." /` with no package manager in the way.
+#   2. .github/workflows/build-update.yml -> the `zohara-system` pacman package, whose package()
+#                                  does `cp -a ".../airootfs/." "${pkgdir}/"`.
+#
+# Both used to ship the whole overlay, which meant an update would overwrite live-ISO scaffolding
+# onto a real machine. Verified in the 2026.08.23 bundle, that included:
+#
+#   * etc/passwd  ("root:x:0:0:root:/root:/usr/bin/zsh")  -> deletes every user account
+#   * etc/shadow  ("root::14871::::::")                   -> gives root an EMPTY password
+#   * etc/systemd/system/getty@tty1.service.d/autologin.conf -> root autologin on tty1
+#   * etc/sddm.conf.d/99-autologin.conf ("User=root")     -> graphical root autologin
+#   * etc/mkinitcpio.conf.d/archiso.conf                  -> next kernel update builds an *archiso*
+#                                                            initramfs; the machine stops booting
+#   * etc/systemd/journald.conf.d/volatile-storage.conf   -> journal moves to tmpfs, logs lost on boot
+#   * etc/systemd/system/pacman-init.service (+ its .wants link, which install_update.sh then
+#     `systemctl enable --now`s) -> reinitializes the user's pacman keyring
+#   * etc/hostname ("archiso")                            -> resets the hostname
+#   * root/customize_airootfs.sh                          -> the build-time chroot script itself
+#
+# HOW THE LIST WAS DERIVED
+# ------------------------
+# Mechanically, not by judgement: everything below that is not in the "Zohara-authored" section is a
+# path that also exists in upstream archiso's own profile, i.e. it is live-ISO scaffolding that
+# Zohara inherited rather than payload Zohara ships. Regenerate the inherited set with:
+#
+#   comm -12 \
+#     <(cd zohara-profile/airootfs && find . \( -type f -o -type l \) | sed 's|^\./||' | sort) \
+#     <(cd /usr/share/archiso/configs/releng/airootfs && find . \( -type f -o -type l \) | sed 's|^\./||' | sort)
+#
+# (Run the second half inside the zohara-builder image, which has archiso installed.)
+#
+# Blank lines and lines beginning with # are ignored. Paths are relative to airootfs/.
+# The ISO is unaffected by this file -- these paths are correct *there*, which is the whole point.
+
+# ── Accounts and machine identity ───────────────────────────────────────────────────────────────
+etc/passwd
+etc/shadow
+etc/hostname
+etc/locale.conf
+etc/motd
+
+# ── Unattended / privileged login. Correct on a live ISO, a hole on an installed machine. ───────
+etc/systemd/system/getty@tty1.service.d/autologin.conf
+root/.zlogin
+root/.automated_script.sh
+# These two are Zohara-authored rather than inherited, but they are just as live-only:
+#   99-autologin.conf  -> [Autologin] User=root / Session=plasma
+#   99-root-login.conf -> [Users] AllowRootLogin=true
+etc/sddm.conf.d/99-autologin.conf
+etc/sddm.conf.d/99-root-login.conf
+
+# ── Boot / initramfs. archiso.conf makes mkinitcpio build a live-media initramfs. ───────────────
+etc/mkinitcpio.conf.d/archiso.conf
+etc/systemd/system-generators/systemd-gpt-auto-generator
+
+# ── Live-only system tuning that would override the user's own configuration ────────────────────
+etc/systemd/journald.conf.d/volatile-storage.conf
+etc/systemd/logind.conf.d/do-not-suspend.conf
+etc/ssh/sshd_config.d/10-archiso.conf
+etc/systemd/resolved.conf.d/archiso.conf
+etc/modprobe.d/broadcom-wl.conf
+etc/resolv.conf
+# Both of these are symlinks in the repo (localtime -> /usr/share/zoneinfo/UTC, resolv.conf ->
+# /run/systemd/resolve/stub-resolv.conf), which is correct on the ISO. They are excluded here anyway:
+# `cp -a` replaces a destination symlink with the source one, so shipping them would reset the user's
+# configured timezone to UTC and overwrite whatever resolver stub they use.
+etc/localtime
+
+# ── Build-time pacman hooks ─────────────────────────────────────────────────────────────────────
+etc/pacman.d/hooks/uncomment-mirrors.hook
+etc/pacman.d/hooks/zzzz99-remove-custom-hooks-from-airootfs.hook
+
+# ── systemd-networkd. Zohara uses NetworkManager; shipping both makes them fight. ───────────────
+etc/systemd/network/20-ethernet.network
+etc/systemd/network/20-wlan.network
+etc/systemd/network/20-wwan.network
+etc/systemd/networkd.conf.d/ipv6-privacy-extensions.conf
+etc/systemd/system/multi-user.target.wants/systemd-networkd.service
+etc/systemd/system/sockets.target.wants/systemd-networkd.socket
+etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service
+etc/systemd/system/systemd-networkd-wait-online.service.d/wait-for-only-one-interface.conf
+etc/systemd/system/dbus-org.freedesktop.network1.service
+
+# ── Live-environment services. install_update.sh enable --now's everything in multi-user.target.wants,
+#    so leaving these in the payload does not merely install them -- it starts them. ─────────────
+etc/systemd/system/choose-mirror.service
+etc/systemd/system/multi-user.target.wants/choose-mirror.service
+usr/local/bin/choose-mirror
+etc/systemd/system/pacman-init.service
+etc/systemd/system/multi-user.target.wants/pacman-init.service
+etc/systemd/system/etc-pacman.d-gnupg.mount
+etc/systemd/system/livecd-alsa-unmuter.service
+etc/systemd/system/sound.target.wants/livecd-alsa-unmuter.service
+etc/systemd/system/livecd-talk.service
+etc/systemd/system/multi-user.target.wants/livecd-talk.service
+usr/local/bin/livecd-sound
+usr/local/share/livecd-sound/asound.conf.in
+usr/local/bin/Installation_guide
+etc/systemd/system/multi-user.target.wants/iwd.service
+etc/systemd/system/multi-user.target.wants/sshd.service
+etc/systemd/system/multi-user.target.wants/ModemManager.service
+etc/systemd/system/dbus-org.freedesktop.ModemManager1.service
+etc/systemd/system/multi-user.target.wants/systemd-resolved.service
+etc/systemd/system/dbus-org.freedesktop.resolve1.service
+etc/systemd/system/sysinit.target.wants/systemd-time-wait-sync.service
+etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service
+etc/systemd/system/dbus-org.freedesktop.timesync1.service
+etc/systemd/system/sockets.target.wants/pcscd.socket
+root/.gnupg/scdaemon.conf
+
+# ── Hypervisor guest agents that archiso enables for live use ───────────────────────────────────
+etc/systemd/system/multi-user.target.wants/vboxservice.service
+etc/systemd/system/multi-user.target.wants/vmtoolsd.service
+etc/systemd/system/multi-user.target.wants/vmware-vmblock-fuse.service
+etc/systemd/system/multi-user.target.wants/hv_fcopy_daemon.service
+etc/systemd/system/multi-user.target.wants/hv_kvp_daemon.service
+etc/systemd/system/multi-user.target.wants/hv_vss_daemon.service
+etc/systemd/system/cloud-init.target.wants/cloud-config.service
+etc/systemd/system/cloud-init.target.wants/cloud-final.service
+etc/systemd/system/cloud-init.target.wants/cloud-init-local.service
+etc/systemd/system/cloud-init.target.wants/cloud-init-main.service
+etc/systemd/system/cloud-init.target.wants/cloud-init-network.service
+
+# ── Build-time only ─────────────────────────────────────────────────────────────────────────────
+# mkarchiso deletes this from the ISO itself after running it; both OTA channels must too.
+root/customize_airootfs.sh
+# Removed from the tree on 2026-08-24, listed defensively so it can never come back via OTA.
+usr/local/bin/customize_airootfs.sh

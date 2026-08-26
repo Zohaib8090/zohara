@@ -22,7 +22,10 @@ async fn main() -> Result<()> {
     println!("Starting Zohara Migrator Daemon...");
     
     // Hardcoded paths for demonstration purposes
-    let scan_file = PathBuf::from("/tmp/zohara_scan_results.json");
+    // Must match zohara-scan's default output and the ConditionPathExists in
+    // zohara-migrator.service. Deliberately outside /tmp, which systemd clears
+    // on boot -- the previous /tmp path could never survive until this ran.
+    let scan_file = PathBuf::from("/var/lib/zohara/scan_results.json");
     let db_file = PathBuf::from("/etc/zohara/translation_db.json");
     
     // Wait for the scan file to exist (in a real daemon, we'd use inotify or systemd dependencies)

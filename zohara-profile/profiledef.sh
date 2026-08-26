@@ -19,14 +19,18 @@ airootfs_script="/root/customize_airootfs.sh"
 file_permissions=(
   ["/root/customize_airootfs.sh"]="0:0:755"
   ["/usr/bin/zohara-deb-engine"]="0:0:755"
-  ["/usr/local/bin/customize_airootfs.sh"]="0:0:755"
+  ["/usr/bin/zohara-settings"]="0:0:755"
+  ["/usr/bin/zohara-store"]="0:0:755"
+  # NOTE: there is deliberately no entry for /usr/local/bin/customize_airootfs.sh. That file was a
+  # stale Aug-5 copy of the chroot script (Plymouth watermark + pixmap only -- a strict subset of
+  # what /root/customize_airootfs.sh already does), invoked by nothing, yet installed 0755 into every
+  # user's PATH by both the ISO and the OTA zohara-system package. It was removed on 2026-08-24.
+  # Do not re-add it: airootfs_script below is the only copy mkarchiso runs, and mkarchiso deletes
+  # /root/customize_airootfs.sh from the image afterwards precisely so it does not ship.
   ["/usr/local/bin/zohara-setup-desktop"]="0:0:755"
-  ["/usr/local/bin/zohara-appearance"]="0:0:755"
   ["/usr/local/bin/brave-origin"]="0:0:755"
   ["/usr/local/bin/zohara-welcome"]="0:0:755"
   ["/usr/local/bin/zohara-migrate"]="0:0:755"
   ["/usr/local/bin/zohara-install-kernel"]="0:0:755"
-  ["/usr/local/bin/zohara-store"]="0:0:755"
   ["/usr/local/bin/zohara-usermgr"]="0:0:755"
-  ["/usr/local/bin/zohara-update"]="0:0:755"
 )

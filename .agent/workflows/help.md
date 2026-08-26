@@ -62,10 +62,15 @@ NAVIGATION & STATE
 /resume           Restore from last session
 /add-todo         Quick capture idea
 /check-todos      List pending items
+/sprint [action]  Time-boxed sprint for quick focused work
 
 UTILITIES
 ─────────
 /help             Show this help
+/web-search <q>   Search the web to inform decisions
+/install          Install GSD into this project from GitHub
+/update           Update GSD to the latest version
+/whats-new        Show recent GSD changes and new features
 
 ───────────────────────────────────────────────────────
 

@@ -43,3 +43,12 @@ GSD-STYLE.md
 # Environment / Secrets
 .env
 .env.local
+
+# Compiled Rust binaries staged into the ISO overlay.
+#
+# These are BUILD ARTIFACTS, not source. The Dockerfile ENTRYPOINT installs both from
+# /tmp/zohara-{settings,store}-rs/target/release/ into airootfs/usr/bin/ on every build (with
+# `install -D`, so they do not need to pre-exist). Tracking them meant a ~3 MB ELF blob was added
+# to history on every commit and `git status` showed a permanent ` M` after each build.
+zohara-profile/airootfs/usr/bin/zohara-settings
+zohara-profile/airootfs/usr/bin/zohara-store

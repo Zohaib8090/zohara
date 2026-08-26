@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=Zohara Settings
-Comment=Unified Zohara OS System Settings
-Exec=/usr/bin/zohara-settings
-Icon=zohara-settings
-Terminal=false
-Type=Application
-Categories=Settings;System;

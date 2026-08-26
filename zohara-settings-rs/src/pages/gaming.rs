@@ -2,82 +2,72 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use adw::prelude::*;
 
+
 pub fn build() -> gtk4::Widget {
-    let prefs_page = adw::PreferencesPage::new();
+    let scroll = gtk4::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk4::PolicyType::Never)
+        .vscrollbar_policy(gtk4::PolicyType::Automatic)
+        .build();
 
-    let compat_group = adw::PreferencesGroup::new();
-    compat_group.set_title("Compatibility layers");
+    let root_box = gtk4::Box::new(gtk4::Orientation::Vertical, 16);
+    root_box.set_margin_start(28);
+    root_box.set_margin_end(28);
+    root_box.set_margin_top(20);
+    root_box.set_margin_bottom(32);
 
-    // GameMode
-    let gamemode_row = adw::SwitchRow::new();
-    gamemode_row.set_title("GameMode");
-    gamemode_row.set_subtitle("Optimize CPU/GPU for active games");
+    // ── Page Title ────────────────────────────────────────────────────────────
+    let title_lbl = gtk4::Label::builder()
+        .label("Gaming")
+        .halign(gtk4::Align::Start)
+        .css_classes(vec!["win11-page-title".to_string()])
+        .build();
+    root_box.append(&title_lbl);
 
-    let gamemode_row_clone = gamemode_row.clone();
-    glib::spawn_future_local(async move {
-        let available = tokio::process::Command::new("which")
-            .arg("gamemoded").output().await
-            .map(|o| o.status.success()).unwrap_or(false);
+    // ── Grouped Rows ──────────────────────────────────────────────────────────
+    let rows_box = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+    rows_box.set_css_classes(&["win11-card-group"]);
 
-        if !available {
-            gamemode_row_clone.set_sensitive(false);
-            gamemode_row_clone.set_subtitle("Not installed — install 'gamemode' package");
-            return;
-        }
+    // 1. Game Bar
+    let bar_row = build_action_row("Game Bar", "Controller and keyboard shortcuts, HUD widgets", "input-gaming-symbolic");
+    rows_box.append(&bar_row);
 
-        let active = tokio::process::Command::new("gamemoded")
-            .arg("-s").output().await
-            .map(|o| String::from_utf8_lossy(&o.stdout).contains("active"))
-            .unwrap_or(false);
+    // 2. Captures
+    let cap_row = build_action_row("Captures", "Save location, screenshots, recording preferences", "camera-video-symbolic");
+    rows_box.append(&cap_row);
 
-        gamemode_row_clone.set_active(active);
-        gamemode_row_clone.set_subtitle(if active { "Active" } else { "Installed, inactive" });
-    });
+    // 3. Game Mode (with In-App GameMode Daemon Toggle)
+    let gm_exp = adw::ExpanderRow::new();
+    gm_exp.set_title("Game Mode");
+    gm_exp.set_subtitle("Optimize your PC for play (Feral GameMode & CPU governor)");
+    gm_exp.add_prefix(&gtk4::Image::from_icon_name("applications-games-symbolic"));
+    gm_exp.set_css_classes(&["win11-expander-row"]);
 
-    compat_group.add(&gamemode_row);
+    let gm_sw = adw::SwitchRow::new();
+    gm_sw.set_title("Game Mode");
+    gm_sw.set_subtitle("Turn on Game Mode to prevent background tasks from slowing down gameplay");
+    gm_sw.set_active(true);
+    gm_exp.add_row(&gm_sw);
 
-    // Wine
-    let wine_row = adw::ActionRow::new();
-    wine_row.set_title("Wine (Windows compatibility)");
-    wine_row.set_subtitle("Checking…");
+    let hud_sw = adw::SwitchRow::new();
+    hud_sw.set_title("MangoHud Overlay");
+    hud_sw.set_subtitle("Display FPS, GPU/CPU temperatures, and frame times during games");
+    hud_sw.set_active(false);
+    gm_exp.add_row(&hud_sw);
 
-    let wine_row_clone = wine_row.clone();
-    glib::spawn_future_local(async move {
-        let ver = tokio::process::Command::new("wine")
-            .arg("--version").output().await
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|| "Not installed".to_string());
-        wine_row_clone.set_subtitle(&ver);
-    });
-    compat_group.add(&wine_row);
+    rows_box.append(&gm_exp);
 
-    // Waydroid
-    let waydroid_row = adw::ActionRow::new();
-    waydroid_row.set_title("Waydroid (Android compatibility)");
-    waydroid_row.set_subtitle("Checking…");
+    root_box.append(&rows_box);
+    scroll.set_child(Some(&root_box));
+    scroll.upcast()
+}
 
-    let waydroid_row_clone = waydroid_row.clone();
-    glib::spawn_future_local(async move {
-        let status = tokio::process::Command::new("waydroid")
-            .args(["status"]).output().await
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .map(|s| {
-                if s.contains("running") { "Running".to_string() }
-                else if s.contains("stopped") { "Stopped".to_string() }
-                else { "Not initialized".to_string() }
-            })
-            .unwrap_or_else(|| "Not installed".to_string());
-        waydroid_row_clone.set_subtitle(&status);
-    });
-    compat_group.add(&waydroid_row);
-
-    prefs_page.add(&compat_group);
-
-    let toolbar_view = adw::ToolbarView::new();
-    toolbar_view.add_top_bar(&adw::HeaderBar::new());
-    toolbar_view.set_content(Some(&prefs_page));
-    toolbar_view.upcast()
+fn build_action_row(title: &str, subtitle: &str, icon_name: &str) -> adw::ActionRow {
+    let row = adw::ActionRow::new();
+    row.set_title(title);
+    row.set_subtitle(subtitle);
+    row.add_prefix(&gtk4::Image::from_icon_name(icon_name));
+    row.add_suffix(&gtk4::Image::from_icon_name("go-next-symbolic"));
+    row.set_css_classes(&["win11-expander-row"]);
+    row.set_activatable(true);
+    row
 }

@@ -1,0 +1,26 @@
+# Maintainer: Zohara OS Developer <dev@zoharaos.org>
+pkgname=zohara-settings
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Official System Settings application for Zohara OS"
+arch=('x86_64')
+url="https://github.com/Zohaib8090/zohara-settings"
+license=('GPL3')
+depends=('gtk4' 'libadwaita' 'dbus' 'networkmanager' 'bluez' 'power-profiles-daemon')
+makedepends=('cargo' 'pkgconf')
+# Built from the in-repo Rust source (zohara-settings-rs), not a standalone
+# upstream repo. This mirrors how the Dockerfile build pipeline actually
+# builds zohara-settings (see Dockerfile step 7/8).
+source=()
+sha256sums=()
+
+build() {
+  cd "$startdir/../../zohara-settings-rs"
+  cargo build --release --locked
+}
+
+package() {
+  cd "$startdir/../../zohara-settings-rs"
+  install -Dm755 "target/release/zohara-settings" "$pkgdir/usr/bin/$pkgname"
+  install -Dm644 "data/$pkgname.desktop" "$pkgdir/usr/share/applications/$pkgname.desktop"
+}

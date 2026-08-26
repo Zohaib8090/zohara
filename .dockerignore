@@ -1,4 +1,7 @@
 out
 localrepo
 work
+pkg-cache
 *.iso
+.git
+**/target

@@ -419,9 +419,16 @@ class UpdatesCenter(QWidget):
             icon="🔧",
             description="Updates GPU drivers (Mesa, NVIDIA, AMDGPU), firmware packages, and hardware support modules.",
             color=TEAL,
+            # Every target below was verified present in the shipped ISO's pacman DB.
+            # Removed 'lib32-mesa' (multilib is disabled in pacman.conf and the ISO
+            # ships no lib32 packages) and 'libva-mesa-driver' (merged into mesa as of
+            # Mesa 26.x) -- pacman aborts the whole transaction with "target not found"
+            # on either, so this button could never install anything.
+            # Added the nvidia packages the description already promised.
             install_cmd=['pacman', '-Syu', '--noconfirm',
-                         'mesa', 'lib32-mesa', 'vulkan-radeon', 'vulkan-intel',
-                         'libva-mesa-driver', 'linux-firmware'],
+                         'mesa', 'vulkan-radeon', 'vulkan-intel',
+                         'vulkan-icd-loader', 'linux-firmware',
+                         'nvidia-open-dkms', 'nvidia-utils', 'nvidia-settings'],
             pkg_filter=['mesa', 'nvidia', 'amdgpu', 'firmware', 'vulkan',
                         'libva', 'libdrm', 'xf86-video']
         )
