@@ -18,6 +18,15 @@
 #      `checking for file conflicts...` waiting on a human.
 set -euo pipefail
 
+# 0. Shadow `pacman` with a wrapper that injects --overwrite=/usr/lib/Xorg to
+#    work around the xorg-server / xorg-server-common dir-vs-file conflict
+#    that otherwise aborts the pacstrap transaction. mkarchiso calls `pacman`
+#    by bare name, so placing this dir first on PATH makes pacstrap use it.
+_WRAP_DIR="$(mktemp -d)"
+ln -sf "$(command -v pacman)" "$_WRAP_DIR/pacman.real"
+install -Dm755 /build/zohara-profile/pacman-overwrite-xorg "$_WRAP_DIR/pacman"
+export PATH="$_WRAP_DIR:$PATH"
+
 # 1. Stage the prebuilt binaries into the airootfs.
 install -Dm755 /opt/build/zohara-settings \
     /build/zohara-profile/airootfs/usr/bin/zohara-settings
@@ -33,10 +42,10 @@ rm -rf /build/zohara-profile/airootfs/usr/share/zohara-store
 
 # 2. Clean any stale work/ from a previous aborted run and build the ISO.
 rm -rf ./work
-# NOTE: xorg-server / xf86-video-* are intentionally NOT in packages.x86_64;
-# they are installed post-pacstrap by customize_airootfs.sh to avoid the
-# /usr/lib/Xorg dir-vs-file conflict with xorg-server-common. Do not re-add
-# them to the main package list -- that is what broke the build before.
+# NOTE: xorg-server stays in packages.x86_64 (pulled in via
+# plasma-x11-session). The /usr/lib/Xorg conflict with xorg-server-common is
+# handled by the pacman wrapper above, NOT by removing packages -- removing
+# them broke the package set before.
 script -qec 'yes "" | mkarchiso -v -w ./work -o ./out ./zohara-profile/' /dev/null
 
 # 3. Bundle the resulting airootfs into a self-extracting update script.

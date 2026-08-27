@@ -24,20 +24,24 @@ python
 
 # Display Manager & DE Base
 sddm
-# xorg-server and the xf86-video-* drivers are NOT listed here. They depend
-# on xorg-server, which collides with its dep xorg-server-common over
-# /usr/lib/Xorg (dir vs file) when installed inside the single pacstrap
-# transaction -- this used to abort the whole ISO build with
-# `error: extract: not overwriting dir with file /usr/lib/Xorg`.
-# Instead they are installed post-pacstrap in customize_airootfs.sh, where
-# /usr/lib/Xorg/ already exists and xorg-server's wrapper drops in cleanly.
+# xorg-server is installed separately by customize_airootfs.sh AFTER
+# pacstrap. Installing it inside the pacstrap transaction fails with
+# `error: extract: not overwriting dir with file /usr/lib/Xorg` because
+# xorg-server-common (a dep) creates /usr/lib/Xorg/ as a directory
+# first, and xorg-server then tries to install /usr/lib/Xorg/Xorg.wrap
+# as a file. The post-install step is wrapped in `|| true` because
+# some systems (e.g. headless) don't need xorg-server.
 xorg-xwayland
 wayland
+xorg-xinit
 
 # Hardware / Drivers
 mesa
 vulkan-intel
 vulkan-radeon
+xf86-video-amdgpu
+xf86-video-nouveau
+xf86-video-intel
 alsa-utils
 alsa-firmware
 sof-firmware

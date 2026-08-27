@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# pacman wrapper: injects --overwrite for the xorg-server / xorg-server-common
+# /usr/lib/Xorg dir-vs-file conflict without patching mkarchiso.
+#
+# Context: xorg-server-common ships /usr/lib/Xorg/ as a directory and
+# xorg-server installs /usr/lib/Xorg/Xorg.wrap as a file. When both land in
+# the same pacstrap transaction (plasma -> plasma-x11-session -> xorg-server),
+# pacman aborts with:
+#   error: extract: not overwriting dir with file /usr/lib/Xorg
+# --overwrite lets xorg-server-common's directory win and xorg-server's file
+# be placed inside it. This only matters for --sync/-S operations; everything
+# else passes through untouched.
+#
+# mkarchiso calls `pacman` by bare name, so placing this script ahead of the
+# real pacman on PATH makes pacstrap use it automatically.
+
+REAL_PACMAN="$(dirname "$(readlink -f "$0")")/pacman.real"
+
+if [[ "${1:-}" == "-S"* || "${1:-}" == "-U"* || "${1:-}" == "-Syu"* || "${1:-}" == "-Sy"* ]]; then
+    exec "$REAL_PACMAN" --overwrite=/usr/lib/Xorg "$@"
+else
+    exec "$REAL_PACMAN" "$@"
+fi
