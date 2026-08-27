@@ -114,7 +114,9 @@ fn build_ui(app: &adw::Application) {
     sidebar_box.set_size_request(260, -1);
 
     // 1. User Profile Header Card
-    let user_name = std::env::var("USER").unwrap_or_else(|_| "zohaib".to_string());
+    let user_name = std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "user".to_string());
     let user_card = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
     user_card.set_css_classes(&["win11-user-card"]);
 
@@ -130,12 +132,12 @@ fn build_ui(app: &adw::Application) {
     let user_texts = gtk4::Box::new(gtk4::Orientation::Vertical, 1);
     user_texts.set_valign(gtk4::Align::Center);
     let u_name = gtk4::Label::builder()
-        .label(&format!("{} baig", user_name))
+        .label(&user_name)
         .halign(gtk4::Align::Start)
         .css_classes(vec!["win11-user-name".to_string()])
         .build();
     let u_email = gtk4::Label::builder()
-        .label(&format!("{}baig8090@outlook.com", user_name))
+        .label("Local account")
         .halign(gtk4::Align::Start)
         .css_classes(vec!["win11-user-email".to_string()])
         .build();

@@ -266,8 +266,14 @@ ldconfig
 # accepts it. The post-pacstrap arch-chroot environment has access to
 # the live pacman repos (mkarchiso's default), so `pacman -Sy xorg-server`
 # downloads the single package and extracts it cleanly.
-echo "==> Zohara OS: Installing xorg-server (post-pacstrap)..."
-pacman -Sy --noconfirm xorg-server || \
+echo "==> Zohara OS: Installing xorg-server + video drivers (post-pacstrap)..."
+# These cannot be in the main packages.x86_64 list: xorg-server collides with
+# its dep xorg-server-common over /usr/lib/Xorg (file vs dir) inside the single
+# pacstrap transaction. Installed here, after pacstrap, the directory already
+# exists so xorg-server's wrapper extracts cleanly. The video drivers ride
+# along with the same transaction.
+pacman -Sy --noconfirm xorg-server xorg-xinit \
+    xf86-video-amdgpu xf86-video-nouveau xf86-video-intel || \
     echo "WARN: xorg-server post-install failed; the ISO will boot but X may not work."
 
 echo "==> Zohara OS: Post-install customizations complete."

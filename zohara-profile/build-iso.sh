@@ -33,16 +33,10 @@ rm -rf /build/zohara-profile/airootfs/usr/share/zohara-store
 
 # 2. Clean any stale work/ from a previous aborted run and build the ISO.
 rm -rf ./work
-# Pre-clean the /usr/lib/Xorg directory conflict between xorg-server and
-# xorg-server-common. As of xorg-server 21.1.24, the package ships
-# /usr/lib/Xorg/Xorg.wrap (a file) but xorg-server-common ships the
-# /usr/lib/Xorg/ directory containing modules/ and protocol.txt. When
-# pacstrap installs them in a single transaction, pacman's resolver installs
-# xorg-server-common first, which creates the directory, then xorg-server
-# fails with "not overwriting dir with file". Removing the dir beforehand
-# lets xorg-server-common recreate it (with the proper contents) and then
-# xorg-server extracts the wrapper file. Tested with the 2026-08 mirror.
-rm -rf /build/work/x86_64/airootfs/usr/lib/Xorg 2>/dev/null || true
+# NOTE: xorg-server / xf86-video-* are intentionally NOT in packages.x86_64;
+# they are installed post-pacstrap by customize_airootfs.sh to avoid the
+# /usr/lib/Xorg dir-vs-file conflict with xorg-server-common. Do not re-add
+# them to the main package list -- that is what broke the build before.
 script -qec 'yes "" | mkarchiso -v -w ./work -o ./out ./zohara-profile/' /dev/null
 
 # 3. Bundle the resulting airootfs into a self-extracting update script.

@@ -7,17 +7,20 @@ pub fn build() -> gtk4::Widget {
     let prefs_page = adw::PreferencesPage::new();
 
     let group = adw::PreferencesGroup::new();
-    group.set_title("KDE System Settings");
-    group.set_description(Some("Open the full KDE System Settings panel for advanced configuration not covered by Zohara Settings."));
+    group.set_title("Advanced");
+    group.set_description(Some("Open the full desktop environment settings panel for advanced configuration not covered by Zohara Settings."));
 
     let open_row = adw::ActionRow::new();
-    open_row.set_title("Open KDE System Settings");
-    open_row.set_subtitle("Full plasma configuration panel");
+    open_row.set_title("Open Advanced Settings");
+    open_row.set_subtitle("Full desktop configuration panel");
     open_row.set_activatable(true);
     open_row.add_prefix(&gtk4::Image::from_icon_name("preferences-system-symbolic"));
     open_row.add_suffix(&gtk4::Image::from_icon_name("go-next-symbolic"));
     open_row.connect_activated(|_| {
-        let _ = Command::new("systemsettings6").spawn();
+        // The real binary on Arch Linux is `systemsettings` (lowercase); the
+        // KDE6 variant is also exposed as `systemsettings`. Spawn it and
+        // ignore failure silently if the DE panel isn't installed.
+        let _ = Command::new("systemsettings").spawn();
     });
     group.add(&open_row);
 
