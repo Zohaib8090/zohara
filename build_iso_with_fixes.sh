@@ -35,7 +35,9 @@ docker run --rm --privileged \
     install -Dm644 /tmp/store/data/zohara-store.desktop /opt/build/zohara-store.desktop
 
     echo "[+] Running ISO build (mkarchiso)..."
-    /opt/build-iso.sh
+    # Run the LIVE build-iso.sh from this checkout (contains the xorg --overwrite
+    # wrapper), NOT the stale copy baked into /opt at image-build time.
+    /build/zohara-profile/build-iso.sh
 
     echo "[+] ISO build finished."
     ls -lh /build/out/*.iso 2>/dev/null || echo "WARNING: no ISO produced"
