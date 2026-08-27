@@ -1,9 +1,0 @@
-{
-  "version": "1.0.0",
-  "date": "2026-08-26",
-  "download_url": "https://github.com/Zohaib8090/zohara/releases/download/v1.0.0/zohara-update-2026.08.26.sh",
-  "size_bytes": 873384,
-  "sha256": "REPLACE_WITH_REAL_SHA256_OF_THE_BUNDLE",
-  "changelog": "Initial release: real Wi-Fi list, real storage, real update check, Calamares AUR build, dark-mode respects system preference",
-  "min_zohara_settings_version": "1.0.0"
-}
