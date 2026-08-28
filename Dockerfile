@@ -149,4 +149,8 @@ WORKDIR /build
 # questions.
 COPY --chown=root:root zohara-profile/build-iso.sh /opt/build-iso.sh
 RUN chmod +x /opt/build-iso.sh
+# Copy the pacman-overwrite-xorg wrapper (fixes xorg-server / xorg-server-common
+# /usr/lib/Xorg dir-vs-file conflict) so it's available to /opt/build-iso.sh.
+COPY --chown=root:root zohara-profile/pacman-overwrite-xorg /opt/pacman-overwrite-xorg
+RUN chmod +x /opt/pacman-overwrite-xorg
 ENTRYPOINT ["/opt/build-iso.sh"]

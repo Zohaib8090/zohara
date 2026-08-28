@@ -53,9 +53,10 @@ jobs:
     - name: Build ISO
       run: |
         mkdir -p out
-        docker run --rm --privileged \
-          -v $(pwd):/build \
-          zohara-builder
+        # Use rebuild_fast.sh so the LIVE checkout (including pacman-overwrite-xorg
+        # wrapper) is used, not the stale /opt/build-iso.sh baked into the image.
+        # /build/zohara-profile/pacman-overwrite-xorg is the wrapper's live path.
+        bash rebuild_fast.sh
 
     - name: Validate boot files in EFI image
       run: |
