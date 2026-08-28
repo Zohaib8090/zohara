@@ -3,40 +3,39 @@
 # dir-vs-file conflict that aborts the pacstrap transaction:
 #   error: extract: not overwriting dir with file /usr/lib/Xorg
 #
-# xorg-server-common creates /usr/lib/Xorg/ as a directory (e.g. for
-# sub-driver lookups) and xorg-server installs /usr/lib/Xorg/Xorg.wrap
-# as a file. When both land in the same pacstrap transaction, pacman
-# aborts with the above error and --overwrite=/usr/lib/Xorg on the
-# pacman command line does NOT resolve it (pacman still refuses to
-# replace a directory with a file via --overwrite).
+# xorg-server-common creates /usr/lib/xorg/ (lowercase, dir) and
+# xorg-server installs /usr/lib/Xorg (capital, file). When both
+# land in the same pacstrap transaction, AND some earlier package's
+# install script creates /usr/lib/Xorg as a directory, pacman aborts.
 #
-# Fix: at PreTransaction, if /usr/lib/Xorg already exists as a
-# directory (because xorg-server-common has already been extracted to
-# the airootfs in this same transaction), remove the directory and
-# create a placeholder file at /usr/lib/Xorg. This way xorg-server's
-# file install becomes a plain file-over-file, which pacman allows.
-# xorg-server-common's directory contents (drivers) are still under
-# /usr/lib/xorg/ which is the canonical location anyway.
+# The /usr/lib/Xorg dir is sometimes created by earlier packages'
+# .INSTALL scripts (e.g. as a location for Xorg modules). My hook
+# fires at PreTransaction for ANY package install: if /usr/lib/Xorg
+# exists as a directory, convert it to a placeholder file. The
+# pacman-overwrite-xorg wrapper then injects --overwrite=/usr/lib/Xorg
+# so any package trying to install the file on top is allowed.
 #
-# The matching `--overwrite=/usr/lib/Xorg` is injected by the
-# pacman-overwrite-xorg wrapper, so the placeholder file we create
-# is also handled by --overwrite.
+# The directory contents (if any were there) are LOST in this
+# workaround. In practice no Zohara package stores anything in
+# /usr/lib/Xorg/ as a directory at ISO build time -- the canonical
+# location is /usr/lib/xorg/ (lowercase).
 #
 # This hook is auto-removed from the final ISO by the
 # zzzz99-remove-custom-hooks-from-airootfs.hook PostTransaction hook.
 
 [Trigger]
 Operation = Install
+Operation = Upgrade
 Type = Package
-Target = xorg-server
+Target = *
 
 [Action]
-Description = Pre-create /usr/lib/Xorg file so xorg-server's install doesn't conflict with xorg-server-common's /usr/lib/Xorg/ dir...
+Description = Ensure /usr/lib/Xorg is a file, not a directory, so xorg-server's install doesn't conflict...
 When = PreTransaction
 Depends = sh
 Depends = coreutils
-# If /usr/lib/Xorg exists and is a directory (placed there by xorg-server-common
-# earlier in this same transaction), remove it and create a placeholder file.
-# xorg-server's actual Xorg.wrap file will then be installed on top, and
-# --overwrite=/usr/lib/Xorg lets pacman accept that file-over-file.
+# If /usr/lib/Xorg exists and is a directory, remove it and create a
+# placeholder file. The wrapper injects --overwrite=/usr/lib/Xorg
+# which lets pacman replace this placeholder with the real file when
+# xorg-server installs.
 Exec = /bin/sh -c 'if [ -d /usr/lib/Xorg ] && [ ! -f /usr/lib/Xorg ]; then rm -rf /usr/lib/Xorg && touch /usr/lib/Xorg; fi'
