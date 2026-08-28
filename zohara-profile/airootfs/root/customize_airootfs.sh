@@ -255,23 +255,29 @@ gtk-update-icon-cache -f -q /usr/share/icons/hicolor/ || true
 echo "  -> Pre-building dynamic linker cache..."
 ldconfig
 
-# ── Install xorg-server separately (post-pacstrap) ──────────────────────
-# xorg-server 21.1.24 ships /usr/lib/Xorg/Xorg.wrap (a file) but its dep
-# xorg-server-common ships /usr/lib/Xorg/ (a directory). Installing both in
-# the same pacstrap transaction fails with `not overwriting dir with file`,
-# so we install xorg-server here, after the main pacstrap has finished.
-# By then /usr/lib/Xorg/ already exists from xorg-server-common, and
-# xorg-server's wrapper is just another file inside that directory --
-# which is a non-conflicting file-into-existing-dir operation, so pacman
-# accepts it. The post-pacstrap arch-chroot environment has access to
-# the live pacman repos (mkarchiso's default), so `pacman -Sy xorg-server`
-# downloads the single package and extracts it cleanly.
-echo "==> Zohara OS: Installing xorg-server (post-pacstrap)..."
-# --overwrite is required: xorg-server-common already created /usr/lib/Xorg/
+# ── Install xorg + sddm separately (post-pacstrap) ────────────────────
+# These three are installed after the main pacstrap transaction because:
+#   1. xorg-server-common ships /usr/lib/Xorg/ (a directory)
+#   2. xorg-server ships /usr/lib/Xorg/Xorg.wrap (a file)
+# Putting both in the same pacstrap transaction fails with:
+#   error: extract: not overwriting dir with file /usr/lib/Xorg
+# because pacman can't replace a directory with a file via --overwrite.
+#
+# Post-pacstrap, /usr/lib/Xorg/ already exists from xorg-server-common
+# (installed during pacstrap), so xorg-server's files are just files going
+# into an existing directory -- no conflict.
+#
+# sddm hard-requires xorg-server, so it must be installed after xorg-server
+# is present. Moving it out of packages.x86_64 was required so that
+# IgnorePkg=xorg-server doesn't make sddm's dependency unresolvable in the
+# pacstrap transaction.
+echo "==> Zohara OS: Installing xorg + sddm (post-pacstrap)..."
+# --overwrite is required: xorg-server-common created /usr/lib/Xorg/
 # (a directory) during pacstrap, and xorg-server ships /usr/lib/Xorg/Xorg.wrap
-# (a file). Without --overwrite pacman aborts with
-# 'not overwriting dir with file /usr/lib/Xorg'.
-pacman -Sy --noconfirm --overwrite=/usr/lib/Xorg xorg-server || \
-    echo "WARN: xorg-server post-install failed; the ISO will boot but X may not work."
+# (a file) which pacman otherwise refuses to extract over the dir.
+# We install all three together so dependency resolution is clean.
+pacman -Sy --noconfirm --overwrite=/usr/lib/Xorg \
+    xorg-server-common xorg-server sddm || \
+    echo "WARN: xorg/sddm post-install failed; the ISO will boot to TTY but X may not work."
 
 echo "==> Zohara OS: Post-install customizations complete."

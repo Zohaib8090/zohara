@@ -23,14 +23,18 @@ rsync
 python
 
 # Display Manager & DE Base
-sddm
-# xorg-server is installed separately by customize_airootfs.sh AFTER
-# pacstrap. Installing it inside the pacstrap transaction fails with
-# `error: extract: not overwriting dir with file /usr/lib/Xorg` because
-# xorg-server-common (a dep) creates /usr/lib/Xorg/ as a directory
-# first, and xorg-server then tries to install /usr/lib/Xorg/Xorg.wrap
-# as a file. The post-install step is wrapped in `|| true` because
-# some systems (e.g. headless) don't need xorg-server.
+# sddm and xorg-server are installed separately by customize_airootfs.sh AFTER
+# pacstrap. sddm hard-requires xorg-server; if we tried to install sddm in
+# the pacstrap transaction while xorg-server is in IgnorePkg, the transaction
+# would abort with "unable to satisfy dependency 'xorg-server' required by
+# sddm". So sddm is moved out too.
+#
+# The xorg-server / xorg-server-common /usr/lib/Xorg dir-vs-file conflict
+# means xorg-server cannot be in the same pacstrap transaction as
+# xorg-server-common. customize_airootfs.sh installs both post-pacstrap
+# (xorg-server-common first to create /usr/lib/Xorg/, then xorg-server
+# to drop files into it -- a non-conflicting file-into-existing-dir
+# install).
 xorg-xwayland
 wayland
 xorg-xinit
