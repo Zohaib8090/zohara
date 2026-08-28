@@ -52,7 +52,7 @@ echo "[+] Logs: docker logs -f ${CONTAINER_NAME}"
 echo "[+] Or:    tail -f $LOG_FILE"
 echo ""
 
-docker run -d --rm \
+docker run -d \
   --name "${CONTAINER_NAME}" \
   --restart unless-stopped \
   --privileged \
@@ -61,6 +61,11 @@ docker run -d --rm \
   -v "$REPO/out":/build/out \
   "${ENV_FLAGS[@]}" \
   "$IMAGE" -c '
+    # Clean up the container automatically when the build finishes (success or fail).
+    # This works with --restart unless-stopped: the policy only restarts on crash,
+    # not on clean exit, so this trap fires once the build script returns.
+    trap 'docker rm -f zohara-build >/dev/null 2>&1 || true' EXIT
+
     set -e
     export RUSTUP_HOME=/home/builder/.rustup
     export CARGO_HOME=/home/builder/.cargo
