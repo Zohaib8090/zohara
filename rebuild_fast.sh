@@ -53,7 +53,10 @@ docker run --rm --privileged \
     # 2. Run the build-iso.sh from this checkout. It will reuse work/ if the
     #    package list is unchanged, so pacstrap (~5 hrs) is skipped.
     echo "[+] Running ISO build (mkarchiso, incremental)..."
-    /build/zohara-profile/build-iso.sh
+    # Invoke with explicit 'bash' so it works even if the bind mount drops
+    # the execute bit (GitHub Actions' overlay2 sometimes does this on
+    # /build, and a missing +x would otherwise fail with EACCES).
+    bash /build/zohara-profile/build-iso.sh
 
     echo "[+] ISO build finished."
     ls -lh /build/out/*.iso 2>/dev/null || echo "WARNING: no ISO produced"
