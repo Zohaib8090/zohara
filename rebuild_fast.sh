@@ -16,16 +16,17 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="zohara-builder:latest"
 
 # Optional: set FORCE_FULL=1 in the env to force a complete rebuild.
-FORCE_FULL_FLAG=""
+ENV_FLAGS=()
 if [[ "${FORCE_FULL:-0}" == "1" ]]; then
-    FORCE_FULL_FLAG="FORCE_FULL=1"
+    ENV_FLAGS=(-e "FORCE_FULL=1")
+    echo "[i] FORCE_FULL=1 set -- this run will wipe work/ and rebuild from scratch."
 fi
 
 docker run --rm --privileged \
   --entrypoint bash \
   -v "$REPO":/build \
   -v "$REPO/out":/build/out \
-  -e "$FORCE_FULL_FLAG" \
+  "${ENV_FLAGS[@]}" \
   "$IMAGE" -c '
     set -e
     export RUSTUP_HOME=/home/builder/.rustup
