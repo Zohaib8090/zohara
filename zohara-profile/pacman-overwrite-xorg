@@ -8,15 +8,31 @@
 # pacman aborts with:
 #   error: extract: not overwriting dir with file /usr/lib/Xorg
 # --overwrite lets xorg-server-common's directory win and xorg-server's file
-# be placed inside it. This only matters for --sync/-S operations; everything
-# else passes through untouched.
+# be placed inside it.
 #
 # mkarchiso calls `pacman` by bare name, so placing this script ahead of the
 # real pacman on PATH makes pacstrap use it automatically.
 
 REAL_PACMAN="$(dirname "$(readlink -f "$0")")/pacman.real"
 
-if [[ "${1:-}" == "-S"* || "${1:-}" == "-U"* || "${1:-}" == "-Syu"* || "${1:-}" == "-Sy"* ]]; then
+# Diagnostic: log every invocation to a file in /build/out/ (mounted to host)
+# so we can verify the wrapper actually fires during a real build.
+TRACE=/build/out/.wrapper_trace.log
+{ echo "==[ $(date -Is) ]== pid=$$ argv count=$#: $*"; } >> "$TRACE" 2>/dev/null || true
+
+# Inject --overwrite if ANY arg is a sync/upgrade operation (-S, -Sy, -Syu,
+# -U, -D, etc.). pacstrap invokes pacman as:
+#   unshare pacman -b <db> -r <root> -Sy <pkgs> --config=... --cachedir=...
+# so the sync flag is NOT necessarily $1 -- we must scan all args.
+NEEDS_OVERWRITE=0
+for arg in "$@"; do
+    case "$arg" in
+        -S*|-U*) NEEDS_OVERWRITE=1 ;;
+    esac
+done
+
+if (( NEEDS_OVERWRITE )); then
+    { echo "    -> injecting --overwrite=/usr/lib/Xorg"; } >> "$TRACE" 2>/dev/null || true
     exec "$REAL_PACMAN" --overwrite=/usr/lib/Xorg "$@"
 else
     exec "$REAL_PACMAN" "$@"
