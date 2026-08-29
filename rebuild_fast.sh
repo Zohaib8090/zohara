@@ -67,20 +67,34 @@ docker run -d \
     export PATH=$CARGO_HOME/bin:$PATH
     export HOME=/home/builder
 
-    # 1. Build the Rust binaries from local source. (~4 min)
-    echo "[+] Building zohara-settings (release)..."
-    cp -r /build/zohara-settings-rs /tmp/settings
-    rm -rf /tmp/settings/target
-    (cd /tmp/settings && cargo build --release)
-    install -Dm755 /tmp/settings/target/release/zohara-settings /opt/build/zohara-settings
-    install -Dm644 /tmp/settings/data/zohara-settings.desktop /opt/build/zohara-settings.desktop
+    # 1. Build the Rust binaries from local source. By default we SKIP
+    #    the cargo build and use the prebuilt binaries baked into the
+    #    docker image at /opt/build/. The first cold cargo compile of
+    #    zohara-settings + zohara-store takes ~3 hours (heavy Rust
+    #    deps: gtk4, libadwaita, cairo, pango, etc.), so reusing the
+    #    prebuilts saves most of the build time on the first run.
+    #
+    #    Set FORCE_REBUILD=1 if you have actually changed Rust source
+    #    and need a fresh build.
+    if [[ "${FORCE_REBUILD:-0}" == "1" ]]; then
+        echo "[+] FORCE_REBUILD=1 -- rebuilding Rust binaries from source"
+        echo "[+] Building zohara-settings (release)..."
+        cp -r /build/zohara-settings-rs /tmp/settings
+        rm -rf /tmp/settings/target
+        (cd /tmp/settings && cargo build --release)
+        install -Dm755 /tmp/settings/target/release/zohara-settings /opt/build/zohara-settings
+        install -Dm644 /tmp/settings/data/zohara-settings.desktop /opt/build/zohara-settings.desktop
 
-    echo "[+] Building zohara-store (release)..."
-    cp -r /build/zohara-store-rs /tmp/store
-    rm -rf /tmp/store/target
-    (cd /tmp/store && cargo build --release)
-    install -Dm755 /tmp/store/target/release/zohara-store /opt/build/zohara-store
-    install -Dm644 /tmp/store/data/zohara-store.desktop /opt/build/zohara-store.desktop
+        echo "[+] Building zohara-store (release)..."
+        cp -r /build/zohara-store-rs /tmp/store
+        rm -rf /tmp/store/target
+        (cd /tmp/store && cargo build --release)
+        install -Dm755 /tmp/store/target/release/zohara-store /opt/build/zohara-store
+        install -Dm644 /tmp/store/data/zohara-store.desktop /opt/build/zohara-store.desktop
+    else
+        echo "[+] Using prebuilt /opt/build/zohara-settings (set FORCE_REBUILD=1 to rebuild)"
+        echo "[+] Using prebuilt /opt/build/zohara-store (set FORCE_REBUILD=1 to rebuild)"
+    fi
 
     # 2. Run the build-iso.sh from this checkout.
     echo "[+] Running ISO build (mkarchiso)..."
