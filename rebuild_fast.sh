@@ -101,7 +101,7 @@ docker run -d \
     bash /build/zohara-profile/build-iso.sh
 
     echo "[+] ISO build finished."
-    # The ISO lands at /build/zohara-profile/out/ (mkarchiso's -o flag).
+    # The ISO lands at /build/zohara-profile/out/ (mkarchiso -o flag).
     # That's on the host as zohara-profile/out/, NOT /build/out/.
     ls -lh /build/zohara-profile/out/*.iso 2>/dev/null || echo "WARNING: no ISO produced"
   ' 2>&1 | tee "$LOG_FILE"
