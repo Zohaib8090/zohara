@@ -1,0 +1,51 @@
+[package]
+name = "zohara-connectd"
+version = "0.1.0"
+edition = "2021"
+description = "Zohara OS-side companion daemon: pairs with the Zohara Companion Android app over mTLS, advertises via mDNS, and bridges phone<->desktop for clipboard, files, notifications, and telemetry."
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+# Serialization for the protocol
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# mDNS service discovery (pure-Rust, no avahi/glib dependency)
+mdns-sd = "0.11"
+# TLS with mutual auth
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pemfile = "2"
+rcgen = "0.13"
+# D-Bus for desktop notifications
+zbus = { version = "4", default-features = false, features = ["tokio"] }
+# CLI
+clap = { version = "4", features = ["derive"] }
+# Errors + logging
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Time formatting
+chrono = { version = "0.4", features = ["serde"] }
+# Filesystem paths
+dirs = "5"
+# Atomic file write
+tempfile = "3"
+
+[dev-dependencies]
+# For unit tests that need a fake clock
+tokio = { version = "1", features = ["full", "test-util"] }
+
+[[bin]]
+name = "zohara-connectd"
+path = "src/main.rs"
+
+[lib]
+name = "zohara_connectd"
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
