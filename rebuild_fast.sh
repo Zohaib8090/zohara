@@ -102,7 +102,7 @@ docker run -d \
 
     echo "[+] ISO build finished."
     # The ISO lands at /build/zohara-profile/out/ (mkarchiso -o flag).
-    # That's on the host as zohara-profile/out/, NOT /build/out/.
+    # That is on the host as zohara-profile/out/, NOT /build/out/.
     ls -lh /build/zohara-profile/out/*.iso 2>/dev/null || echo "WARNING: no ISO produced"
   ' 2>&1 | tee "$LOG_FILE"
 
@@ -112,7 +112,7 @@ echo "    docker logs -f ${CONTAINER_NAME}"
 echo "    tail -f $LOG_FILE"
 
 # SYNC_MODE: when set to 1, wait for the build to finish before returning.
-# Used by CI so the workflow doesn't proceed to validation until the ISO exists.
+# Used by CI so the workflow does not proceed to validation until the ISO exists.
 if [[ "${SYNC_MODE:-0}" == "1" ]]; then
     echo ""
     echo "[i] SYNC_MODE=1 -- waiting for build to finish..."
