@@ -56,7 +56,9 @@ jobs:
         # Use rebuild_fast.sh so the LIVE checkout (including pacman-overwrite-xorg
         # wrapper) is used, not the stale /opt/build-iso.sh baked into the image.
         # /build/zohara-profile/pacman-overwrite-xorg is the wrapper's live path.
-        bash rebuild_fast.sh
+        # SYNC_MODE=1 makes the script wait for the build to complete before
+        # returning, so the validation step below can find the produced ISO.
+        SYNC_MODE=1 bash rebuild_fast.sh
 
     - name: Validate boot files in EFI image
       run: |

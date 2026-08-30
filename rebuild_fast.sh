@@ -108,3 +108,20 @@ echo ""
 echo "[+] Build launched in background. To monitor progress:"
 echo "    docker logs -f ${CONTAINER_NAME}"
 echo "    tail -f $LOG_FILE"
+
+# SYNC_MODE: when set to 1, wait for the build to finish before returning.
+# Used by CI so the workflow doesn't proceed to validation until the ISO exists.
+if [[ "${SYNC_MODE:-0}" == "1" ]]; then
+    echo ""
+    echo "[i] SYNC_MODE=1 -- waiting for build to finish..."
+    # docker wait blocks until the container exits.
+    docker wait "${CONTAINER_NAME}"
+    exit_code=$?
+    echo ""
+    if [ $exit_code -eq 0 ]; then
+        echo "[+] Build finished successfully."
+    else
+        echo "[!] Build failed with exit code $exit_code."
+        exit $exit_code
+    fi
+fi
