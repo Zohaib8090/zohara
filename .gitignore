@@ -48,3 +48,4 @@ zohara-profile/airootfs/usr/bin/zohara-store
 # Large build logs and the prebuilt Docker image tarball (multi-GB, not source).
 docker-*.log
 zohara-builder-image.tar
+.hermes/
