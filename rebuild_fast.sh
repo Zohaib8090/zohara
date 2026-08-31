@@ -10,6 +10,7 @@
 # container and just attach to its logs (no duplicate build).
 #
 # Set FORCE_FULL=1 to force a complete rebuild from scratch.
+# Set SYNC_MODE=1 to wait for the build to finish (used by CI).
 #
 # Monitor from a separate terminal:  docker logs -f zohara-build
 # Re-run while build is in progress:  bash rebuild_fast.sh   (attaches to existing)
@@ -20,6 +21,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="zohara-builder:latest"
 CONTAINER_NAME="zohara-build"
 LOG_FILE="$REPO/out/.zohara-build.log"
+SYNC_MODE="${SYNC_MODE:-0}"
 
 # If a build container is already running, just attach to its logs.
 if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
@@ -42,12 +44,74 @@ fi
 # Ensure out/ exists for the log mount.
 mkdir -p "$REPO/out"
 
-# Launch the build in a restart-survivable container.
-# --restart unless-stopped: Docker restarts the container on host reboot.
-# --name: stable handle so re-running this script can detect it.
-# The docker run is detached (-d) so the script returns immediately.
-# The build logs to /build/out/.zohara-build.log which is bind-mounted to the host.
-echo "[+] Launching build in container '${CONTAINER_NAME}'..."
+# Launch the build.
+#
+# Two modes:
+#   - SYNC_MODE=0 (default, for local use): launch detached (-d). Script
+#     returns immediately. Use `docker logs -f zohara-build` to watch.
+#   - SYNC_MODE=1 (for CI): launch ATTACHED (no -d). The host-side stdout
+#     shows the build output in real time, and the script blocks until
+#     the build finishes. This is what makes `2>&1 | tee` actually work.
+if [[ "${SYNC_MODE}" == "1" ]]; then
+    echo "[+] Launching build (attached, will block until complete)..."
+    echo "[+] Streaming output to stdout and to: $LOG_FILE"
+    echo ""
+
+    set +e
+    docker run --rm \
+      --name "${CONTAINER_NAME}" \
+      --privileged \
+      --entrypoint bash \
+      -v "$REPO":/build \
+      -v "$REPO/out":/build/out \
+      "${ENV_FLAGS[@]}" \
+      "$IMAGE" -c '
+        set -e
+        # Force line-buffered output so the host-side sees progress in
+        # real time and a killed build leaves the partial log readable.
+        exec 1> >(stdbuf -oL cat)
+        exec 2> >(stdbuf -oL cat >&2)
+        export RUSTUP_HOME=/home/builder/.rustup
+        export CARGO_HOME=/home/builder/.cargo
+        export PATH=$CARGO_HOME/bin:$PATH
+        export HOME=/home/builder
+
+        if [[ "${FORCE_REBUILD:-0}" == "1" ]]; then
+            echo "[+] FORCE_REBUILD=1 -- rebuilding Rust binaries from source"
+            (cd /build/zohara-settings-rs && cargo build --release)
+            install -Dm755 /build/zohara-settings-rs/target/release/zohara-settings /opt/build/zohara-settings
+            install -Dm644 /build/zohara-settings-rs/data/zohara-settings.desktop /opt/build/zohara-settings.desktop
+
+            (cd /build/zohara-store-rs && cargo build --release)
+            install -Dm755 /build/zohara-store-rs/target/release/zohara-store /opt/build/zohara-store
+            install -Dm644 /build/zohara-store-rs/data/zohara-store.desktop /opt/build/zohara-store.desktop
+        else
+            echo "[+] Using prebuilt /opt/build/zohara-settings (set FORCE_REBUILD=1 to rebuild)"
+            echo "[+] Using prebuilt /opt/build/zohara-store (set FORCE_REBUILD=1 to rebuild)"
+        fi
+
+        echo "[+] Running ISO build (mkarchiso)..."
+        bash /build/zohara-profile/build-iso.sh
+
+        echo "[+] ISO build finished."
+        # The ISO lands at /build/zohara-profile/out/ (mkarchiso -o flag).
+        # That is on the host as zohara-profile/out/, NOT /build/out/.
+        ls -lh /build/zohara-profile/out/*.iso 2>/dev/null || echo "WARNING: no ISO produced"
+      ' 2>&1 | tee "$LOG_FILE"
+    exit_code=${PIPESTATUS[0]}
+    set -e
+    echo ""
+    if [ "$exit_code" -eq 0 ]; then
+        echo "[+] Build finished successfully (exit 0)."
+    else
+        echo "[!] Build failed with exit code $exit_code."
+        exit $exit_code
+    fi
+    exit 0
+fi
+
+# Local mode: detached launch.
+echo "[+] Launching build in container '${CONTAINER_NAME}' (detached)..."
 echo "[+] Logs: docker logs -f ${CONTAINER_NAME}"
 echo "[+] Or:    tail -f $LOG_FILE"
 echo ""
@@ -67,36 +131,20 @@ docker run -d \
     export PATH=$CARGO_HOME/bin:$PATH
     export HOME=/home/builder
 
-    # 1. Build the Rust binaries from local source. By default we SKIP
-    #    the cargo build and use the prebuilt binaries baked into the
-    #    docker image at /opt/build/. The first cold cargo compile of
-    #    zohara-settings + zohara-store takes ~3 hours (heavy Rust
-    #    deps: gtk4, libadwaita, cairo, pango, etc.), so reusing the
-    #    prebuilts saves most of the build time on the first run.
-    #
-    #    Set FORCE_REBUILD=1 if you have actually changed Rust source
-    #    and need a fresh build.
     if [[ "${FORCE_REBUILD:-0}" == "1" ]]; then
         echo "[+] FORCE_REBUILD=1 -- rebuilding Rust binaries from source"
-        echo "[+] Building zohara-settings (release)..."
-        cp -r /build/zohara-settings-rs /tmp/settings
-        rm -rf /tmp/settings/target
-        (cd /tmp/settings && cargo build --release)
-        install -Dm755 /tmp/settings/target/release/zohara-settings /opt/build/zohara-settings
-        install -Dm644 /tmp/settings/data/zohara-settings.desktop /opt/build/zohara-settings.desktop
+        (cd /build/zohara-settings-rs && cargo build --release)
+        install -Dm755 /build/zohara-settings-rs/target/release/zohara-settings /opt/build/zohara-settings
+        install -Dm644 /build/zohara-settings-rs/data/zohara-settings.desktop /opt/build/zohara-settings.desktop
 
-        echo "[+] Building zohara-store (release)..."
-        cp -r /build/zohara-store-rs /tmp/store
-        rm -rf /tmp/store/target
-        (cd /tmp/store && cargo build --release)
-        install -Dm755 /tmp/store/target/release/zohara-store /opt/build/zohara-store
-        install -Dm644 /tmp/store/data/zohara-store.desktop /opt/build/zohara-store.desktop
+        (cd /build/zohara-store-rs && cargo build --release)
+        install -Dm755 /build/zohara-store-rs/target/release/zohara-store /opt/build/zohara-store
+        install -Dm644 /build/zohara-store-rs/data/zohara-store.desktop /opt/build/zohara-store.desktop
     else
         echo "[+] Using prebuilt /opt/build/zohara-settings (set FORCE_REBUILD=1 to rebuild)"
         echo "[+] Using prebuilt /opt/build/zohara-store (set FORCE_REBUILD=1 to rebuild)"
     fi
 
-    # 2. Run the build-iso.sh from this checkout.
     echo "[+] Running ISO build (mkarchiso)..."
     bash /build/zohara-profile/build-iso.sh
 
@@ -104,26 +152,9 @@ docker run -d \
     # The ISO lands at /build/zohara-profile/out/ (mkarchiso -o flag).
     # That is on the host as zohara-profile/out/, NOT /build/out/.
     ls -lh /build/zohara-profile/out/*.iso 2>/dev/null || echo "WARNING: no ISO produced"
-  ' 2>&1 | tee "$LOG_FILE"
+  ' > "$LOG_FILE" 2>&1
 
 echo ""
 echo "[+] Build launched in background. To monitor progress:"
 echo "    docker logs -f ${CONTAINER_NAME}"
 echo "    tail -f $LOG_FILE"
-
-# SYNC_MODE: when set to 1, wait for the build to finish before returning.
-# Used by CI so the workflow does not proceed to validation until the ISO exists.
-if [[ "${SYNC_MODE:-0}" == "1" ]]; then
-    echo ""
-    echo "[i] SYNC_MODE=1 -- waiting for build to finish..."
-    # docker wait blocks until the container exits.
-    docker wait "${CONTAINER_NAME}"
-    exit_code=$?
-    echo ""
-    if [ $exit_code -eq 0 ]; then
-        echo "[+] Build finished successfully."
-    else
-        echo "[!] Build failed with exit code $exit_code."
-        exit $exit_code
-    fi
-fi
