@@ -167,8 +167,14 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: zohara-os-x86_64
-        path: out/*.iso
+        # Upload from the real ISO location. The symlink in out/ is
+        # there for human convenience only; uploads follow the real file
+        # to avoid symlink resolution quirks.
+        path: zohara-profile/out/*.iso
         retention-days: 7
+        if-no-files-found: error
+        compression-level: 0  # ISO is already compressed
+        overwrite: true
 
     # Only publish a GitHub Release when a version tag (v*) is pushed
     - name: Create GitHub Release
