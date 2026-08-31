@@ -69,8 +69,18 @@ jobs:
     - name: Validate boot files in EFI image
       run: |
         sudo apt-get update && sudo apt-get install -y xorriso mtools p7zip-full
-        ISO=$(ls out/*.iso | head -1)
-        echo "Inspecting ISO: $ISO"
+        # The ISO is in zohara-profile/out/ (mkarchiso's -o output).
+        # Look there directly to avoid any symlink weirdness.
+        ISO=$(ls zohara-profile/out/*.iso 2>/dev/null | head -1)
+        if [ -z "$ISO" ]; then
+          ISO=$(ls out/*.iso 2>/dev/null | head -1)
+        fi
+        if [ -z "$ISO" ]; then
+          echo "❌ FATAL: no ISO file found in zohara-profile/out/ or out/"
+          echo "Build did not produce an ISO. See the 'Build ISO' step above."
+          exit 1
+        fi
+        echo "Inspecting ISO: $ISO (size: $(stat -c %s "$ISO") bytes)"
 
         # xorriso -report_el_torito output format changed across versions; the
         # safest is to grab both "El Torito" tables and let the parser find
