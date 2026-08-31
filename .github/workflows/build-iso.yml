@@ -59,10 +59,11 @@ jobs:
         # SYNC_MODE=1 makes the script wait for the build to complete before
         # returning, so the validation step below can find the produced ISO.
         SYNC_MODE=1 bash rebuild_fast.sh
-        # Symlink the produced ISO into out/ so the next steps can find it
-        # without knowing the build's internal directory structure.
+        # After the build completes, the ISO is in zohara-profile/out/.
+        # Symlink it into out/ so the next steps (validate, upload, release)
+        # can find it without knowing the build's internal directory structure.
         if [ -d zohara-profile/out ] && ls zohara-profile/out/*.iso >/dev/null 2>&1; then
-          ln -sf "$(ls zohara-profile/out/*.iso | head -1 | xargs basename)" "out/zohara-os-x86_64.iso"
+          ln -sf "$(basename "$(ls zohara-profile/out/*.iso | head -1)")" "out/zohara-os-x86_64.iso"
         fi
 
     - name: Validate boot files in EFI image
