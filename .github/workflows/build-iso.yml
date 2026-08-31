@@ -82,41 +82,52 @@ jobs:
         fi
         echo "Inspecting ISO: $ISO (size: $(stat -c %s "$ISO") bytes)"
 
-        # xorriso -report_el_torito output format changed across versions; the
-        # safest is to grab both "El Torito" tables and let the parser find
-        # the UEFI entry. The UEFI El Torito entry is always the *last* one
-        # on a Zohara ISO (after the BIOS-boot catalog).
+        # Try JSON output first (xorriso 1.5.6+).
+        # Fall back to plain text if JSON fails. The JSON output structure
+        # is stable across xorriso versions.
         echo "=== Raw xorriso -report_el_torito output ==="
-        xorriso -indev "$ISO" -report_el_torito plain 2>&1 || \
-          xorriso -indev "$ISO" -report_el_torito 2>&1
-        RAW=$(xorriso -indev "$ISO" -report_el_torito 2>/dev/null || \
-              xorriso -indev "$ISO" -report_el_torito plain 2>/dev/null)
-        echo "$RAW"
+        JSON_OUT=$(xorriso -indev "$ISO" -report_el_torito json 2>/dev/null || true)
+        if [ -z "$JSON_OUT" ] || ! echo "$JSON_OUT" | python3 -c "import json,sys; json.load(sys.stdin)" >/dev/null 2>&1; then
+            echo "(JSON output failed; falling back to plain text)"
+            JSON_OUT=""
+            xorriso -indev "$ISO" -report_el_torito plain 2>/dev/null || \
+                xorriso -indev "$ISO" -report_el_torito 2>&1 || true
+        else
+            echo "(got JSON output)"
+            echo "$JSON_OUT" | head -20
+        fi
+        RAW=$(xorriso -indev "$ISO" -report_el_torito 2>/dev/null || echo "")
         echo "=== End raw output ==="
 
-        # Try multiple parsing strategies. Newer xorriso emits one table
-        # per boot entry, separated by blank lines; older emits one big table.
-        # Strategy 1: keyword "UEFI" anywhere.
-        LBA=$(echo "$RAW" | grep -i 'UEFI' | head -1 | grep -oE 'lba_addr[ \":=]+[0-9]+' | grep -oE '[0-9]+' | head -1)
-        BLOCKS=$(echo "$RAW" | grep -i 'UEFI' | head -1 | grep -oE 'load_size[ \":=]+[0-9]+' | grep -oE '[0-9]+' | head -1)
-        # Strategy 2: column 0/1/2 heuristics (older xorriso)
-        if [ -z "$LBA" ] || [ -z "$BLOCKS" ]; then
-          LBA=$(echo "$RAW"   | awk '/UEFI/ {print $2; exit}')
-          BLOCKS=$(echo "$RAW" | awk '/UEFI/ {print $4; exit}')
+        # Parse: prefer JSON, fall back to grep.
+        if [ -n "$JSON_OUT" ] && echo "$JSON_OUT" | python3 -c "import json,sys; json.load(sys.stdin)" >/dev/null 2>&1; then
+            LBA=$(echo "$JSON_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(e.get('lba','')) for e in d.get('system_area_entries',[]) if 'UEFI' in e.get('type','').upper()]" 2>/dev/null | head -1)
+            BLOCKS=$(echo "$JSON_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(e.get('load_size','')) for e in d.get('system_area_entries',[]) if 'UEFI' in e.get('type','').upper()]" 2>/dev/null | head -1)
         fi
-        # Strategy 3: jigit/jq on JSON (xorriso -report_el_torito json)
+        # Fallback: parse plain text. Newer xorriso emits:
+        #   "EFI image start and size: <start> * 2048 , <size> * 512"
         if [ -z "$LBA" ] || [ -z "$BLOCKS" ]; then
-          JSON=$(xorriso -indev "$ISO" -report_el_torito json 2>/dev/null || true)
-          LBA=$(echo "$JSON"   | python3 -c "import json,sys; d=json.load(sys.stdin); [print(e.get('lba','')) for e in d.get('system_area_entries',[]) if 'UEFI' in e.get('type','').upper()]" 2>/dev/null | head -1)
-          BLOCKS=$(echo "$JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(e.get('load_size','')) for e in d.get('system_area_entries',[]) if 'UEFI' in e.get('type','').upper()]" 2>/dev/null | head -1)
+            EFI_LINE=$(echo "$RAW" | grep -i "EFI image start and size" | head -1)
+            if [ -n "$EFI_LINE" ]; then
+                # Extract "<start> * <unit>" and "<size> * <unit>" then convert to 2048-byte blocks.
+                LBA=$(echo "$EFI_LINE" | sed -E 's/.*start and size:[[:space:]]+([0-9]+)[[:space:]]*\*[[:space:]]*([0-9]+)[[:space:]]*,[[:space:]]+([0-9]+)[[:space:]]*\*[[:space:]]*([0-9]+).*/\1/')
+                SIZE=$(echo "$EFI_LINE" | sed -E 's/.*start and size:[[:space:]]+([0-9]+)[[:space:]]*\*[[:space:]]*([0-9]+)[[:space:]]*,[[:space:]]+([0-9]+)[[:space:]]*\*[[:space:]]*([0-9]+).*/\3/')
+                # Convert: if size unit is 512, double the count to get 2048-blocks.
+                BLOCKS=$(( SIZE * 2 ))
+            fi
+        fi
+        # Last-resort fallback: old xorriso "El Torito images" table
+        if [ -z "$LBA" ] || [ -z "$BLOCKS" ]; then
+            LBA=$(echo "$RAW"   | awk '/UEFI/ {print $2; exit}')
+            BLOCKS=$(echo "$RAW" | awk '/UEFI/ {print $4; exit}')
         fi
         echo "UEFI EFI FAT image: LBA=$LBA, blocks=$BLOCKS"
 
         if [ -z "$LBA" ] || [ -z "$BLOCKS" ]; then
-          echo "❌ FATAL: could not parse UEFI El Torito entry from xorriso output."
-          echo "This is a validation-script issue, not an ISO issue."
-          echo "The ISO is real and bootable; see the 'Build ISO' step which succeeded."
-          exit 1
+            echo "❌ FATAL: could not parse UEFI El Torito entry from xorriso output."
+            echo "This is a validation-script issue, not an ISO issue."
+            echo "The ISO is real and bootable; see the 'Build ISO' step which succeeded."
+            exit 1
         fi
 
         mkdir -p /tmp/efi_check
