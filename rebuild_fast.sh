@@ -97,6 +97,8 @@ if [[ "${SYNC_MODE}" == "1" ]]; then
         # The ISO lands at /build/zohara-profile/out/ (mkarchiso -o flag).
         # That is on the host as zohara-profile/out/, NOT /build/out/.
         ls -lh /build/zohara-profile/out/*.iso 2>/dev/null || echo "WARNING: no ISO produced"
+        # Also copy to /build/out/ (the separate mount) for the validation step.
+        cp /build/zohara-profile/out/*.iso /build/out/zohara-os-x86_64.iso 2>/dev/null || true
       ' 2>&1 | tee "$LOG_FILE"
     exit_code=${PIPESTATUS[0]}
     set -e
