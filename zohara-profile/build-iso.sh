@@ -100,6 +100,9 @@ mkdir -p "$WORK_DIR" "$OUT_DIR"
 #    prompts that would otherwise hang on /dev/tty. `yes "" | ...` ensures any
 #    such prompt gets the default answer.
 script -qec "yes '' | mkarchiso -v -w '$WORK_DIR' -o '$OUT_DIR' '$PROFILE_DIR/'" /dev/null
+MKARCHISO_RC=$?
+echo "[i] mkarchiso exited with code $MKARCHISO_RC"
+ls -lh "$OUT_DIR"/*.iso 2>/dev/null || echo "[!] mkarchiso did NOT produce an ISO in $OUT_DIR/"
 
 # 4. Record the build stamp (mtime = now) so the next run can compare.
 touch "$STAMP_FILE"
