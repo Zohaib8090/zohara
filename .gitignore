@@ -2,6 +2,10 @@
 **/target/
 **/*.rs.bk
 
+# Cloned standalone repos (zohara-settings etc. are pulled at build time)
+zohara-settings-rs/
+zohara-store-rs/
+
 # Archiso build directories
 work/
 out/
