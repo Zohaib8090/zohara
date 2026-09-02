@@ -11,13 +11,14 @@ mkdir -p "$BUNDLE_DIR/airootfs" "$BUNDLE_DIR/profile"
 echo "[+] Packaging complete airootfs system tree and configurations..."
 
 # Copy compiled binaries into airootfs first
-# zohara-settings is now built from its own repo (cloned into /build/zohara-settings-rs
-# by rebuild_fast.sh / Dockerfile). The path layout is preserved here so the rest
-# of the bundle packaging is unchanged.
-install -Dm755 /build/zohara-settings-rs/target/release/zohara-settings /build/zohara-profile/airootfs/usr/bin/zohara-settings
-install -Dm755 /build/zohara-store-rs/target/release/zohara-store /build/zohara-profile/airootfs/usr/bin/zohara-store
-install -Dm644 /build/zohara-settings-rs/data/zohara-settings.desktop /build/zohara-profile/airootfs/usr/share/applications/zohara-settings.desktop
-install -Dm644 /build/zohara-store-rs/data/zohara-store.desktop /build/zohara-profile/airootfs/usr/share/applications/zohara-store.desktop
+# Both binaries are baked into the docker image at /opt/build/ (see the
+# Dockerfile's stage 8: cargo build, then `cp target/release/* /opt/build/`).
+# We installed zohara-settings as a single source of truth at /opt/build/
+# so the ISO build (build-iso.sh) and the update bundle use the same path.
+install -Dm755 /opt/build/zohara-settings /build/zohara-profile/airootfs/usr/bin/zohara-settings
+install -Dm755 /opt/build/zohara-store     /build/zohara-profile/airootfs/usr/bin/zohara-store
+install -Dm644 /opt/build/zohara-settings.desktop /build/zohara-profile/airootfs/usr/share/applications/zohara-settings.desktop
+install -Dm644 /opt/build/zohara-store.desktop     /build/zohara-profile/airootfs/usr/share/applications/zohara-store.desktop
 
 # Copy entire custom airootfs tree
 cp -a /build/zohara-profile/airootfs/. "$BUNDLE_DIR/airootfs/"
