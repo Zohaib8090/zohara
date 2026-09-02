@@ -227,25 +227,45 @@ done
 echo "  -> Launcher cleanup complete."
 
 # ── Setup Zohara OTA Repository ───────────────────────────────────────────────
-# The repo is written DISABLED on purpose. pacman treats an unreachable repository
-# database as a fatal error, so registering [zohara] before its zohara.db release
-# asset exists makes *every* `pacman -Sy` / `-Syu` fail on the booted system and
-# makes zohara-sync.service fail on every boot.
+# Zohara packages are published to a dedicated repo at
+#   https://github.com/Zohaib8090/zohara-packages/releases
+# which holds three release channels (stable / beta / alpha), each as a
+# separate GitHub release with its own zohara.db.
 #
-# Enable it only once a tagged release has actually published zohara.db
-# (produced by .github/workflows/build-update.yml):
-#     sudo sed -i 's/^#\[zohara\]/[zohara]/; /^\[zohara\]/,$ s/^#SigLevel/SigLevel/; /^\[zohara\]/,$ s/^#Server/Server/' /etc/pacman.conf
-echo "  -> Registering Zohara OTA repository (disabled until zohara.db is published)..."
+# The [zohara-*] sections are written DISABLED on purpose. pacman treats
+# an unreachable repository database as a fatal error, so registering
+# any [zohara-*] repo before its zohara.db is uploaded would make every
+# `pacman -Sy` fail and break the system.
+#
+# The `zohara-channel` script (in /usr/local/bin/) detects when a channel
+# has been published, uncomments the right [zohara-*] block, and refreshes
+# the database. Run it once after install:
+#     sudo zohara-channel set stable
+echo "  -> Registering Zohara OTA repositories (channels disabled by default)..."
 cat << 'REPO_EOF' >> /etc/pacman.conf
 
-# Zohara OS OTA repository.
-# Uncomment the three lines below ONLY once
-#   https://github.com/Zohaib8090/zohara/releases/latest/download/zohara.db
-# is reachable -- pacman fails all sync operations if a configured repo 404s.
-#[zohara]
+# Zohara OS OTA repositories. Each channel is a separate GitHub release at
+# https://github.com/Zohaib8090/zohara-packages/releases. Use the
+# `zohara-channel` CLI to enable one (it comments/uncomments these blocks):
+#     sudo zohara-channel set stable
+#     sudo zohara-channel set beta
+#     sudo zohara-channel set alpha
+#     sudo zohara-channel list
+#[zohara-stable]
 #SigLevel = Optional TrustAll
-#Server = https://github.com/Zohaib8090/zohara/releases/latest/download
+#Server = https://github.com/Zohaib8090/zohara-packages/releases/stable/download
+#[zohara-beta]
+#SigLevel = Optional TrustAll
+#Server = https://github.com/Zohaib8090/zohara-packages/releases/channel-beta/download
+#[zohara-alpha]
+#SigLevel = Optional TrustAll
+#Server = https://github.com/Zohaib8090/zohara-packages/releases/channel-alpha/download
 REPO_EOF
+
+# Mark the default channel in /etc/zohara/channel so zohara-channel
+# shows a sensible value on first run. The user can change it any time.
+mkdir -p /etc/zohara
+echo "stable" > /etc/zohara/channel
 
 echo "  -> Updating icon cache..."
 gtk-update-icon-cache -f -q /usr/share/icons/hicolor/ || true
