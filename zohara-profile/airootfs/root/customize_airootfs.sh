@@ -132,6 +132,15 @@ echo "  -> Enabling PipeWire audio user services..."
 systemctl --global enable pipewire.socket pipewire-pulse.socket || true
 systemctl --global enable pipewire.service pipewire-pulse.service wireplumber.service || true
 
+# ── Enable Graphical Boot (SDDM autologin → plasma desktop) ─────────────────
+# Without these, the live ISO boots to a TTY login (root prompt) instead of
+# launching the SDDM display manager with the configured autologin into
+# the plasma session. The autologin config in /etc/sddm.conf.d/ is already
+# set up; we just need to wire sddm into the boot targets.
+echo "  -> Enabling SDDM and graphical target..."
+systemctl enable sddm.service || true
+systemctl set-default graphical.target || true
+
 # ── Purge unwanted KDE apps from the system ───────────────────────────────
 echo "  -> Purging unwanted KDE apps..."
 # Only remove packages that are actually installed (avoid noisy errors for absent packages)
