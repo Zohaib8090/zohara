@@ -264,39 +264,16 @@ gtk-update-icon-cache -f -q /usr/share/icons/hicolor/ || true
 echo "  -> Pre-building dynamic linker cache..."
 ldconfig
 
-# ── Install xorg + sddm separately (post-pacstrap) ────────────────────
-# These three are installed after the main pacstrap transaction because:
-#   1. xorg-server-common ships /usr/lib/Xorg/ (a directory)
-#   2. xorg-server ships /usr/lib/Xorg/Xorg.wrap (a file)
-# Putting both in the same pacstrap transaction fails with:
-#   error: extract: not overwriting dir with file /usr/lib/Xorg
-# because pacman can't replace a directory with a file via --overwrite.
-#
-# Post-pacstrap, /usr/lib/Xorg/ already exists from xorg-server-common
-# (installed during pacstrap), so xorg-server's files are just files going
-# into an existing directory -- no conflict.
-#
-# sddm hard-requires xorg-server, so it must be installed after xorg-server
-# is present. Moving it out of packages.x86_64 was required so that
-# IgnorePkg=xorg-server doesn't make sddm's dependency unresolvable in the
-# pacstrap transaction.
-echo "==> Zohara OS: Installing xorg + sddm (post-pacstrap)..."
-# --overwrite is required: xorg-server-common created /usr/lib/Xorg/
-# (a directory) during pacstrap, and xorg-server ships /usr/lib/Xorg/Xorg.wrap
-# (a file) which pacman otherwise refuses to extract over the dir.
-# We install all three together so dependency resolution is clean.
-pacman -Sy --noconfirm --overwrite=/usr/lib/Xorg \
-    xorg-server-common xorg-server sddm || \
-    echo "WARN: xorg/sddm post-install failed; the ISO will boot to TTY but X may not work."
-
-# ── NOW that sddm is actually installed, enable it ─────────────────────────
-# This must come AFTER the post-pacstrap install above; the previous attempt
-# (line 141 before the install) was a no-op because sddm.service did not
-# exist yet on disk. Enable sddm, set the default target, and re-run the
-# ldconfig that pacman's `pacman -Sy` invalidated.
+# ── sddm + graphical.target enable ──────────────────────────────────────────
+# sddm is now installed in the pacstrap transaction (see packages.x86_64),
+# so this enable actually has a unit file to point at. Earlier the enable
+# was a silent no-op because the post-pacstrap install was failing with
+# "not enough free disk space", so sddm.service never existed on disk.
 echo "  -> Enabling sddm and switching to graphical.target..."
 systemctl enable sddm.service || true
 systemctl set-default graphical.target || true
+
+# Re-run ldconfig that pacman invalidated during pacstrap.
 ldconfig
 
 echo "==> Zohara OS: Post-install customizations complete."

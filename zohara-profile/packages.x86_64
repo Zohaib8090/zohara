@@ -23,18 +23,16 @@ rsync
 python
 
 # Display Manager & DE Base
-# sddm and xorg-server are installed separately by customize_airootfs.sh AFTER
-# pacstrap. sddm hard-requires xorg-server; if we tried to install sddm in
-# the pacstrap transaction while xorg-server is in IgnorePkg, the transaction
-# would abort with "unable to satisfy dependency 'xorg-server' required by
-# sddm". So sddm is moved out too.
-#
-# The xorg-server / xorg-server-common /usr/lib/Xorg dir-vs-file conflict
-# means xorg-server cannot be in the same pacstrap transaction as
-# xorg-server-common. customize_airootfs.sh installs both post-pacstrap
-# (xorg-server-common first to create /usr/lib/Xorg/, then xorg-server
-# to drop files into it -- a non-conflicting file-into-existing-dir
-# install).
+# sddm is the display manager; xorg-server is its hard dependency and
+# is therefore in this list too. Earlier code moved both OUT of the
+# pacstrap transaction to work around an xorg-server-common / xorg-server
+# dir-vs-file conflict, but the zzzz98-xorg-server-fix.hook now handles
+# that during the pacstrap transaction (see airootfs/etc/pacman.d/hooks/).
+# The post-pacstrap `pacman -Sy` step was failing with "not enough free
+# disk space" because the chroot's /var/cache is tiny; removing the
+# redundant post-pacstrap install is cleaner anyway.
+sddm
+xorg-server
 xorg-xwayland
 wayland
 xorg-xinit
