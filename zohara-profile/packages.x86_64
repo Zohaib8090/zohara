@@ -38,6 +38,10 @@ python
 xorg-xwayland
 wayland
 xorg-xinit
+# sddm-breeze ships the SDDM theme that sddm.conf.d/10-zohara-theme.conf
+# points at via `Current=breeze`. Without this package, sddm falls back
+# to the bundled `maui` theme and looks nothing like Zohara.
+sddm-breeze
 
 # Hardware / Drivers
 mesa

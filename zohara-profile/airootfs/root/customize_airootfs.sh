@@ -133,13 +133,13 @@ systemctl --global enable pipewire.socket pipewire-pulse.socket || true
 systemctl --global enable pipewire.service pipewire-pulse.service wireplumber.service || true
 
 # ── Enable Graphical Boot (SDDM autologin → plasma desktop) ─────────────────
-# Without these, the live ISO boots to a TTY login (root prompt) instead of
-# launching the SDDM display manager with the configured autologin into
-# the plasma session. The autologin config in /etc/sddm.conf.d/ is already
-# set up; we just need to wire sddm into the boot targets.
-echo "  -> Enabling SDDM and graphical target..."
-systemctl enable sddm.service || true
-systemctl set-default graphical.target || true
+# The sddm enable is deferred until AFTER the post-pacstrap install below,
+# because `systemctl enable sddm.service` is a silent no-op until sddm is
+# actually installed on the system. Same for any unit that depends on a
+# package not yet on disk.
+#
+# (A placeholder is set here so the order is obvious from the diff.)
+echo "  -> Graphical target will be set after xorg/sddm install."
 
 # ── Purge unwanted KDE apps from the system ───────────────────────────────
 echo "  -> Purging unwanted KDE apps..."
@@ -288,5 +288,15 @@ echo "==> Zohara OS: Installing xorg + sddm (post-pacstrap)..."
 pacman -Sy --noconfirm --overwrite=/usr/lib/Xorg \
     xorg-server-common xorg-server sddm || \
     echo "WARN: xorg/sddm post-install failed; the ISO will boot to TTY but X may not work."
+
+# ── NOW that sddm is actually installed, enable it ─────────────────────────
+# This must come AFTER the post-pacstrap install above; the previous attempt
+# (line 141 before the install) was a no-op because sddm.service did not
+# exist yet on disk. Enable sddm, set the default target, and re-run the
+# ldconfig that pacman's `pacman -Sy` invalidated.
+echo "  -> Enabling sddm and switching to graphical.target..."
+systemctl enable sddm.service || true
+systemctl set-default graphical.target || true
+ldconfig
 
 echo "==> Zohara OS: Post-install customizations complete."
