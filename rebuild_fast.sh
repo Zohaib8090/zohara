@@ -78,6 +78,13 @@ if [[ "${SYNC_MODE}" == "1" ]]; then
 
         if [[ "${FORCE_REBUILD:-0}" == "1" ]]; then
             echo "[+] FORCE_REBUILD=1 -- rebuilding Rust binaries from source"
+            # zohara-settings is now a separate repo. Clone it into /build
+            # before running cargo so the rest of this script finds it at
+            # the same /build/zohara-settings-rs path.
+            if [ ! -d /build/zohara-settings-rs ]; then
+                echo "[+] Cloning zohara-settings standalone repo..."
+                git clone --depth 1 https://github.com/Zohaib8090/zohara-settings.git /build/zohara-settings-rs
+            fi
             (cd /build/zohara-settings-rs && cargo build --release)
             install -Dm755 /build/zohara-settings-rs/target/release/zohara-settings /opt/build/zohara-settings
             install -Dm644 /build/zohara-settings-rs/data/zohara-settings.desktop /opt/build/zohara-settings.desktop
@@ -135,6 +142,11 @@ docker run -d \
 
     if [[ "${FORCE_REBUILD:-0}" == "1" ]]; then
         echo "[+] FORCE_REBUILD=1 -- rebuilding Rust binaries from source"
+        # zohara-settings now lives in https://github.com/Zohaib8090/zohara-settings
+        if [ ! -d /build/zohara-settings-rs ]; then
+            echo "[+] Cloning zohara-settings standalone repo..."
+            git clone --depth 1 https://github.com/Zohaib8090/zohara-settings.git /build/zohara-settings-rs
+        fi
         (cd /build/zohara-settings-rs && cargo build --release)
         install -Dm755 /build/zohara-settings-rs/target/release/zohara-settings /opt/build/zohara-settings
         install -Dm644 /build/zohara-settings-rs/data/zohara-settings.desktop /opt/build/zohara-settings.desktop

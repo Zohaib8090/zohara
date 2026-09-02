@@ -49,6 +49,10 @@ fi
 # --- Build the Rust binaries (only if you changed source) ---
 # This step takes ~4 min on first run. Set FORCE_REBUILD=1 to always rebuild.
 if [[ "${FORCE_REBUILD:-0}" == "1" ]]; then
+    echo "==> Cloning zohara-settings standalone repo..."
+    if [ ! -d "$REPO/zohara-settings-rs" ]; then
+        git clone --depth 1 https://github.com/Zohaib8090/zohara-settings.git "$REPO/zohara-settings-rs"
+    fi
     echo "==> FORCE_REBUILD=1 -- building zohara-settings..."
     (cd "$REPO/zohara-settings-rs" && cargo build --release)
     install -Dm755 "$REPO/zohara-settings-rs/target/release/zohara-settings" \

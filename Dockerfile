@@ -93,8 +93,13 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
     pacman -S --noconfirm gtk4 libadwaita pkgconf dbus
 
 # ── 8. Build zohara-settings & zohara-store (Rust/GTK4/libadwaita) ───────────
+# zohara-settings now lives in its own repository:
+#   https://github.com/Zohaib8090/zohara-settings
+# We clone it at build time (depth=1, no history) instead of vendoring
+# the source into this repo. To iterate on the Settings app, push to
+# zohara-settings; this repo just consumes the latest main.
 USER builder
-COPY --chown=builder:builder zohara-settings-rs /tmp/zohara-settings-rs
+RUN git clone --depth 1 https://github.com/Zohaib8090/zohara-settings.git /tmp/zohara-settings-rs
 COPY --chown=builder:builder zohara-store-rs /tmp/zohara-store-rs
 # Cache mounts: persist Cargo registry, git checkouts, AND the per-crate
 # `target/` directories across `docker build` runs. Without the target
