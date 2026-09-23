@@ -1,0 +1,13 @@
+[Unit]
+Description=Periodically check for Zohara app updates
+
+[Timer]
+# Runs shortly after login, then every 4 hours -- frequent enough that a
+# first-party update notification shows up the same day it's published,
+# without hammering the zohara-packages apps.json fetch.
+OnStartupSec=5min
+OnUnitActiveSec=4h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

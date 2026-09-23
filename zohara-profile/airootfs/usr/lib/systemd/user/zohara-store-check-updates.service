@@ -1,0 +1,6 @@
+[Unit]
+Description=Zohara Store — check for app updates and notify
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/zohara-store --check-updates

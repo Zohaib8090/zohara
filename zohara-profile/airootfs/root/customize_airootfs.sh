@@ -132,6 +132,18 @@ echo "  -> Enabling PipeWire audio user services..."
 systemctl --global enable pipewire.socket pipewire-pulse.socket || true
 systemctl --global enable pipewire.service pipewire-pulse.service wireplumber.service || true
 
+# ── Enable Zohara Store update-check timer for all user sessions ───────────
+# Ships from zohara-store-rs/data/*.{service,timer} into
+# /usr/lib/systemd/user/ (see Dockerfile step 8 / build-iso.sh step 1 for how
+# the zohara-store binary itself lands at /usr/bin/zohara-store). `--global`
+# enable is required, not per-user: this script runs once at image build
+# time, before any real user account exists, so there is no per-user
+# systemd --user instance to enable it against. `--global` instead writes the
+# symlink under /etc/systemd/user/, which every user's systemd --user picks
+# up on first login -- the same mechanism already used for pipewire above.
+echo "  -> Enabling Zohara Store update-check timer..."
+systemctl --global enable zohara-store-check-updates.timer || true
+
 # ── Enable Graphical Boot (SDDM autologin → plasma desktop) ─────────────────
 # The sddm enable is deferred until AFTER the post-pacstrap install below,
 # because `systemctl enable sddm.service` is a silent no-op until sddm is
