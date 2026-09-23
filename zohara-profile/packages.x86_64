@@ -157,6 +157,15 @@ python-dbus
 python-pydbus
 gtk4
 libadwaita
+# Built from source and added to [localrepo] by the Dockerfile (they are not
+# on any Arch/Chaotic mirror). Listing them here is what makes pacstrap
+# actually install them -- see build-iso.sh, which now fails the build if
+# packages.x86_64 and [localrepo] disagree about whether these are pacman
+# packages. Shipping them this way (rather than copying the binaries into
+# the airootfs overlay) is required for a later OTA `pacman -Syu` of either
+# package to work: pacman refuses to overwrite a file no package owns.
+zohara-settings
+zohara-store
 
 # Office, Media & Productivity
 libreoffice-fresh

@@ -10,15 +10,12 @@ mkdir -p "$BUNDLE_DIR/airootfs" "$BUNDLE_DIR/profile"
 
 echo "[+] Packaging complete airootfs system tree and configurations..."
 
-# Copy compiled binaries into airootfs first
-# Both binaries are baked into the docker image at /opt/build/ (see the
-# Dockerfile's stage 8: cargo build, then `cp target/release/* /opt/build/`).
-# We installed zohara-settings as a single source of truth at /opt/build/
-# so the ISO build (build-iso.sh) and the update bundle use the same path.
-install -Dm755 /opt/build/zohara-settings /build/zohara-profile/airootfs/usr/bin/zohara-settings
-install -Dm755 /opt/build/zohara-store     /build/zohara-profile/airootfs/usr/bin/zohara-store
-install -Dm644 /opt/build/zohara-settings.desktop /build/zohara-profile/airootfs/usr/share/applications/zohara-settings.desktop
-install -Dm644 /opt/build/zohara-store.desktop     /build/zohara-profile/airootfs/usr/share/applications/zohara-store.desktop
+# zohara-settings and zohara-store are pacman packages now (built into
+# [localrepo] by the Dockerfile, listed in packages.x86_64), not loose files
+# copied into the overlay -- see build-iso.sh. install_update.sh below
+# already does `pacman -S --needed $PKGS` from packages.x86_64, which
+# reinstalls/upgrades both from whichever [zohara-*] channel the target
+# machine has enabled, so there is nothing to stage into airootfs/ here.
 
 # Copy entire custom airootfs tree
 cp -a /build/zohara-profile/airootfs/. "$BUNDLE_DIR/airootfs/"

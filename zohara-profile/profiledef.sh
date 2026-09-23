@@ -19,8 +19,9 @@ airootfs_script="/root/customize_airootfs.sh"
 file_permissions=(
   ["/root/customize_airootfs.sh"]="0:0:755"
   ["/usr/bin/zohara-deb-engine"]="0:0:755"
-  ["/usr/bin/zohara-settings"]="0:0:755"
-  ["/usr/bin/zohara-store"]="0:0:755"
+  # zohara-settings and zohara-store are now pacman packages (installed by
+  # pacstrap from [localrepo]), so their own PKGBUILD package() already sets
+  # mode 755 -- no entry needed here.
   # NOTE: there is deliberately no entry for /usr/local/bin/customize_airootfs.sh. That file was a
   # stale Aug-5 copy of the chroot script (Plymouth watermark + pixmap only -- a strict subset of
   # what /root/customize_airootfs.sh already does), invoked by nothing, yet installed 0755 into every

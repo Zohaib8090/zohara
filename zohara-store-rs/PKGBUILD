@@ -1,0 +1,42 @@
+# Maintainer: Zohara OS Team <https://github.com/Zohaib8090/zohara>
+# PKGBUILD for zohara-store
+#
+# Packages a binary that was already built with `cargo build --release` in
+# this directory (the Dockerfile does that with cached registries), so there
+# is no source= and build() only checks the binary exists. Run makepkg with
+# --nodeps: the builder image uses rustup, not the pacman rust package.
+#
+# Shipping the store as a real package (instead of copying the binary into the
+# airootfs overlay) is what lets a later OTA `pacman -Syu` upgrade it: pacman
+# refuses to overwrite files no package owns.
+
+pkgname=zohara-store
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Zohara OS software store (GTK4 + libadwaita)"
+arch=('x86_64')
+url="https://github.com/Zohaib8090/zohara"
+license=('MIT' 'GPL-3.0-or-later')
+depends=('gtk4' 'libadwaita' 'glib2' 'pacman')
+makedepends=('cargo' 'pkgconf')
+optdepends=('flatpak: Flatpak apps' 'polkit: installing packages without a terminal')
+options=('!debug')
+source=()
+sha256sums=()
+
+pkgver() {
+  grep '^version' "$startdir/Cargo.toml" | head -1 | cut -d'"' -f2
+}
+
+build() {
+  if [ ! -f "$startdir/target/release/zohara-store" ]; then
+    echo "ERROR: run 'cargo build --release' in $startdir before makepkg" >&2
+    return 1
+  fi
+}
+
+package() {
+  install -Dm755 "$startdir/target/release/zohara-store" "$pkgdir/usr/bin/zohara-store"
+  install -Dm644 "$startdir/data/zohara-store.desktop" \
+    "$pkgdir/usr/share/applications/zohara-store.desktop"
+}

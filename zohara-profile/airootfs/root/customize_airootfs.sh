@@ -230,36 +230,42 @@ echo "  -> Launcher cleanup complete."
 # Zohara packages are published to a dedicated repo at
 #   https://github.com/Zohaib8090/zohara-packages/releases
 # which holds three release channels (stable / beta / alpha), each as a
-# separate GitHub release with its own zohara.db.
+# separate GitHub release whose assets are a zohara.db + the .pkg.tar.zst
+# files (see zohara-packages/.github/workflows/publish.yml).
 #
-# The [zohara-*] sections are written DISABLED on purpose. pacman treats
-# an unreachable repository database as a fatal error, so registering
-# any [zohara-*] repo before its zohara.db is uploaded would make every
-# `pacman -Sy` fail and break the system.
+# ONE [zohara] section, not one per channel. pacman looks up a package by
+# the *repo name* it was installed from ($repo in Server=), so if each
+# channel were its own repo name, switching channels would leave every
+# already-installed Zohara package looking like it belongs to a repo that's
+# no longer enabled -- `pacman -Syu` would then never upgrade it. A single
+# repo name with a Server URL that zohara-channel rewrites avoids that.
 #
-# The `zohara-channel` script (in /usr/local/bin/) detects when a channel
-# has been published, uncomments the right [zohara-*] block, and refreshes
-# the database. Run it once after install:
+# The URL shape matters: pacman fetches "<Server>/<repo>.db" and
+# "<Server>/<pkgname>...", and a GitHub release asset's real URL is
+# "/releases/download/<tag>/<asset>" -- NOT "/releases/<tag>/download/<asset>"
+# (that shape 404s; it was wrong in every version of this file before
+# 2026-09-23, which is the entire reason zohara-channel's `pacman -Sy` has
+# never worked). "download/<tag>" without the literal segment "download"
+# after "releases" also 404s. <tag> is "stable" for the stable channel, or
+# "channel-<name>" for beta/alpha (see zohara-packages/README.md).
+#
+# Written DISABLED on purpose: pacman treats an unreachable repository
+# database as fatal, so enabling this before a channel has a published
+# zohara.db would make every `pacman -Sy` fail. Run once after install:
 #     sudo zohara-channel set stable
-echo "  -> Registering Zohara OTA repositories (channels disabled by default)..."
+echo "  -> Registering the Zohara OTA repository (disabled by default)..."
 cat << 'REPO_EOF' >> /etc/pacman.conf
 
-# Zohara OS OTA repositories. Each channel is a separate GitHub release at
-# https://github.com/Zohaib8090/zohara-packages/releases. Use the
-# `zohara-channel` CLI to enable one (it comments/uncomments these blocks):
+# Zohara OS OTA repository. `zohara-channel` rewrites the Server= line to
+# point at whichever channel's GitHub release you select, then enables this
+# section and runs `pacman -Sy`:
 #     sudo zohara-channel set stable
 #     sudo zohara-channel set beta
 #     sudo zohara-channel set alpha
 #     sudo zohara-channel list
-#[zohara-stable]
+#[zohara]
 #SigLevel = Optional TrustAll
-#Server = https://github.com/Zohaib8090/zohara-packages/releases/stable/download
-#[zohara-beta]
-#SigLevel = Optional TrustAll
-#Server = https://github.com/Zohaib8090/zohara-packages/releases/channel-beta/download
-#[zohara-alpha]
-#SigLevel = Optional TrustAll
-#Server = https://github.com/Zohaib8090/zohara-packages/releases/channel-alpha/download
+#Server = https://github.com/Zohaib8090/zohara-packages/releases/download/stable
 REPO_EOF
 
 # Mark the default channel in /etc/zohara/channel so zohara-channel

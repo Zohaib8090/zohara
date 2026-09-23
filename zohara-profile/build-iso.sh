@@ -44,18 +44,27 @@ ln -sf "$(command -v pacman)" "$_WRAP_DIR/pacman.real"
 install -Dm755 "$PROFILE_DIR/pacman-overwrite-xorg" "$_WRAP_DIR/pacman"
 export PATH="$_WRAP_DIR:$PATH"
 
-# 1. Stage the prebuilt binaries into the airootfs.
-install -Dm755 /opt/build/zohara-settings \
-    "$PROFILE_DIR/airootfs/usr/bin/zohara-settings"
-install -Dm755 /opt/build/zohara-store \
-    "$PROFILE_DIR/airootfs/usr/bin/zohara-store"
-rm -f "$PROFILE_DIR/airootfs/usr/local/bin/zohara-settings" \
-      "$PROFILE_DIR/airootfs/usr/local/bin/zohara-store"
-install -Dm644 /opt/build/zohara-settings.desktop \
-    "$PROFILE_DIR/airootfs/usr/share/applications/zohara-settings.desktop"
-install -Dm644 /opt/build/zohara-store.desktop \
-    "$PROFILE_DIR/airootfs/usr/share/applications/zohara-store.desktop"
+# 1. zohara-settings and zohara-store now ship as real pacman packages from
+#    [localrepo] (see Dockerfile stage 8 and packages.x86_64), installed by
+#    pacstrap like any other package. Remove any stale loose-file copies from
+#    an old checkout: leaving them in the overlay would make pacstrap's
+#    package install fail with "exists in filesystem" (pacman refuses to
+#    overwrite a file that isn't owned by the package providing it), and a
+#    loose copy is also invisible to pacman -- a later `pacman -Syu` of
+#    either package on an installed system would never touch it.
+rm -f "$PROFILE_DIR/airootfs/usr/bin/zohara-settings" \
+      "$PROFILE_DIR/airootfs/usr/bin/zohara-store" \
+      "$PROFILE_DIR/airootfs/usr/local/bin/zohara-settings" \
+      "$PROFILE_DIR/airootfs/usr/local/bin/zohara-store" \
+      "$PROFILE_DIR/airootfs/usr/share/applications/zohara-settings.desktop" \
+      "$PROFILE_DIR/airootfs/usr/share/applications/zohara-store.desktop"
 rm -rf "$PROFILE_DIR/airootfs/usr/share/zohara-store"
+if ! grep -qx 'zohara-settings' "$PROFILE_DIR/packages.x86_64" || \
+   ! grep -qx 'zohara-store' "$PROFILE_DIR/packages.x86_64"; then
+    echo "[!] zohara-settings/zohara-store missing from packages.x86_64 -- the" >&2
+    echo "    Dockerfile builds them into [localrepo] but nothing would install them." >&2
+    exit 1
+fi
 
 # 2. Decide whether to reuse work/ (fast incremental) or wipe (full rebuild).
 #

@@ -107,33 +107,38 @@ COPY --chown=builder:builder zohara-store-rs /tmp/zohara-store-rs
 # every dependency in both crates -- on this codebase that is ~1m30s of
 # wasted compilation per build, even for a one-line tweak.
 #
-# IMPORTANT: cache mounts are only valid for the duration of a single
-# `docker build` step. They do NOT survive into a `docker run` container,
-# so the binaries in /tmp/zohara-*-rs/target/release/ are NOT visible to
-# the ENTRYPOINT. We therefore copy the built artifacts to /opt/build/
-# (a real path on the image filesystem) after the build, so the ENTRYPOINT
-# below can install them into the airootfs overlay.
+# Only the registry/git download caches are mounted; target/ stays on the
+# image layer so the makepkg step below can package the binaries.
 RUN --mount=type=cache,target=/home/builder/.cargo/registry,uid=1000,sharing=locked \
     --mount=type=cache,target=/home/builder/.cargo/git,uid=1000,sharing=locked \
     cd /tmp/zohara-settings-rs && /home/builder/.cargo/bin/cargo build --release && \
     cd /tmp/zohara-store-rs && /home/builder/.cargo/bin/cargo build --release
 
-# /opt is owned by root, so we cannot create /opt/build while still USER
-# builder. Switch to root just for the install step. The build artifacts
-# in /tmp/zohara-*-rs/target/release/ are committed to this layer by
-# the `cargo build --release` above, so they are visible here.
+# Package both apps as real pacman packages and add them to the local repo,
+# so pacstrap installs them (packages.x86_64 lists zohara-settings and
+# zohara-store). They used to be copied into the airootfs overlay as loose
+# files, which made every later OTA `pacman -Syu` of those packages fail with
+# "exists in filesystem" -- pacman will not overwrite files no package owns.
+#
+# Both PKGBUILDs package the binary cargo just built in the same directory.
+# --nodeps because the image uses rustup, not the pacman `rust` package.
 #
 # Note: we do NOT mount /tmp/zohara-*-rs/target/ as a BuildKit cache. A
 # cache mount is a *directory snapshot* that does not persist into the
-# image layer; the next RUN step would find the directory empty. The
-# cargo registry / git cache mounts are fine because they live under
-# $CARGO_HOME which is only used as a download cache.
+# image layer; the next RUN step would find the directory empty.
+# The settings PKGBUILD's pkgver() reads _PKGVER (makepkg runs pkgver() inside
+# $srcdir, where Cargo.toml is not reachable by a relative path).
+RUN cd /tmp/zohara-settings-rs && \
+    _PKGVER="$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)" \
+        makepkg --nodeps --nocheck --noconfirm && \
+    cd /tmp/zohara-store-rs    && makepkg --nodeps --nocheck --noconfirm
+
 USER root
-RUN mkdir -p /opt/build && \
-    cp /tmp/zohara-settings-rs/target/release/zohara-settings /opt/build/ && \
-    cp /tmp/zohara-store-rs/target/release/zohara-store     /opt/build/ && \
-    cp /tmp/zohara-settings-rs/data/zohara-settings.desktop  /opt/build/ && \
-    cp /tmp/zohara-store-rs/data/zohara-store.desktop        /opt/build/
+RUN cp /tmp/zohara-settings-rs/zohara-settings-*.pkg.tar.zst \
+       /tmp/zohara-store-rs/zohara-store-*.pkg.tar.zst /opt/localrepo/ && \
+    repo-add /opt/localrepo/localrepo.db.tar.gz \
+       /opt/localrepo/zohara-settings-*.pkg.tar.zst \
+       /opt/localrepo/zohara-store-*.pkg.tar.zst
 
 # ── 9. Entry point ────────────────────────────────────────────────────────────
 # set -euo pipefail so that:

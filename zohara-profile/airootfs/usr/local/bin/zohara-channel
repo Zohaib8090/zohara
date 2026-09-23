@@ -3,11 +3,10 @@
 #
 # The Zohara Packages repo at https://github.com/Zohaib8090/zohara-packages
 # has three release channels, each as a separate GitHub release with its own
-# zohara.db. This script:
-#
-#   1. Reads / writes the channel setting to /etc/zohara/channel
-#   2. Updates /etc/pacman.conf to enable only the matching [zohara-*] repo
-#   3. Calls pacman -Sy to refresh the package database
+# zohara.db. There is a single [zohara] section in /etc/pacman.conf (see
+# customize_airootfs.sh for why it's one repo name, not one per channel);
+# this script rewrites its Server= line to the selected channel's release
+# and enables the section if it's still commented out.
 #
 # Usage:
 #   zohara-channel                  # show current channel
@@ -20,13 +19,13 @@ set -euo pipefail
 
 CHANNEL_FILE="/etc/zohara/channel"
 PACMAN_CONF="/etc/pacman.conf"
-REPO_BASE="https://github.com/Zohaib8090/zohara-packages/releases"
+REPO_BASE="https://github.com/Zohaib8090/zohara-packages/releases/download"
 
-repo_name() {
+release_tag() {
     case "$1" in
-        stable) echo "zohara-stable" ;;
-        beta)   echo "zohara-beta" ;;
-        alpha)  echo "zohara-alpha" ;;
+        stable) echo "stable" ;;
+        beta)   echo "channel-beta" ;;
+        alpha)  echo "channel-alpha" ;;
         *) echo "ERROR: unknown channel '$1'" >&2; return 1 ;;
     esac
 }
@@ -41,106 +40,53 @@ current_channel() {
 
 show_current() {
     local cur="$(current_channel)"
-    printf "Current channel: %s  (repo: [%s])\n" "$cur" "$(repo_name "$cur")"
+    printf "Current channel: %s  (%s)\n" "$cur" "$REPO_BASE/$(release_tag "$cur")"
 }
 
-write_pacman_repo() {
-    local target="$1"
-    local repo_section="[${target}]"
-
-    # Ensure the header line is enabled (uncommented), then ensure the
-    # SigLevel + Server lines under it are also enabled. We do this with
-    # simple sed: uncomment the lines that begin with #<expected>
-    # immediately following the section header.
-
-    # 1) Enable the section header
-    sed -i "s|^#\[${target}\]|\[${target}\]|" "$PACMAN_CONF" 2>/dev/null || true
-    # 2) Within the block (until the next blank line or next [section]),
-    #    uncomment SigLevel = ... and Server = ... lines that match.
-    #    Use awk for state-machine clarity.
-    awk -v section="$repo_section" '
-        /^\[.*\]$/ {
-            in_block = ($0 == section)
-        }
-        in_block && /^#SigLevel[[:space:]]*=.*/ {
-            sub(/^#/, "")
-        }
-        in_block && /^#Server[[:space:]]*=.*/ {
-            sub(/^#/, "")
-        }
-        { print }
-    ' "$PACMAN_CONF" > "$PACMAN_CONF.tmp" && mv "$PACMAN_CONF.tmp" "$PACMAN_CONF"
-}
-
-disable_other_repos() {
-    # Comment out any [zohara-*] section other than the one we just enabled.
-    local keep="$1"
-    local cur_section=""
-    awk -v keep="$keep" '
-        /^\[.*\]$/ {
-            cur_section = $0
-            gsub(/[\[\]]/, "", cur_section)
-            if (cur_section ~ /^zohara-/ && cur_section != keep) {
-                # Rewrite this section header back to commented
-                print "#[" cur_section "]"
-                commenting = 1
-                next
-            } else if (cur_section ~ /^zohara-/) {
-                commenting = 0
-                print
-                next
-            } else {
-                commenting = 0
-                print
-                next
-            }
-        }
-        commenting && /^SigLevel[[:space:]]*=/ { print "#" $0; next }
-        commenting && /^Server[[:space:]]*=/   { print "#" $0; next }
-        { print }
-    ' "$PACMAN_CONF" > "$PACMAN_CONF.tmp" && mv "$PACMAN_CONF.tmp" "$PACMAN_CONF"
-}
-
+# Rewrite the [zohara] section in place: uncomment the header + SigLevel +
+# Server lines if needed, and point Server at the given tag's release.
 set_channel() {
-    local new="$1"
-    local repo
-    repo="$(repo_name "$new")" || exit 1
+    local new="$1" tag
+    tag="$(release_tag "$new")" || exit 1
 
-    # 1) Persist the choice
+    if ! grep -qE '^#?\[zohara\]$' "$PACMAN_CONF"; then
+        echo "ERROR: no [zohara] section found in $PACMAN_CONF" >&2
+        echo "       (expected one, written disabled, by customize_airootfs.sh)" >&2
+        exit 1
+    fi
+
+    awk -v tag="$tag" -v base="$REPO_BASE" '
+        /^#?\[zohara\]$/               { in_block = 1; print "[zohara]"; next }
+        in_block && /^#?SigLevel[[:space:]]*=/ { print "SigLevel = Optional TrustAll"; next }
+        in_block && /^#?Server[[:space:]]*=/    { print "Server = " base "/" tag; in_block = 0; next }
+        { print }
+    ' "$PACMAN_CONF" > "$PACMAN_CONF.tmp" && mv "$PACMAN_CONF.tmp" "$PACMAN_CONF"
+
     mkdir -p "$(dirname "$CHANNEL_FILE")"
     echo "$new" > "$CHANNEL_FILE"
 
-    # 2) Update pacman.conf
-    write_pacman_repo "$repo"
-    disable_other_repos "$repo"
-
-    # 3) Refresh the package database
     echo "[+] Refreshing package databases for channel '$new'..."
     if pacman -Sy 2>&1 | tail -5; then
-        echo "[✓] Switched to channel '$new' (repo [$repo])."
+        echo "[OK] Switched to channel '$new'."
     else
-        echo "[!] pacman -Sy failed. The repo URL may not have zohara.db yet."
-        echo "    This is normal on a fresh install where no package has been published yet."
-        echo "    Run 'zohara-channel list' to see channel status."
+        echo "[!] pacman -Sy failed. The channel may not have a published zohara.db yet."
+        echo "    Run 'zohara-channel list' to probe every channel's status."
     fi
 }
 
 list_channels() {
     echo "Available Zohara OS update channels:"
     for ch in stable beta alpha; do
-        local repo
-        repo="$(repo_name "$ch")"
-        local url="${REPO_BASE}/$( [ "$ch" = "stable" ] && echo "stable" || echo "channel-$ch" )/download/zohara.db"
-        local status="(unknown)"
-        # Probe: does the channel have a published zohara.db?
-        if curl -sI -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null | grep -q '^200$'; then
+        local tag url status marker=""
+        tag="$(release_tag "$ch")"
+        url="$REPO_BASE/$tag/zohara.db"
+        if curl -sIL -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null | grep -q '^200$'; then
             status="available"
         else
             status="no packages yet"
         fi
-        local marker=""
         [ "$ch" = "$(current_channel)" ] && marker=" *"
-        printf "  %-7s [%s]  %-20s%s\n" "$ch" "$repo" "$status" "$marker"
+        printf "  %-7s [%s]  %-20s%s\n" "$ch" "$tag" "$status" "$marker"
     done
 }
 

@@ -77,7 +77,7 @@ if [[ "${SYNC_MODE}" == "1" ]]; then
         export HOME=/home/builder
 
         if [[ "${FORCE_REBUILD:-0}" == "1" ]]; then
-            echo "[+] FORCE_REBUILD=1 -- rebuilding Rust binaries from source"
+            echo "[+] FORCE_REBUILD=1 -- rebuilding + repackaging zohara-settings/zohara-store"
             # zohara-settings is now a separate repo. Clone it into /build
             # before running cargo so the rest of this script finds it at
             # the same /build/zohara-settings-rs path.
@@ -85,16 +85,23 @@ if [[ "${SYNC_MODE}" == "1" ]]; then
                 echo "[+] Cloning zohara-settings standalone repo..."
                 git clone --depth 1 https://github.com/Zohaib8090/zohara-settings.git /build/zohara-settings-rs
             fi
-            (cd /build/zohara-settings-rs && cargo build --release)
-            install -Dm755 /build/zohara-settings-rs/target/release/zohara-settings /opt/build/zohara-settings
-            install -Dm644 /build/zohara-settings-rs/data/zohara-settings.desktop /opt/build/zohara-settings.desktop
+            (cd /build/zohara-settings-rs && cargo build --release && \
+                _PKGVER="$(grep "^version" Cargo.toml | head -1 | cut -d\" -f2)" \
+                    makepkg --nodeps --nocheck --noconfirm --force)
+            (cd /build/zohara-store-rs && cargo build --release && \
+                makepkg --nodeps --nocheck --noconfirm --force)
 
-            (cd /build/zohara-store-rs && cargo build --release)
-            install -Dm755 /build/zohara-store-rs/target/release/zohara-store /opt/build/zohara-store
-            install -Dm644 /build/zohara-store-rs/data/zohara-store.desktop /opt/build/zohara-store.desktop
+            # Both packages ship from [localrepo] now (see the Dockerfile),
+            # not as loose files copied into the airootfs overlay -- so a
+            # rebuild has to re-add them to the repo database or pacstrap
+            # will keep installing the image'"'"'s stale baked-in version.
+            cp /build/zohara-settings-rs/zohara-settings-*.pkg.tar.zst \
+               /build/zohara-store-rs/zohara-store-*.pkg.tar.zst /opt/localrepo/
+            repo-add /opt/localrepo/localrepo.db.tar.gz \
+               /opt/localrepo/zohara-settings-*.pkg.tar.zst \
+               /opt/localrepo/zohara-store-*.pkg.tar.zst
         else
-            echo "[+] Using prebuilt /opt/build/zohara-settings (set FORCE_REBUILD=1 to rebuild)"
-            echo "[+] Using prebuilt /opt/build/zohara-store (set FORCE_REBUILD=1 to rebuild)"
+            echo "[+] Using the packages already baked into [localrepo] (set FORCE_REBUILD=1 to rebuild)"
         fi
 
         echo "[+] Running ISO build (mkarchiso)..."
@@ -141,22 +148,25 @@ docker run -d \
     export HOME=/home/builder
 
     if [[ "${FORCE_REBUILD:-0}" == "1" ]]; then
-        echo "[+] FORCE_REBUILD=1 -- rebuilding Rust binaries from source"
+        echo "[+] FORCE_REBUILD=1 -- rebuilding + repackaging zohara-settings/zohara-store"
         # zohara-settings now lives in https://github.com/Zohaib8090/zohara-settings
         if [ ! -d /build/zohara-settings-rs ]; then
             echo "[+] Cloning zohara-settings standalone repo..."
             git clone --depth 1 https://github.com/Zohaib8090/zohara-settings.git /build/zohara-settings-rs
         fi
-        (cd /build/zohara-settings-rs && cargo build --release)
-        install -Dm755 /build/zohara-settings-rs/target/release/zohara-settings /opt/build/zohara-settings
-        install -Dm644 /build/zohara-settings-rs/data/zohara-settings.desktop /opt/build/zohara-settings.desktop
+        (cd /build/zohara-settings-rs && cargo build --release && \
+            _PKGVER="$(grep "^version" Cargo.toml | head -1 | cut -d\" -f2)" \
+                makepkg --nodeps --nocheck --noconfirm --force)
+        (cd /build/zohara-store-rs && cargo build --release && \
+            makepkg --nodeps --nocheck --noconfirm --force)
 
-        (cd /build/zohara-store-rs && cargo build --release)
-        install -Dm755 /build/zohara-store-rs/target/release/zohara-store /opt/build/zohara-store
-        install -Dm644 /build/zohara-store-rs/data/zohara-store.desktop /opt/build/zohara-store.desktop
+        cp /build/zohara-settings-rs/zohara-settings-*.pkg.tar.zst \
+           /build/zohara-store-rs/zohara-store-*.pkg.tar.zst /opt/localrepo/
+        repo-add /opt/localrepo/localrepo.db.tar.gz \
+           /opt/localrepo/zohara-settings-*.pkg.tar.zst \
+           /opt/localrepo/zohara-store-*.pkg.tar.zst
     else
-        echo "[+] Using prebuilt /opt/build/zohara-settings (set FORCE_REBUILD=1 to rebuild)"
-        echo "[+] Using prebuilt /opt/build/zohara-store (set FORCE_REBUILD=1 to rebuild)"
+        echo "[+] Using the packages already baked into [localrepo] (set FORCE_REBUILD=1 to rebuild)"
     fi
 
     echo "[+] Running ISO build (mkarchiso)..."
