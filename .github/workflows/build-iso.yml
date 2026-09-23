@@ -35,12 +35,25 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-buildx-
 
+    - name: Resolve zohara-settings HEAD SHA
+      id: settings-sha
+      run: |
+        # Busts the Dockerfile's git-clone layer cache (see the ARG comment
+        # in Dockerfile) so a push to zohara-settings always reaches the
+        # next ISO build instead of possibly being served from a cached
+        # layer that still has an older clone.
+        sha=$(git ls-remote https://github.com/Zohaib8090/zohara-settings.git main | cut -f1)
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+        echo "Resolved zohara-settings main to $sha"
+
     - name: Build Docker builder image
       uses: docker/build-push-action@v5
       with:
         context: .
         load: true
         tags: zohara-builder:latest
+        build-args: |
+          ZOHARA_SETTINGS_SHA=${{ steps.settings-sha.outputs.sha }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 

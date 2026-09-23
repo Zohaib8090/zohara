@@ -98,8 +98,21 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
 # We clone it at build time (depth=1, no history) instead of vendoring
 # the source into this repo. To iterate on the Settings app, push to
 # zohara-settings; this repo just consumes the latest main.
+#
+# ZOHARA_SETTINGS_SHA exists purely to bust Docker's layer cache: the RUN
+# below has identical text on every build, so without something upstream
+# of it changing, BuildKit (and a plain local `docker build`, which caches
+# layers too) will reuse a cached clone from a previous build forever --
+# a push to zohara-settings would silently NOT reach the ISO. Passing the
+# current `main` SHA as a build-arg makes this layer's cache key change
+# whenever zohara-settings moves. The build invocation (build-iso.yml,
+# scripts/build-iso-wsl.sh) is responsible for resolving and passing it;
+# `unknown` here is just a default for a manual `docker build` with no
+# --build-arg, which still works, just without the cache-bust guarantee.
+ARG ZOHARA_SETTINGS_SHA=unknown
 USER builder
-RUN git clone --depth 1 https://github.com/Zohaib8090/zohara-settings.git /tmp/zohara-settings-rs
+RUN echo "zohara-settings @ ${ZOHARA_SETTINGS_SHA}" && \
+    git clone --depth 1 https://github.com/Zohaib8090/zohara-settings.git /tmp/zohara-settings-rs
 COPY --chown=builder:builder zohara-store-rs /tmp/zohara-store-rs
 # Cache mounts: persist Cargo registry, git checkouts, AND the per-crate
 # `target/` directories across `docker build` runs. Without the target

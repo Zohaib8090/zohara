@@ -133,7 +133,16 @@ echo "  customize_airootfs.sh parses"
 
 # ── 4. Build the builder image ────────────────────────────────────────────────
 log "Building $IMAGE image (compiles calamares + debtap from AUR and both Rust crates)"
-docker build -t "$IMAGE" "$BUILD_DIR" 2>&1 | tee /tmp/zohara-image.log | tail -5
+# Resolve zohara-settings' current main SHA and pass it as a build-arg so
+# Docker's layer cache can't serve a stale `git clone` from a previous local
+# build (see the ZOHARA_SETTINGS_SHA comment in Dockerfile) — without this,
+# a push to zohara-settings would not reach an ISO rebuilt on this machine
+# once the image had been built here once before.
+settings_sha=$(git ls-remote https://github.com/Zohaib8090/zohara-settings.git main | cut -f1)
+echo "  zohara-settings main: ${settings_sha:-<could not resolve, using cached layer>}"
+docker build \
+    --build-arg "ZOHARA_SETTINGS_SHA=${settings_sha:-unknown}" \
+    -t "$IMAGE" "$BUILD_DIR" 2>&1 | tee /tmp/zohara-image.log | tail -5
 docker image inspect "$IMAGE" >/dev/null 2>&1 || die "image build failed — see /tmp/zohara-image.log"
 
 if [ "${1:-}" = "--image-only" ]; then
