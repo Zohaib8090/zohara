@@ -5,8 +5,9 @@ use glib;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::app_info::{get_curated_apps, AppCategory, AppInfo};
+use crate::app_info::{get_curated_apps, AppCategory, AppInfo, AppSource};
 use crate::backend::{self, InstalledCache};
+use crate::updates::{self, PendingUpdate};
 
 const CSS: &str = r#"
 .nav-bar {
@@ -177,12 +178,17 @@ pub fn build() -> gtk4::Widget {
     games_btn.add_css_class("nav-pill");
     games_btn.set_group(Some(&home_btn));
 
+    let updates_btn = gtk4::ToggleButton::with_label("Updates");
+    updates_btn.add_css_class("nav-pill");
+    updates_btn.set_group(Some(&home_btn));
+
     let nav = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
     nav.set_hexpand(true);
     nav.set_halign(gtk4::Align::Center);
     nav.append(&home_btn);
     nav.append(&apps_btn);
     nav.append(&games_btn);
+    nav.append(&updates_btn);
     header.set_title_widget(Some(&nav));
 
     // Search toggle
@@ -216,16 +222,19 @@ pub fn build() -> gtk4::Widget {
     let apps_page = build_browse_page(false, cache.clone());
     let games_page = build_browse_page(true, cache.clone());
     let (search_page, search_list_box) = build_search_page();
+    let updates_page = build_updates_page();
 
-    stack.add_named(&home_page,   Some("home"));
-    stack.add_named(&apps_page,   Some("apps"));
-    stack.add_named(&games_page,  Some("games"));
-    stack.add_named(&search_page, Some("search"));
+    stack.add_named(&home_page,    Some("home"));
+    stack.add_named(&apps_page,    Some("apps"));
+    stack.add_named(&games_page,   Some("games"));
+    stack.add_named(&search_page,  Some("search"));
+    stack.add_named(&updates_page, Some("updates"));
 
     // Nav wiring
     let s = stack.clone(); home_btn.connect_toggled(move |b| { if b.is_active() { s.set_visible_child_name("home"); } });
     let s = stack.clone(); apps_btn.connect_toggled(move |b| { if b.is_active() { s.set_visible_child_name("apps"); } });
     let s = stack.clone(); games_btn.connect_toggled(move |b| { if b.is_active() { s.set_visible_child_name("games"); } });
+    let s = stack.clone(); updates_btn.connect_toggled(move |b| { if b.is_active() { s.set_visible_child_name("updates"); } });
 
     // Search wiring
     let stack_s = stack.clone();
@@ -539,6 +548,185 @@ fn build_search_page() -> (gtk4::Widget, gtk4::ListBox) {
     clamp.set_child(Some(&inner));
     scroll.set_child(Some(&clamp));
     (scroll.upcast(), list_box)
+}
+
+// ── Updates Page ─────────────────────────────────────────────────────────────
+// Real update detection against zohara-packages' apps.json vs. what pacman
+// actually has installed (crate::updates), not a mockup. First-party apps
+// (publisher == "Zohara OS Team") always notified; third-party apps here
+// get a per-app "Notify me" switch. Installing records the pre-update
+// version so a later "Restore previous version" has something to roll
+// back to via `pacman -U` against the cached or re-downloaded package --
+// see crate::updates for why that's the whole mechanism (no custom
+// snapshot system needed).
+fn build_updates_page() -> gtk4::Widget {
+    let scroll = gtk4::ScrolledWindow::new();
+    scroll.set_vexpand(true);
+    scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
+
+    let clamp = adw::Clamp::new();
+    clamp.set_maximum_size(820);
+    clamp.set_margin_top(16);
+    clamp.set_margin_bottom(24);
+    clamp.set_margin_start(16);
+    clamp.set_margin_end(16);
+
+    let inner = gtk4::Box::new(gtk4::Orientation::Vertical, 14);
+
+    let lbl = gtk4::Label::new(Some("Updates"));
+    lbl.add_css_class("page-title");
+    lbl.set_xalign(0.0);
+    inner.append(&lbl);
+
+    let list_box = gtk4::ListBox::new();
+    list_box.set_widget_name("main-listbox");
+    list_box.add_css_class("boxed-list");
+    list_box.set_selection_mode(gtk4::SelectionMode::None);
+
+    let checking = adw::ActionRow::new();
+    checking.set_title("Checking for updates…");
+    list_box.append(&checking);
+
+    inner.append(&list_box);
+    clamp.set_child(Some(&inner));
+    scroll.set_child(Some(&clamp));
+
+    // Same background-thread + polling-timeout pattern the search box
+    // already uses: check_for_updates() shells out to curl/pacman, so it
+    // must not run on the GTK main thread.
+    let list_box_bg = list_box.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let pending = updates::check_for_updates();
+        let _ = tx.send(pending);
+    });
+    glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
+        match rx.try_recv() {
+            Ok(pending) => {
+                populate_updates_list(&list_box_bg, pending);
+                glib::ControlFlow::Break
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+        }
+    });
+
+    scroll.upcast()
+}
+
+fn populate_updates_list(list_box: &gtk4::ListBox, pending: Vec<PendingUpdate>) {
+    while let Some(child) = list_box.first_child() {
+        list_box.remove(&child);
+    }
+    if pending.is_empty() {
+        let row = adw::ActionRow::new();
+        row.set_title("Everything is up to date");
+        list_box.append(&row);
+        return;
+    }
+    for update in pending {
+        list_box.append(&build_update_row(update));
+    }
+}
+
+fn build_update_row(update: PendingUpdate) -> adw::ActionRow {
+    let row = adw::ActionRow::new();
+    row.set_title(&update.app.name);
+    row.set_subtitle(&format!(
+        "{} \u{2192} {}{}",
+        update.installed_version,
+        update.app.current_version,
+        if update.is_first_party { " · Zohara OS" } else { "" },
+    ));
+    row.add_prefix(&create_app_icon(&update.app.id, &update.app.id, 32));
+
+    // Third-party apps: opt-in per-app notify toggle. First-party always
+    // notifies, so no toggle is shown for those (nothing to opt into).
+    if !update.is_first_party {
+        let notify_switch = gtk4::Switch::new();
+        notify_switch.set_active(updates::notify_enabled(&update.app.id));
+        notify_switch.set_valign(gtk4::Align::Center);
+        let app_id = update.app.id.clone();
+        notify_switch.connect_active_notify(move |sw| {
+            updates::set_notify_enabled(&app_id, sw.is_active());
+        });
+        row.add_suffix(&notify_switch);
+    }
+
+    let install_btn = gtk4::Button::with_label("Update");
+    install_btn.add_css_class("suggested-action");
+    install_btn.set_valign(gtk4::Align::Center);
+    let app_id = update.app.id.clone();
+    let package = update.app.package.clone();
+    let installed_version = update.installed_version.clone();
+    let btn_for_handler = install_btn.clone();
+    install_btn.connect_clicked(move |_| {
+        btn_for_handler.set_sensitive(false);
+        btn_for_handler.set_label("Updating…");
+        updates::record_pre_update_version(&app_id, &installed_version);
+        let package = package.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let ok = backend::install_app(&AppSource::Pacman, &package);
+            let _ = tx.send(ok);
+        });
+        let btn = btn_for_handler.clone();
+        glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
+            match rx.try_recv() {
+                Ok(ok) => {
+                    btn.set_label(if ok { "Updated" } else { "Failed" });
+                    glib::ControlFlow::Break
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+            }
+        });
+    });
+    row.add_suffix(&install_btn);
+
+    // If we have a recorded previous version for this app that isn't the
+    // one it's currently on, a rollback is possible -- offer it.
+    if let Some(prev) = updates::previous_version(&update.app.id) {
+        if prev != update.app.current_version {
+            let restore_btn = gtk4::Button::with_label("Restore previous");
+            restore_btn.set_valign(gtk4::Align::Center);
+            let app = update.app.clone();
+            let prev_for_click = prev.clone();
+            restore_btn.connect_clicked(move |btn| {
+                btn.set_sensitive(false);
+                let package = app.package.clone();
+                let version = prev_for_click.clone();
+                let download_url = app
+                    .versions
+                    .iter()
+                    .find(|v| v.version == prev_for_click)
+                    .map(|v| v.download_url.clone());
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let result = updates::restore_previous_version(
+                        &package,
+                        &version,
+                        download_url.as_deref(),
+                    );
+                    let _ = tx.send(result.is_ok());
+                });
+                let btn = btn.clone();
+                glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
+                    match rx.try_recv() {
+                        Ok(ok) => {
+                            btn.set_label(if ok { "Restored" } else { "Restore failed" });
+                            glib::ControlFlow::Break
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+                    }
+                });
+            });
+            row.add_suffix(&restore_btn);
+        }
+    }
+
+    row
 }
 
 // ── Populate List ─────────────────────────────────────────────────────────────

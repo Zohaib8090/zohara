@@ -1,12 +1,23 @@
 pub mod app_info;
 pub mod backend;
 pub mod ui;
+pub mod updates;
 
 use gtk4::prelude::*;
 use libadwaita as adw;
 use adw::prelude::*;
 
 fn main() {
+    // Headless mode for a systemd user timer: check for updates and fire
+    // desktop notifications without opening any window. This is what makes
+    // "notify even when the Store isn't open" real, rather than only
+    // checking when someone happens to launch the app.
+    if std::env::args().any(|a| a == "--check-updates") {
+        let pending = updates::check_for_updates();
+        updates::notify_pending_updates(&pending);
+        return;
+    }
+
     let app = adw::Application::builder()
         .application_id("org.zohara.store")
         .build();
