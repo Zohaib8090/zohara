@@ -101,7 +101,13 @@ If you encounter a `failed to synchronize all databases (unable to lock database
 sudo rm -rf ~/Documents/my/zohara/work/ ~/Documents/my/zohara/out/
 
 # Step 2: Rebuild the Docker builder image
-docker build -t zohara-builder ~/Documents/my/zohara
+# The --build-arg is required: without it, Docker's layer cache can serve a
+# stale `git clone` of zohara-settings from a previous local build on this
+# machine, so a push to zohara-settings would silently not reach the ISO.
+# See the ZOHARA_SETTINGS_SHA comment in Dockerfile for why.
+settings_sha=$(git ls-remote https://github.com/Zohaib8090/zohara-settings.git main | cut -f1)
+docker build --build-arg "ZOHARA_SETTINGS_SHA=${settings_sha:-unknown}" \
+  -t zohara-builder ~/Documents/my/zohara
 
 # Step 3: Run the ISO build container
 sudo docker run --rm --name zohara-build \

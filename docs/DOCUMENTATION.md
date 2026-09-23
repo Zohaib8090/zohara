@@ -114,7 +114,11 @@ Async backend calls (D-Bus invocations for NetworkManager, BlueZ, Power Profiles
 sudo rm -rf ~/Documents/my/zohara/work/ ~/Documents/my/zohara/out/
 
 # 2. Build Docker container image
-docker build -t zohara-builder ~/Documents/my/zohara
+# --build-arg busts the layer cache for zohara-settings' git-clone step —
+# see the ZOHARA_SETTINGS_SHA comment in Dockerfile.
+settings_sha=$(git ls-remote https://github.com/Zohaib8090/zohara-settings.git main | cut -f1)
+docker build --build-arg "ZOHARA_SETTINGS_SHA=${settings_sha:-unknown}" \
+  -t zohara-builder ~/Documents/my/zohara
 
 # 3. Execute ISO build inside container
 sudo docker run --rm --name zohara-build \
