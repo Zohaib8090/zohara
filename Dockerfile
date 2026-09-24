@@ -129,7 +129,9 @@ COPY --chown=builder:builder zohara-store-rs /tmp/zohara-store-rs
 RUN --mount=type=cache,target=/home/builder/.cargo/registry,uid=1000,sharing=locked \
     --mount=type=cache,target=/home/builder/.cargo/git,uid=1000,sharing=locked \
     cd /tmp/zohara-settings-rs && /home/builder/.cargo/bin/cargo build --release && \
-    cd /tmp/zohara-store-rs && /home/builder/.cargo/bin/cargo build --release
+    cd /tmp/zohara-store-rs && /home/builder/.cargo/bin/cargo build --release && \
+    PATH=/home/builder/.cargo/bin:$PATH makepkg --nodeps --nocheck --skippgpcheck && \
+    mv /tmp/zohara-store-rs/zohara-store-*.pkg.tar.zst /tmp/zohara-store.pkg.tar.zst
 
 # /opt is owned by root, so we cannot create /opt/build while still USER
 # builder. Switch to root just for the install step. The build artifacts
@@ -144,9 +146,8 @@ RUN --mount=type=cache,target=/home/builder/.cargo/registry,uid=1000,sharing=loc
 USER root
 RUN mkdir -p /opt/build && \
     cp /tmp/zohara-settings-rs/target/release/zohara-settings /opt/build/ && \
-    cp /tmp/zohara-store-rs/target/release/zohara-store     /opt/build/ && \
-    cp /tmp/zohara-settings-rs/data/zohara-settings.desktop  /opt/build/ && \
-    cp /tmp/zohara-store-rs/data/zohara-store.desktop        /opt/build/
+    cp /tmp/zohara-store.pkg.tar.zst                         /opt/build/ && \
+    cp /tmp/zohara-settings-rs/data/zohara-settings.desktop  /opt/build/
 
 # ── 9. Entry point ────────────────────────────────────────────────────────────
 # set -euo pipefail so that:

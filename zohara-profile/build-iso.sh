@@ -47,14 +47,15 @@ export PATH="$_WRAP_DIR:$PATH"
 # 1. Stage the prebuilt binaries into the airootfs.
 install -Dm755 /opt/build/zohara-settings \
     "$PROFILE_DIR/airootfs/usr/bin/zohara-settings"
-install -Dm755 /opt/build/zohara-store \
-    "$PROFILE_DIR/airootfs/usr/bin/zohara-store"
-rm -f "$PROFILE_DIR/airootfs/usr/local/bin/zohara-settings" \
+# zohara-store ships as a real pacman package, installed by customize_airootfs.sh via
+# `pacman -U`, so pacman owns its files and can update it later without conflicts.
+install -Dm644 /opt/build/zohara-store.pkg.tar.zst \
+    "$PROFILE_DIR/airootfs/root/zohara-store.pkg.tar.zst"
+rm -f "$PROFILE_DIR/airootfs/usr/bin/zohara-store" \
+      "$PROFILE_DIR/airootfs/usr/local/bin/zohara-settings" \
       "$PROFILE_DIR/airootfs/usr/local/bin/zohara-store"
 install -Dm644 /opt/build/zohara-settings.desktop \
     "$PROFILE_DIR/airootfs/usr/share/applications/zohara-settings.desktop"
-install -Dm644 /opt/build/zohara-store.desktop \
-    "$PROFILE_DIR/airootfs/usr/share/applications/zohara-store.desktop"
 rm -rf "$PROFILE_DIR/airootfs/usr/share/zohara-store"
 
 # 2. Decide whether to reuse work/ (fast incremental) or wipe (full rebuild).

@@ -30,6 +30,7 @@ build() {
 package() {
   install -Dm755 "$startdir/target/release/zohara-store" "$pkgdir/usr/bin/zohara-store"
   install -Dm644 "$startdir/data/zohara-store.desktop" "$pkgdir/usr/share/applications/zohara-store.desktop"
+  install -Dm644 "$startdir/data/zohara-store.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/zohara-store.svg"
   install -Dm644 "$startdir/data/zohara-store-check-updates.service" "$pkgdir/usr/lib/systemd/user/zohara-store-check-updates.service"
   install -Dm644 "$startdir/data/zohara-store-check-updates.timer" "$pkgdir/usr/lib/systemd/user/zohara-store-check-updates.timer"
 }

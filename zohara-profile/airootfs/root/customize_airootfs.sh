@@ -12,6 +12,19 @@ echo "==> Zohara OS: Running post-install customizations..."
 chmod +x /usr/local/bin/zohara-* 2>/dev/null || true
 echo "  -> Zohara binaries marked executable."
 
+# ── Install Zohara Store as a real pacman package ──────────────────────────
+# Must run before anything that needs its unit files (the timer enable below).
+# The package (built in the Dockerfile, staged by build-iso.sh) owns the binary,
+# .desktop, icon and update-check units, so later `pacman -S zohara-store`
+# upgrades don't hit "exists in filesystem" conflicts.
+if [[ -f /root/zohara-store.pkg.tar.zst ]]; then
+    echo "  -> Installing zohara-store package..."
+    pacman -U --noconfirm --needed /root/zohara-store.pkg.tar.zst
+    rm -f /root/zohara-store.pkg.tar.zst
+else
+    echo "  !! zohara-store.pkg.tar.zst missing; Software Store will not be installed."
+fi
+
 LOGO_SRC="/etc/calamares/branding/zohara/logo.png"
 
 # ── Plymouth Boot Logo ─────────────────────────────────────────────────────

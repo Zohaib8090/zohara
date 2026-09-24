@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=Software Store
-Comment=Discover and install applications on Zohara OS
-Exec=zohara-store
-Icon=zohara-store
-Terminal=false
-Type=Application
-Categories=System;Settings;
-StartupNotify=true
