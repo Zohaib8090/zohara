@@ -14,7 +14,7 @@ optdepends=(
   'libnotify: update notifications'
   'pacman-contrib: cache cleanup (paccache)'
 )
-options=(!lto)
+options=(!lto !debug)
 source=()
 sha256sums=()
 
