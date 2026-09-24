@@ -60,6 +60,9 @@ install -Dm644 /opt/build/zohara-settings.desktop \
 for unit in zohara-settings-health.service zohara-settings-health.timer; do
     install -Dm644 "/opt/build/$unit" "$PROFILE_DIR/airootfs/usr/lib/systemd/user/$unit"
 done
+# Voice typing: whisper.cpp, its model, the Meta+H shortcut and uinput access,
+# laid out in the target filesystem's shape by the Dockerfile (steps 7b and 8).
+cp -a /opt/build/dictation-root/. "$PROFILE_DIR/airootfs/"
 rm -rf "$PROFILE_DIR/airootfs/usr/share/zohara-store"
 
 # 2. Decide whether to reuse work/ (fast incremental) or wipe (full rebuild).

@@ -174,6 +174,11 @@ systemctl --global enable zohara-store-check-updates.timer || true
 echo "  -> Enabling Zohara health-check timer..."
 systemctl --global enable zohara-settings-health.timer || true
 
+# Voice typing (Meta+H) types into the focused app through ydotoold, which
+# runs per user and reaches /dev/uinput via 70-zohara-uinput.rules.
+echo "  -> Enabling ydotool for voice typing..."
+systemctl --global enable ydotool.service || true
+
 # ── Enable Graphical Boot (SDDM autologin → plasma desktop) ─────────────────
 # The sddm enable is deferred until AFTER the post-pacstrap install below,
 # because `systemctl enable sddm.service` is a silent no-op until sddm is

@@ -19,6 +19,7 @@ install -Dm755 /opt/build/zohara-settings /build/zohara-profile/airootfs/usr/bin
 # zohara-store is a pacman package now; unpack its payload (skipping .PKGINFO etc.) into the overlay.
 bsdtar -xf /opt/build/zohara-store.pkg.tar.zst -C /build/zohara-profile/airootfs --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
 install -Dm644 /opt/build/zohara-settings.desktop /build/zohara-profile/airootfs/usr/share/applications/zohara-settings.desktop
+cp -a /opt/build/dictation-root/. /build/zohara-profile/airootfs/
 
 # Copy entire custom airootfs tree
 cp -a /build/zohara-profile/airootfs/. "$BUNDLE_DIR/airootfs/"

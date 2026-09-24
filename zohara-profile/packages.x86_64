@@ -206,3 +206,6 @@ geoclue
 speech-dispatcher
 espeak-ng
 orca
+# Voice typing (Settings > Accessibility > Voice typing, Meta+H)
+wl-clipboard
+ydotool
