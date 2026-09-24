@@ -17,7 +17,7 @@ echo "[+] Packaging complete airootfs system tree and configurations..."
 # so the ISO build (build-iso.sh) and the update bundle use the same path.
 install -Dm755 /opt/build/zohara-settings /build/zohara-profile/airootfs/usr/bin/zohara-settings
 # zohara-store is a pacman package now; unpack its payload (skipping .PKGINFO etc.) into the overlay.
-bsdtar -xf /opt/build/zohara-store.pkg.tar.zst -C /build/zohara-profile/airootfs --exclude='^\.*'
+bsdtar -xf /opt/build/zohara-store.pkg.tar.zst -C /build/zohara-profile/airootfs --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
 install -Dm644 /opt/build/zohara-settings.desktop /build/zohara-profile/airootfs/usr/share/applications/zohara-settings.desktop
 
 # Copy entire custom airootfs tree
