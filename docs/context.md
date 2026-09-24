@@ -34,6 +34,10 @@ Zohara OS is an independent, custom Arch Linux-based distribution built with `mk
   - `apps`: Installed application management.
   - `time_language`: Clock, timezone, and locale settings.
   - `privacy`, `accessibility`, `gaming`, `advanced`: Additional settings sections.
+  - `printers`: CUPS queues, options, test page, driverless network printers (`avahi-browse` + `lpadmin -m everywhere` via pkexec).
+  - `troubleshoot`: health checks (`backend/health.rs`), logs and crash reports under `~/.local/state/zohara`; `zohara-settings-health.timer` runs `--health-check` in the background.
+  - Voice typing: `zohara-settings --dictate` (Meta+H, `zohara-dictation.desktop`): `parecord` -> whisper.cpp -> `wl-copy` + `ydotool` paste. The Dockerfile builds whisper.cpp (AVX2 and baseline) and ships the model under `/usr/share/zohara/dictation`.
+  - Most pages target Plasma 6 Wayland (`kscreen-doctor`, `kglobalaccel`, KWin InputDevice, `powerdevilrc`), not GNOME/X11 tools. Details: `zohara-settings/docs/UI-REDESIGN.md`.
 * **Packaging & CI**:
   - `.github/workflows/build-iso.yml`: Builds the ISO via the `zohara-builder` Docker image, validates the UEFI boot payload, and publishes a Release on `v*` tags.
   - `.github/workflows/build-update.yml`: Builds the `zohara-system` OTA package and `zohara.db` repository database, published as Release assets.

@@ -9,6 +9,9 @@ Zohara is an Arch-based Linux distribution that trades Linux's usual friction fo
 ## Highlights
 
 - **A desktop that looks and behaves like Windows.** The Zohara Settings app is a custom GTK4 + libadwaita application built to mirror the Windows 11 Settings layout — left rail navigation, card groups, and a Windows 11 visual theme throughout.
+- **Settings that change real system state.** Every page is backed by Plasma 6 (Wayland), NetworkManager, BlueZ, CUPS and friends: display layout, sound with left/right speaker test, Bluetooth pairing, network with a built-in speed test, storage, accounts, default apps, gaming (Game Mode, MangoHud), printers, offline maps (Organic Maps) and websites as apps.
+- **Voice typing, entirely offline.** Press Meta+H, speak, and the text is typed where your cursor is. Speech recognition runs locally with whisper.cpp and a multilingual model shipped in the ISO.
+- **Problems reported, not hidden.** Settings keeps a log and crash reports, checks system health in the background (failed services, full disk, pending reboot) and offers one-click fixes on the Troubleshoot page.
 - **Linux Zen kernel.** Tuned for desktop and gaming workloads rather than server throughput.
 - **Working NVIDIA out of the box.** The ISO ships `nvidia-open-dkms`, so supported NVIDIA GPUs work on first boot with no manual driver installation.
 - **OTA updates for Zohara software.** Settings, the Zohara Store, and future first-party apps update through a pacman-style package repository with stable, beta, and alpha channels — no waiting for the next ISO.
