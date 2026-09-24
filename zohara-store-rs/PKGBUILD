@@ -1,0 +1,35 @@
+# Maintainer: Zohara OS Team <https://github.com/Zohaib8090/zohara>
+# Built by .github/workflows/build-store.yml; local test: makepkg -si
+pkgname=zohara-store
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Zohara OS app store and update center (GTK4 + libadwaita)"
+arch=('x86_64')
+url="https://github.com/Zohaib8090/zohara"
+license=('GPL-3.0-or-later')
+depends=('gtk4' 'libadwaita' 'glib2' 'curl' 'polkit')
+makedepends=('rust' 'cargo' 'pkgconf')
+optdepends=(
+  'flatpak: Flatpak app support'
+  'libnotify: update notifications'
+  'pacman-contrib: cache cleanup (paccache)'
+)
+options=(!lto)
+source=()
+sha256sums=()
+
+pkgver() {
+  grep '^version' "$startdir/Cargo.toml" | head -1 | cut -d'"' -f2
+}
+
+build() {
+  cd "$startdir"
+  cargo build --release --locked
+}
+
+package() {
+  install -Dm755 "$startdir/target/release/zohara-store" "$pkgdir/usr/bin/zohara-store"
+  install -Dm644 "$startdir/data/zohara-store.desktop" "$pkgdir/usr/share/applications/zohara-store.desktop"
+  install -Dm644 "$startdir/data/zohara-store-check-updates.service" "$pkgdir/usr/lib/systemd/user/zohara-store-check-updates.service"
+  install -Dm644 "$startdir/data/zohara-store-check-updates.timer" "$pkgdir/usr/lib/systemd/user/zohara-store-check-updates.timer"
+}

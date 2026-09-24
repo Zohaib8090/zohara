@@ -1,0 +1,133 @@
+name: Build & Publish Zohara Store
+
+# Same pipeline as zohara-settings: build -> makepkg -> upload to the channel
+# release in zohara-packages -> dispatch its publish.yml (repo-add + apps.json).
+# Packages zohara-store-rs; other changes do not trigger it.
+#
+# Channel mapping: master -> stable, beta -> beta, manual dispatch -> any.
+
+on:
+  push:
+    branches: [master, beta]
+    paths:
+      - 'zohara-store-rs/**'
+      - '.github/workflows/build-store.yml'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Release channel'
+        required: true
+        type: choice
+        options: [stable, beta, alpha]
+
+env:
+  CARGO_TERM_COLOR: always
+  PACKAGES_REPO: Zohaib8090/zohara-packages
+  PKG: zohara-store
+
+jobs:
+  build:
+    name: Build + package + publish
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    permissions:
+      contents: write
+    steps:
+      - name: Install Arch build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel git rust sudo github-cli gtk4 libadwaita glib2 curl polkit pkgconf
+          useradd -m builder || true
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Determine channel
+        id: channel
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CH="${{ github.event.inputs.channel }}"
+          elif [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            CH="stable"
+          elif [ "${{ github.ref }}" = "refs/heads/beta" ]; then
+            CH="beta"
+          else
+            echo "::error::Unknown ref ${{ github.ref }}; refusing to publish"
+            exit 1
+          fi
+          echo "channel=$CH" >> "$GITHUB_OUTPUT"
+
+      - name: Compute version
+        id: version
+        run: |
+          VER=$(grep '^version' zohara-store-rs/Cargo.toml | head -1 | cut -d'"' -f2)
+          [ -n "$VER" ] || { echo "::error::Could not read version from Cargo.toml"; exit 1; }
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      # The PKGBUILD's build() runs `cargo build --release --locked`, so
+      # makepkg is also the compile check.
+      - name: Run makepkg
+        run: |
+          chown -R builder:builder .
+          cd zohara-store-rs
+          sudo -u builder makepkg --nocheck --skippgpcheck
+          PKG_FILE=$(ls *.pkg.tar.zst | head -1)
+          echo "package_file=$PKG_FILE" >> "$GITHUB_ENV"
+          echo "package_path=zohara-store-rs/$PKG_FILE" >> "$GITHUB_ENV"
+
+      - name: Upload to channel release in zohara-packages
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::PACKAGES_DISPATCH_TOKEN not set; package is only in the build artifact."
+            exit 0
+          fi
+          if [ "$CHANNEL" = "stable" ]; then TAG="stable"; else TAG="channel-$CHANNEL"; fi
+          if ! gh release view "$TAG" --repo "$PACKAGES_REPO" >/dev/null 2>&1; then
+            PRE=$([ "$CHANNEL" != "stable" ] && echo "--prerelease" || echo "")
+            gh release create "$TAG" --repo "$PACKAGES_REPO" \
+              --title "Zohara Packages — $CHANNEL" \
+              --notes "Auto-managed Arch package repository for the **$CHANNEL** channel." $PRE || true
+          fi
+          gh release upload "$TAG" "${{ env.package_path }}" --repo "$PACKAGES_REPO" --clobber \
+            || echo "::warning::Upload failed; package is in the build artifact."
+          echo "release_tag=$TAG" >> "$GITHUB_ENV"
+
+      - name: Dispatch to zohara-packages publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
+          VER: ${{ steps.version.outputs.version }}
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+        run: |
+          if [ -z "$GH_TOKEN" ] || [ -z "${{ env.release_tag }}" ]; then
+            echo "::notice::Skipping dispatch (no token or no release upload)."
+            exit 0
+          fi
+          ARTIFACT_URL="https://github.com/$PACKAGES_REPO/releases/download/${{ env.release_tag }}/${{ env.package_file }}"
+          curl -fsSL -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$PACKAGES_REPO/dispatches" \
+            -d "{
+              \"event_type\": \"package-published\",
+              \"client_payload\": {
+                \"package_name\": \"$PKG\",
+                \"version\": \"$VER\",
+                \"artifact_url\": \"$ARTIFACT_URL\",
+                \"run_id\": \"${{ github.run_id }}\",
+                \"source_repo\": \"Zohaib8090/zohara\",
+                \"artifact_name\": \"zohara-store-arch-x86_64\",
+                \"pkg_filename\": \"${{ env.package_file }}\",
+                \"channel\": \"$CHANNEL\"
+              }
+            }" || echo "::warning::Dispatch failed; run publish.yml manually."
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zohara-store-arch-x86_64
+          path: ${{ env.package_path }}
