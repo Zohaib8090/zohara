@@ -185,3 +185,24 @@ kwallet-pam
 ca-certificates
 attica
 knewstuff
+
+# Printing (Settings > Printers): CUPS with driverless IPP printers found over mDNS
+cups
+cups-filters
+cups-pk-helper
+nss-mdns
+
+# Gaming (Settings > Gaming). 64-bit only: multilib is not enabled.
+gamemode
+mangohud
+
+# VPN (Settings > Network > VPN)
+networkmanager-openvpn
+
+# Location services (Settings > Privacy > Location)
+geoclue
+
+# Speech (Settings > Accessibility/Speech): text-to-speech and screen reader
+speech-dispatcher
+espeak-ng
+orca

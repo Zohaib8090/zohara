@@ -97,6 +97,14 @@ systemctl enable power-profiles-daemon.service || true
 systemctl enable NetworkManager.service || true
 systemctl enable zohara-sync.service || true
 
+# Printing: socket-activated CUPS, plus Avahi so network printers are found,
+# and mDNS name resolution so their "printer.local" addresses resolve.
+systemctl enable cups.socket || true
+systemctl enable avahi-daemon.service || true
+if ! grep -q "mdns_minimal" /etc/nsswitch.conf; then
+    sed -i 's/^\(hosts:.*\) resolve/\1 mdns_minimal [NOTFOUND=return] resolve/' /etc/nsswitch.conf
+fi
+
 # `systemctl enable bluetooth` only creates bluetooth.target.wants/, and bluetooth.target is activated
 # by udev when an adapter appears (99-systemd.rules: SUBSYSTEM=="bluetooth" -> SYSTEMD_WANTS). The
 # retired overlay file additionally forced bluetoothd from multi-user.target; keep that behaviour --
