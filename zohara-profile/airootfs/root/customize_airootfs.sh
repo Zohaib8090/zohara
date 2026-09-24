@@ -19,7 +19,11 @@ echo "  -> Zohara binaries marked executable."
 # upgrades don't hit "exists in filesystem" conflicts.
 if [[ -f /root/zohara-store.pkg.tar.zst ]]; then
     echo "  -> Installing zohara-store package..."
-    pacman -U --noconfirm --needed /root/zohara-store.pkg.tar.zst
+    # Inside the build chroot pacman cannot resolve the root mount point, so CheckSpace
+    # aborts with "not enough free disk space". Use a one-off config without it.
+    grep -v '^CheckSpace' /etc/pacman.conf > /tmp/pacman-nocheckspace.conf
+    pacman --config /tmp/pacman-nocheckspace.conf -U --noconfirm --needed /root/zohara-store.pkg.tar.zst
+    rm -f /tmp/pacman-nocheckspace.conf
     rm -f /root/zohara-store.pkg.tar.zst
 else
     echo "  !! zohara-store.pkg.tar.zst missing; Software Store will not be installed."
