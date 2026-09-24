@@ -169,6 +169,11 @@ systemctl --global enable pipewire.service pipewire-pulse.service wireplumber.se
 echo "  -> Enabling Zohara Store update-check timer..."
 systemctl --global enable zohara-store-check-updates.timer || true
 
+# Background health check: notifies the user when a service fails, the disk
+# fills up, a restart is needed after an update, etc. (zohara-settings).
+echo "  -> Enabling Zohara health-check timer..."
+systemctl --global enable zohara-settings-health.timer || true
+
 # ── Enable Graphical Boot (SDDM autologin → plasma desktop) ─────────────────
 # The sddm enable is deferred until AFTER the post-pacstrap install below,
 # because `systemctl enable sddm.service` is a silent no-op until sddm is

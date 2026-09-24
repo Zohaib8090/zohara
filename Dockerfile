@@ -147,7 +147,9 @@ USER root
 RUN mkdir -p /opt/build && \
     cp /tmp/zohara-settings-rs/target/release/zohara-settings /opt/build/ && \
     cp /tmp/zohara-store.pkg.tar.zst                         /opt/build/ && \
-    cp /tmp/zohara-settings-rs/data/zohara-settings.desktop  /opt/build/
+    cp /tmp/zohara-settings-rs/data/zohara-settings.desktop  /opt/build/ && \
+    cp /tmp/zohara-settings-rs/data/zohara-settings-health.service \
+       /tmp/zohara-settings-rs/data/zohara-settings-health.timer /opt/build/
 
 # ── 9. Entry point ────────────────────────────────────────────────────────────
 # set -euo pipefail so that:
