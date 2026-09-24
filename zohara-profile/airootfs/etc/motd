@@ -5,7 +5,7 @@ Get started:
   sudo calamares          - launch the graphical installer
   zohara-settings         - open the Zohara Settings app
   zohara-store            - open the Zohara Software Store
-  zohara-usermgr          - create a new user account
+  zohara-settings --page Accounts - manage user accounts
 
 Help and docs:
   https://github.com/Zohaib8090/zohara

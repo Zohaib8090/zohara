@@ -146,13 +146,8 @@ polkit-kde-agent
 yay
 pyside6
 qt6-declarative
-# Required by the shipped PyQt5 GUI tools: zohara-welcome (autostarted on every
-# desktop login), zohara-usermgr (app menu entry), zohara-migrate and
-# zohara-update. Without this the ISO contains zero PyQt5 files and all four die
-# instantly with "ModuleNotFoundError: No module named 'PyQt5'".
-# TODO: these tools would ideally be ported to the already-present pyside6 so the
-# image doesn't carry both Qt5 and Qt6 stacks.
-python-pyqt5
+# (python-pyqt5 removed: zohara-welcome and zohara-migrate are Rust/GTK now,
+# and account/update management lives in Zohara Settings.)
 python-dbus
 python-pydbus
 gtk4

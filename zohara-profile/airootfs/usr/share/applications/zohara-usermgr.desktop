@@ -2,11 +2,11 @@
 Name=User Manager
 GenericName=Manage User Accounts
 Comment=Create and manage system user accounts
-Exec=/usr/local/bin/zohara-usermgr
+Exec=zohara-settings --page Accounts
 Icon=system-users
 Terminal=false
 Type=Application
-Categories=Settings;System;Qt;
+Categories=Settings;System;
 Keywords=user;account;password;create;
 X-KDE-System-Settings-Parent-Category=users
 X-KDE-System-Settings-Category=users

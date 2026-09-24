@@ -56,6 +56,10 @@ rm -f "$PROFILE_DIR/airootfs/usr/bin/zohara-store" \
       "$PROFILE_DIR/airootfs/usr/local/bin/zohara-store"
 install -Dm644 /opt/build/zohara-settings.desktop \
     "$PROFILE_DIR/airootfs/usr/share/applications/zohara-settings.desktop"
+# Welcome app and migration tool (Rust; profiledef.sh sets their permissions).
+for tool in zohara-welcome zohara-migrate; do
+    install -Dm755 "/opt/build/$tool" "$PROFILE_DIR/airootfs/usr/local/bin/$tool"
+done
 # Background health check (enabled for every user in customize_airootfs.sh).
 for unit in zohara-settings-health.service zohara-settings-health.timer; do
     install -Dm644 "/opt/build/$unit" "$PROFILE_DIR/airootfs/usr/lib/systemd/user/$unit"

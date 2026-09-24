@@ -143,6 +143,8 @@ USER builder
 RUN echo "zohara-settings @ ${ZOHARA_SETTINGS_SHA}" && \
     git clone --depth 1 https://github.com/Zohaib8090/zohara-settings.git /tmp/zohara-settings-rs
 COPY --chown=builder:builder zohara-store-rs /tmp/zohara-store-rs
+# zohara-welcome: the welcome app and migration tool (replaced four PyQt5 scripts).
+COPY --chown=builder:builder zohara-welcome /tmp/zohara-welcome-rs
 # Cache mounts: persist Cargo registry, git checkouts, AND the per-crate
 # `target/` directories across `docker build` runs. Without the target
 # mounts, every change to a single .rs file forces a full cold rebuild of
@@ -158,6 +160,7 @@ COPY --chown=builder:builder zohara-store-rs /tmp/zohara-store-rs
 RUN --mount=type=cache,target=/home/builder/.cargo/registry,uid=1000,sharing=locked \
     --mount=type=cache,target=/home/builder/.cargo/git,uid=1000,sharing=locked \
     cd /tmp/zohara-settings-rs && /home/builder/.cargo/bin/cargo build --release && \
+    cd /tmp/zohara-welcome-rs && /home/builder/.cargo/bin/cargo build --release && \
     cd /tmp/zohara-store-rs && /home/builder/.cargo/bin/cargo build --release && \
     PATH=/home/builder/.cargo/bin:$PATH makepkg --nodeps --nocheck --skippgpcheck && \
     mv /tmp/zohara-store-rs/zohara-store-[0-9]*.pkg.tar.zst /tmp/zohara-store.pkg.tar.zst
@@ -176,6 +179,7 @@ USER root
 RUN mkdir -p /opt/build && \
     cp /tmp/zohara-settings-rs/target/release/zohara-settings /opt/build/ && \
     cp /tmp/zohara-store.pkg.tar.zst                         /opt/build/ && \
+    cp /tmp/zohara-welcome-rs/target/release/zohara-welcome /tmp/zohara-welcome-rs/target/release/zohara-migrate /opt/build/ && \
     cp /tmp/zohara-settings-rs/data/zohara-settings.desktop  /opt/build/ && \
     cp /tmp/zohara-settings-rs/data/zohara-settings-health.service \
        /tmp/zohara-settings-rs/data/zohara-settings-health.timer /opt/build/ && \
