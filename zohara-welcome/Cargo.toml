@@ -1,0 +1,32 @@
+[package]
+name = "zohara-welcome"
+version = "0.1.0"
+edition = "2021"
+description = "Zohara OS first-run welcome app and migration tool"
+
+[lib]
+name = "zohara_welcome"
+path = "src/lib.rs"
+
+[[bin]]
+name = "zohara-welcome"
+path = "src/main.rs"
+
+[[bin]]
+name = "zohara-migrate"
+path = "src/bin/zohara-migrate.rs"
+
+[dependencies]
+gtk4 = { version = "0.9", features = ["v4_12"] }
+libadwaita = { version = "0.7", package = "libadwaita", features = ["v1_6"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

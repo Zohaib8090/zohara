@@ -1,0 +1,39 @@
+name: Test Zohara Welcome & Migrate
+
+# zohara-welcome ships in the ISO (built by the Dockerfile). This workflow only
+# checks that it compiles and that the migration engine's tests pass, so a
+# problem shows up in minutes instead of after a full ISO build.
+
+on:
+  push:
+    paths:
+      - 'zohara-welcome/**'
+      - '.github/workflows/test-welcome.yml'
+  pull_request:
+    paths:
+      - 'zohara-welcome/**'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel git rust gtk4 libadwaita pkgconf
+
+      - uses: actions/checkout@v4
+
+      - name: Tests
+        working-directory: zohara-welcome
+        run: cargo test --release
+
+      - name: Build
+        working-directory: zohara-welcome
+        run: cargo build --release
