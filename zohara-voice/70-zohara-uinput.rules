@@ -1,0 +1,3 @@
+# Voice typing types into the focused app through ydotool, which needs
+# /dev/uinput. Give the signed-in user access, as Steam Input does.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

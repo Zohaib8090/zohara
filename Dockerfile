@@ -92,34 +92,19 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
     pacman -Sy --noconfirm && \
     pacman -S --noconfirm gtk4 libadwaita pkgconf dbus cmake
 
-# ── 7b. Voice typing engine: whisper.cpp + a small multilingual model ─────────
-# Settings > Accessibility > Voice typing (Meta+H) runs speech recognition
-# locally, so the engine and model ship in the ISO. whisper.cpp is not in the
-# Arch repos; it is built from a pinned release, twice: once for CPUs with
-# AVX2/FMA/F16C (roughly 2013 onwards) and once with those off so older CPUs
-# still work. zohara-settings picks one at runtime from /proc/cpuinfo.
-# Static, no OpenMP: the binaries depend only on glibc and libstdc++.
-# Everything lands in /opt/build/dictation-root/, laid out like the target
-# filesystem, and build-iso.sh copies it into the airootfs as-is.
-ARG WHISPER_VERSION=v1.9.4
-ARG WHISPER_MODEL=ggml-base-q8_0.bin
-ARG WHISPER_MODEL_SHA256=c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9
-RUN git clone --depth 1 --branch "${WHISPER_VERSION}" https://github.com/ggml-org/whisper.cpp.git /tmp/whisper.cpp && \
-    cd /tmp/whisper.cpp && \
-    common="-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF -DWHISPER_SDL2=OFF" && \
-    cmake -B build-avx2 $common && \
-    cmake --build build-avx2 -j"$(nproc)" --target whisper-cli && \
-    cmake -B build-base $common -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_BMI2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF && \
-    cmake --build build-base -j"$(nproc)" --target whisper-cli && \
-    dest=/opt/build/dictation-root && \
-    install -Dm755 build-avx2/bin/whisper-cli "$dest/usr/lib/zohara/whisper/zohara-whisper-avx2" && \
-    install -Dm755 build-base/bin/whisper-cli "$dest/usr/lib/zohara/whisper/zohara-whisper" && \
-    install -Dm644 LICENSE "$dest/usr/share/licenses/zohara-whisper/LICENSE" && \
-    mkdir -p "$dest/usr/share/zohara/dictation" && \
-    curl -fL --retry 3 -o "$dest/usr/share/zohara/dictation/${WHISPER_MODEL}" \
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${WHISPER_MODEL}" && \
-    echo "${WHISPER_MODEL_SHA256}  $dest/usr/share/zohara/dictation/${WHISPER_MODEL}" | sha256sum -c - && \
-    rm -rf /tmp/whisper.cpp
+# ── 7b. Voice typing packages: whisper.cpp engine + speech model ──────────────
+# Built with makepkg from the same PKGBUILDs the build-voice.yml workflow
+# publishes to zohara-packages, so the ISO ships the exact packages that later
+# get updated from Zohara Store. (whisper.cpp is not in the Arch repos; the
+# PKGBUILD builds it from a pinned release, twice, for AVX2 and older CPUs.)
+COPY --chown=builder:builder zohara-voice /tmp/zohara-voice
+COPY --chown=builder:builder zohara-voice-model /tmp/zohara-voice-model
+USER builder
+RUN cd /tmp/zohara-voice-model && makepkg --nodeps --nocheck && \
+    mv zohara-voice-model-*.pkg.tar.zst /tmp/zohara-voice-model.pkg.tar.zst && \
+    cd /tmp/zohara-voice && makepkg --nodeps --nocheck && \
+    mv zohara-voice-[0-9]*.pkg.tar.zst /tmp/zohara-voice.pkg.tar.zst
+USER root
 
 # ── 8. Build zohara-settings & zohara-store (Rust/GTK4/libadwaita) ───────────
 # zohara-settings now lives in its own repository:
@@ -164,6 +149,8 @@ RUN --mount=type=cache,target=/home/builder/.cargo/registry,uid=1000,sharing=loc
     _PKGVER="0.1.0.$STAMP" makepkg --nodeps --nocheck --skippgpcheck && \
     mv /tmp/zohara-settings-rs/zohara-settings-[0-9]*.pkg.tar.zst /tmp/zohara-settings.pkg.tar.zst && \
     cd /tmp/zohara-welcome-rs && /home/builder/.cargo/bin/cargo build --release && \
+    _PKGVER="0.1.0.$STAMP" makepkg --nodeps --nocheck --skippgpcheck && \
+    mv /tmp/zohara-welcome-rs/zohara-welcome-[0-9]*.pkg.tar.zst /tmp/zohara-welcome.pkg.tar.zst && \
     cd /tmp/zohara-store-rs && /home/builder/.cargo/bin/cargo build --release && \
     _PKGVER="0.1.0.$STAMP" PATH=/home/builder/.cargo/bin:$PATH makepkg --nodeps --nocheck --skippgpcheck && \
     mv /tmp/zohara-store-rs/zohara-store-[0-9]*.pkg.tar.zst /tmp/zohara-store.pkg.tar.zst
@@ -183,15 +170,7 @@ RUN mkdir -p /opt/build && \
     cp /tmp/zohara-settings-rs/target/release/zohara-settings /opt/build/ && \
     cp /tmp/zohara-store.pkg.tar.zst                         /opt/build/ && \
     cp /tmp/zohara-settings.pkg.tar.zst                      /opt/build/ && \
-    cp /tmp/zohara-welcome-rs/target/release/zohara-welcome /tmp/zohara-welcome-rs/target/release/zohara-migrate /opt/build/ && \
-    cp /tmp/zohara-settings-rs/data/zohara-settings.desktop  /opt/build/ && \
-    cp /tmp/zohara-settings-rs/data/zohara-settings-health.service \
-       /tmp/zohara-settings-rs/data/zohara-settings-health.timer /opt/build/ && \
-    dest=/opt/build/dictation-root && \
-    install -Dm644 /tmp/zohara-settings-rs/data/70-zohara-uinput.rules \
-        "$dest/etc/udev/rules.d/70-zohara-uinput.rules" && \
-    mkdir -p "$dest/etc/modules-load.d" && \
-    echo uinput > "$dest/etc/modules-load.d/zohara-uinput.conf"
+    cp /tmp/zohara-welcome.pkg.tar.zst /tmp/zohara-voice.pkg.tar.zst /tmp/zohara-voice-model.pkg.tar.zst /opt/build/
 
 # ── 9. Entry point ────────────────────────────────────────────────────────────
 # set -euo pipefail so that:

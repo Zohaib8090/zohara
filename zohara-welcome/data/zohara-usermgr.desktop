@@ -8,5 +8,3 @@ Terminal=false
 Type=Application
 Categories=Settings;System;
 Keywords=user;account;password;create;
-X-KDE-System-Settings-Parent-Category=users
-X-KDE-System-Settings-Category=users

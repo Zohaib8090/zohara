@@ -1,0 +1,83 @@
+name: Build & Publish Zohara Voice
+
+# Voice typing ships as two packages so the (large) model isn't re-downloaded
+# for every engine fix:
+#   zohara-voice        whisper.cpp engine (built here, ~5 minutes), uinput rule
+#   zohara-voice-model  the speech model (82 MB)
+# Bump pkgrel/pkgver in the PKGBUILD to make installed systems offer an update.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'zohara-voice/**'
+      - 'zohara-voice-model/**'
+      - 'scripts/publish-package.sh'
+      - '.github/workflows/build-voice.yml'
+  pull_request:
+    paths:
+      - 'zohara-voice/**'
+      - 'zohara-voice-model/**'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Release channel'
+        required: true
+        default: stable
+        type: choice
+        options: [stable, beta, alpha]
+
+jobs:
+  build:
+    name: Build + package + publish
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    permissions:
+      contents: write
+    steps:
+      - name: Install Arch build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel git cmake sudo github-cli curl
+          useradd -m builder || true
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+
+      - uses: actions/checkout@v4
+
+      # --nodeps: zohara-voice depends on packages that only exist on the
+      # target system (zohara-voice-model, ydotool, ...), not in this build.
+      - name: Build zohara-voice-model
+        run: |
+          chown -R builder:builder .
+          cd zohara-voice-model
+          sudo -u builder makepkg --nodeps --nocheck
+          echo "model_file=$(ls *.pkg.tar.zst | head -1)" >> "$GITHUB_ENV"
+
+      - name: Build zohara-voice
+        run: |
+          cd zohara-voice
+          sudo -u builder makepkg --nodeps --nocheck
+          echo "voice_file=$(ls *.pkg.tar.zst | head -1)" >> "$GITHUB_ENV"
+          echo "voice_ver=$(sed -n 's/^pkgver=//p' PKGBUILD | head -1)" >> "$GITHUB_ENV"
+          echo "model_ver=$(sed -n 's/^pkgver=//p' ../zohara-voice-model/PKGBUILD | head -1)" >> "$GITHUB_ENV"
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zohara-voice-arch-x86_64
+          path: |
+            zohara-voice/*.pkg.tar.zst
+            zohara-voice-model/*.pkg.tar.zst
+
+      - name: Publish to zohara-packages
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
+          CHANNEL: ${{ github.event.inputs.channel || 'stable' }}
+        run: |
+          # The model first: the engine depends on it. WAIT=1 holds until
+          # zohara-packages has rebuilt its database, so the two publishes
+          # don't overwrite each other.
+          WAIT=1 scripts/publish-package.sh "zohara-voice-model/${{ env.model_file }}" zohara-voice-model "${{ env.model_ver }}" zohara-voice-arch-x86_64
+          scripts/publish-package.sh "zohara-voice/${{ env.voice_file }}" zohara-voice "${{ env.voice_ver }}" zohara-voice-arch-x86_64

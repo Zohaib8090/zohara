@@ -1,0 +1,18 @@
+# Maintainer: Zohara OS Team <https://github.com/Zohaib8090/zohara>
+# The speech model for Zohara voice typing: whisper "base", multilingual,
+# 8-bit quantised (82 MB). Kept as its own package so a fix to the engine
+# doesn't re-download the model. Bump pkgver to ship a different model.
+pkgname=zohara-voice-model
+pkgver=1
+pkgrel=1
+pkgdesc="Speech model (whisper base, multilingual) for Zohara voice typing"
+arch=('any')
+url="https://huggingface.co/ggerganov/whisper.cpp"
+license=('MIT')
+options=(!strip !debug)
+source=("ggml-base-q8_0.bin::https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q8_0.bin")
+sha256sums=('c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9')
+
+package() {
+  install -Dm644 "$srcdir/ggml-base-q8_0.bin" "$pkgdir/usr/share/zohara/dictation/ggml-base-q8_0.bin"
+}

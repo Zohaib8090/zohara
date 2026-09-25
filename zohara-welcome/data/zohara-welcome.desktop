@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Exec=/usr/local/bin/zohara-welcome
+Exec=zohara-welcome
 Name=Zohara Welcome
 Comment=Welcome to Zohara OS
 Icon=distributor-logo

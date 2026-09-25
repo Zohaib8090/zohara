@@ -1,0 +1,44 @@
+# Maintainer: Zohara OS Team <https://github.com/Zohaib8090/zohara>
+# Speech recognition engine for Zohara voice typing (Settings > Accessibility).
+# whisper.cpp is not in the Arch repos, so it is built here from a pinned
+# release, twice: once for CPUs with AVX2/FMA/F16C (roughly 2013 onwards) and
+# once with those off so older CPUs still work. zohara-settings picks one at
+# runtime from /proc/cpuinfo. Bump pkgrel (or pkgver) to ship a change.
+pkgname=zohara-voice
+pkgver=1.9.4
+pkgrel=1
+pkgdesc="Local speech recognition for Zohara voice typing (whisper.cpp)"
+arch=('x86_64')
+url="https://github.com/ggml-org/whisper.cpp"
+license=('MIT')
+depends=('zohara-voice-model' 'wl-clipboard' 'ydotool' 'libpulse' 'libnotify')
+makedepends=('cmake')
+options=(!lto !debug)
+source=("whisper.cpp-$pkgver.tar.gz::https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v$pkgver.tar.gz"
+        "70-zohara-uinput.rules")
+sha256sums=('57e280cee375ab02425b806ad5146b99f6eb9357e3c2b31357c8a6af2e2e44ae'
+            'SKIP')
+
+build() {
+  cd "whisper.cpp-$pkgver"
+  # Static, no OpenMP (only glibc and libstdc++ needed at run time). Arch's
+  # default flags include -Werror=format-security, which this code base
+  # isn't written for; CMAKE_BUILD_TYPE=Release supplies the optimisation.
+  unset CFLAGS CXXFLAGS LDFLAGS CPPFLAGS
+  local common=(-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF
+                -DGGML_OPENMP=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF -DWHISPER_SDL2=OFF)
+  cmake -B build-avx2 "${common[@]}"
+  cmake --build build-avx2 -j"$(nproc)" --target whisper-cli
+  cmake -B build-base "${common[@]}" -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_BMI2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF
+  cmake --build build-base -j"$(nproc)" --target whisper-cli
+}
+
+package() {
+  cd "whisper.cpp-$pkgver"
+  install -Dm755 build-avx2/bin/whisper-cli "$pkgdir/usr/lib/zohara/whisper/zohara-whisper-avx2"
+  install -Dm755 build-base/bin/whisper-cli "$pkgdir/usr/lib/zohara/whisper/zohara-whisper"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$srcdir/70-zohara-uinput.rules" "$pkgdir/usr/lib/udev/rules.d/70-zohara-uinput.rules"
+  install -d "$pkgdir/usr/lib/modules-load.d"
+  echo uinput > "$pkgdir/usr/lib/modules-load.d/zohara-uinput.conf"
+}

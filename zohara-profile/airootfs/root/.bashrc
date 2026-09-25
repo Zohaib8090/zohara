@@ -18,6 +18,6 @@ alias grep='grep --color=auto'
 
 # Zohara helpers.
 alias install='sudo calamares'
-alias welcome='/usr/local/bin/zohara-welcome'
+alias welcome='zohara-welcome'
 alias settings='zohara-settings'
 alias store='zohara-store'

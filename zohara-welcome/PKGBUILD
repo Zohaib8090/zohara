@@ -1,0 +1,40 @@
+# Maintainer: Zohara OS Team <https://github.com/Zohaib8090/zohara>
+# Built by .github/workflows/build-welcome.yml and by the ISO's Dockerfile.
+pkgname=zohara-welcome
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Zohara OS welcome app and migration tool (GTK4 + libadwaita)"
+arch=('x86_64')
+url="https://github.com/Zohaib8090/zohara"
+license=('GPL-3.0-or-later')
+depends=('gtk4' 'libadwaita' 'polkit')
+makedepends=('rust' 'cargo' 'pkgconf')
+optdepends=(
+  'calamares: install Zohara from the live USB'
+  'zohara-settings: manage users and updates from the welcome window'
+)
+options=(!lto !debug)
+source=()
+sha256sums=()
+
+pkgver() {
+  # CI and the ISO build pass _PKGVER (Cargo version + build time) so every
+  # build is newer than the last and pacman offers it as an update.
+  if [ -n "${_PKGVER:-}" ]; then
+    echo "$_PKGVER"
+  else
+    grep '^version' "$startdir/Cargo.toml" | head -1 | cut -d'"' -f2
+  fi
+}
+
+build() {
+  cd "$startdir"
+  cargo build --release
+}
+
+package() {
+  install -Dm755 "$startdir/target/release/zohara-welcome" "$pkgdir/usr/bin/zohara-welcome"
+  install -Dm755 "$startdir/target/release/zohara-migrate" "$pkgdir/usr/bin/zohara-migrate"
+  install -Dm644 "$startdir/data/zohara-welcome.desktop" "$pkgdir/etc/xdg/autostart/zohara-welcome.desktop"
+  install -Dm644 "$startdir/data/zohara-usermgr.desktop" "$pkgdir/usr/share/applications/zohara-usermgr.desktop"
+}

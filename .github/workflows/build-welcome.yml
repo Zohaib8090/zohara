@@ -1,0 +1,87 @@
+name: Build & Publish Zohara Welcome
+
+# zohara-welcome (the welcome app and migration tool) ships as a package so it
+# can be updated from Zohara Store instead of only through a new ISO.
+#
+#   pull request        -> tests + build only
+#   push to master      -> tests, build, publish to the stable channel
+#   manual dispatch     -> same, on the chosen channel
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'zohara-welcome/**'
+      - 'scripts/publish-package.sh'
+      - '.github/workflows/build-welcome.yml'
+  pull_request:
+    paths:
+      - 'zohara-welcome/**'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Release channel'
+        required: true
+        default: stable
+        type: choice
+        options: [stable, beta, alpha]
+
+env:
+  CARGO_TERM_COLOR: always
+  PKG: zohara-welcome
+
+jobs:
+  build:
+    name: Test + package + publish
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    permissions:
+      contents: write
+    steps:
+      - name: Install Arch build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel git rust sudo github-cli gtk4 libadwaita glib2 pkgconf polkit
+          useradd -m builder || true
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+
+      - uses: actions/checkout@v4
+
+      - name: Tests
+        run: |
+          chown -R builder:builder .
+          cd zohara-welcome
+          sudo -u builder cargo test --release
+
+      - name: Compute version
+        id: version
+        run: |
+          BASE=$(grep '^version' zohara-welcome/Cargo.toml | head -1 | cut -d'"' -f2)
+          [ -n "$BASE" ] || { echo "::error::Could not read version from Cargo.toml"; exit 1; }
+          # Cargo version + build time: always newer than the last build.
+          echo "version=$BASE.$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
+
+      - name: Run makepkg
+        run: |
+          chown -R builder:builder .
+          cd zohara-welcome
+          sudo -u builder env _PKGVER="${{ steps.version.outputs.version }}" makepkg --nocheck --skippgpcheck
+          PKG_FILE=$(ls *.pkg.tar.zst | head -1)
+          echo "package_file=$PKG_FILE" >> "$GITHUB_ENV"
+          echo "package_path=zohara-welcome/$PKG_FILE" >> "$GITHUB_ENV"
+
+      # Uploaded before publishing: zohara-packages downloads it from this run.
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zohara-welcome-arch-x86_64
+          path: ${{ env.package_path }}
+
+      - name: Publish to zohara-packages
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
+          CHANNEL: ${{ github.event.inputs.channel || 'stable' }}
+        run: |
+          scripts/publish-package.sh "${{ env.package_path }}" "$PKG" "${{ steps.version.outputs.version }}" zohara-welcome-arch-x86_64

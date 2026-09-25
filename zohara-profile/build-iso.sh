@@ -60,13 +60,13 @@ rm -f "$PROFILE_DIR/airootfs/usr/bin/zohara-store" "$PROFILE_DIR/airootfs/usr/bi
       "$PROFILE_DIR/airootfs/usr/lib/systemd/user/zohara-settings-health.timer" \
       "$PROFILE_DIR/airootfs/usr/local/bin/zohara-settings" \
       "$PROFILE_DIR/airootfs/usr/local/bin/zohara-store"
-# Welcome app and migration tool (Rust; profiledef.sh sets their permissions).
-for tool in zohara-welcome zohara-migrate; do
-    install -Dm755 "/opt/build/$tool" "$PROFILE_DIR/airootfs/usr/local/bin/$tool"
+# Welcome/migrate and voice typing ship as packages too (installed by
+# customize_airootfs.sh), so Zohara Store can update them later.
+for p in zohara-welcome zohara-voice zohara-voice-model; do
+    install -Dm644 "/opt/build/$p.pkg.tar.zst" "$PROFILE_DIR/airootfs/root/$p.pkg.tar.zst"
 done
-# Voice typing: whisper.cpp, its model, the Meta+H shortcut and uinput access,
-# laid out in the target filesystem's shape by the Dockerfile (steps 7b and 8).
-cp -a /opt/build/dictation-root/. "$PROFILE_DIR/airootfs/"
+# Leftovers from older builds that these packages now own:
+rm -f "$PROFILE_DIR/airootfs/usr/local/bin/zohara-welcome" "$PROFILE_DIR/airootfs/usr/local/bin/zohara-migrate"
 rm -rf "$PROFILE_DIR/airootfs/usr/share/zohara-store"
 
 # 2. Decide whether to reuse work/ (fast incremental) or wipe (full rebuild).
