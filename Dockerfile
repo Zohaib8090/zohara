@@ -191,6 +191,8 @@ RUN mkdir -p /opt/build && \
         "$dest/usr/share/kglobalaccel/zohara-dictation.desktop" && \
     install -Dm644 /tmp/zohara-settings-rs/data/70-zohara-uinput.rules \
         "$dest/etc/udev/rules.d/70-zohara-uinput.rules" && \
+    install -Dm644 /tmp/zohara-settings-rs/data/zohara-privacy-indicator.desktop \
+        "$dest/etc/xdg/autostart/zohara-privacy-indicator.desktop" && \
     mkdir -p "$dest/etc/modules-load.d" && \
     echo uinput > "$dest/etc/modules-load.d/zohara-uinput.conf"
 
