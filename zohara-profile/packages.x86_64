@@ -201,6 +201,12 @@ geoclue
 speech-dispatcher
 espeak-ng
 orca
+# System snapshots: Btrfs + snapper, a snapshot around every package change, and
+# snapshots in the GRUB menu (zohara-snapshots ties them together).
+snapper
+snap-pac
+grub-btrfs
+inotify-tools
 # Voice typing (Settings > Accessibility > Voice typing, Meta+H)
 wl-clipboard
 ydotool

@@ -19,7 +19,7 @@ echo "[+] Packaging complete airootfs system tree and configurations..."
 bsdtar -xf /opt/build/zohara-settings.pkg.tar.zst -C /build/zohara-profile/airootfs --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
 # zohara-store is a pacman package now; unpack its payload (skipping .PKGINFO etc.) into the overlay.
 bsdtar -xf /opt/build/zohara-store.pkg.tar.zst -C /build/zohara-profile/airootfs --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
-for p in zohara-welcome zohara-voice zohara-voice-model; do
+for p in zohara-welcome zohara-voice zohara-voice-model zohara-snapshots; do
     bsdtar -xf "/opt/build/$p.pkg.tar.zst" -C /build/zohara-profile/airootfs --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
 done
 

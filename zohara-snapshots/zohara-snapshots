@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# zohara-snapshots: system snapshots on Btrfs (through snapper), and restoring one.
+#
+# Every pacman transaction (updates, installs, removals) is snapshotted before and
+# after by snap-pac; grub-btrfs lists the snapshots in the boot menu. This tool
+# does the rest: first-boot setup, restoring the system to a snapshot, and
+# housekeeping. Zohara Store and Settings call it; none of it needs typing.
+#
+#   zohara-snapshots status          JSON: is Btrfs in use, is it set up   (any user)
+#   zohara-snapshots list-json       snapshots as JSON                     (root)
+#   zohara-snapshots setup           configure snapper once, first snapshot (root)
+#   zohara-snapshots restore N       make snapshot N the system             (root)
+#   zohara-snapshots prune N         keep only the newest N snapshots      (root)
+#   zohara-snapshots set-limit N     keep at most N automatically          (root)
+#   zohara-snapshots size            JSON: bytes used by snapshots         (root)
+#   zohara-snapshots auto on|off     snapshot around every package change  (root)
+#
+# ZS_DRY_RUN=1 prints what restore would do without touching the disk.
+set -euo pipefail
+
+CONFIG=root
+SNAP_DIR=/.snapshots
+CONF="/etc/snapper/configs/$CONFIG"
+TEMPLATE=/usr/share/zohara/snapshots/snapper-root.conf
+STATE_DIR=/var/lib/zohara
+SNAPPER=(snapper --no-dbus -c "$CONFIG")
+
+die() { echo "zohara-snapshots: $*" >&2; exit 1; }
+need_root() { [ "$(id -u)" -eq 0 ] || die "this needs administrator rights"; }
+is_num() { [[ "${1:-}" =~ ^[0-9]+$ ]]; }
+run() {
+    if [ "${ZS_DRY_RUN:-0}" = "1" ]; then echo "+ $*"; else "$@"; fi
+}
+is_btrfs_root() { [ "$(stat -f -c %T / 2>/dev/null)" = "btrfs" ]; }
+configured() { [ -f "$CONF" ] && mountpoint -q "$SNAP_DIR" 2>/dev/null; }
+
+cmd_status() {
+    local supported=false ready=false auto=true
+    is_btrfs_root && supported=true
+    configured && ready=true
+    if [ -f /etc/snap-pac.ini ] && grep -qiE '^snapshot *= *no' /etc/snap-pac.ini; then auto=false; fi
+    local limit=""
+    [ -r "$CONF" ] && limit="$(sed -n 's/^NUMBER_LIMIT="\([0-9]*\)".*/\1/p' "$CONF" | head -1)"
+    printf '{"supported":%s,"configured":%s,"auto":%s,"limit":%s}\n' "$supported" "$ready" "$auto" "${limit:-10}"
+}
+
+cmd_setup() {
+    need_root
+    is_btrfs_root || exit 0                  # ext4 and friends: nothing to do
+    mountpoint -q "$SNAP_DIR" || exit 0      # installed without the snapshot layout
+    if [ ! -f "$CONF" ]; then
+        install -Dm644 "$TEMPLATE" "$CONF"
+    fi
+    # snapper's cleanup timer only looks at the configs listed here.
+    mkdir -p /etc/conf.d
+    if [ -f /etc/conf.d/snapper ] && grep -q '^SNAPPER_CONFIGS=' /etc/conf.d/snapper; then
+        grep -q "^SNAPPER_CONFIGS=.*\b$CONFIG\b" /etc/conf.d/snapper \
+            || sed -i "s/^SNAPPER_CONFIGS=\"\(.*\)\"/SNAPPER_CONFIGS=\"\1 $CONFIG\"/" /etc/conf.d/snapper
+    else
+        echo "SNAPPER_CONFIGS=\"$CONFIG\"" >> /etc/conf.d/snapper
+    fi
+    chmod 750 "$SNAP_DIR"
+    mkdir -p "$STATE_DIR"
+    if [ ! -f "$STATE_DIR/snapshots-initialised" ]; then
+        "${SNAPPER[@]}" create --description "Fresh install" --cleanup-algorithm number
+        touch "$STATE_DIR/snapshots-initialised"
+    fi
+}
+
+cmd_list_json() {
+    need_root
+    configured || die "snapshots are not set up on this system"
+    "${SNAPPER[@]}" --jsonout list --columns number,type,pre-number,date,description,cleanup
+}
+
+# Which top-level Btrfs subvolume holds the system, and where snapshots live.
+# All paths below are relative to the Btrfs top level (subvolid 5).
+top_level_path() { findmnt -no FSROOT "$1" | sed 's:^/::'; }
+
+cmd_restore() {
+    need_root
+    local n="${1:-}"
+    is_num "$n" || die "usage: zohara-snapshots restore <number>"
+    [ "$n" -gt 0 ] || die "snapshot 0 is the running system"
+    is_btrfs_root || die "this system isn't on Btrfs"
+    mountpoint -q "$SNAP_DIR" || die "the snapshot area isn't mounted"
+    [ -d "$SNAP_DIR/$n/snapshot" ] || die "snapshot $n does not exist"
+
+    local dev snapsub top ts
+    dev="$(findmnt -no SOURCE / | sed 's/\[.*\]//')"
+    snapsub="$(top_level_path "$SNAP_DIR")"          # e.g. @snapshots
+    [ -n "$snapsub" ] || die "could not find where snapshots are stored"
+    ts="$(date +%Y%m%d-%H%M%S)"
+
+    top="$(mktemp -d /run/zohara-snapshots.XXXXXX)"
+    trap 'umount "$top" 2>/dev/null || true; rmdir "$top" 2>/dev/null || true' EXIT
+    run mount -o subvolid=5 "$dev" "$top"
+    [ "${ZS_DRY_RUN:-0}" = "1" ] || [ -d "$top/$snapsub/$n/snapshot" ] || die "snapshot $n is not on this disk"
+
+    # 1. Set today's system aside (it keeps running until the restart).
+    if [ "${ZS_DRY_RUN:-0}" = "1" ] || [ -e "$top/@" ]; then
+        run mv "$top/@" "$top/@broken-$ts"
+    fi
+    # 2. Make a fresh, writable system from the snapshot.
+    run btrfs subvolume snapshot "$top/$snapsub/$n/snapshot" "$top/@"
+    # 3. Keep only the most recent set-aside system so they don't pile up.
+    if [ "${ZS_DRY_RUN:-0}" != "1" ]; then
+        local old olds p
+        mapfile -t olds < <(for p in "$top"/@broken-*; do [ -e "$p" ] && echo "$p"; done | sort | head -n -1)
+        for old in "${olds[@]}"; do
+            btrfs subvolume delete --recursive "$old" >/dev/null 2>&1 || btrfs subvolume delete "$old" >/dev/null 2>&1 || true
+        done
+    fi
+    sync
+    echo "Snapshot $n is now the system. Restart to finish."
+}
+
+cmd_prune() {
+    need_root
+    local keep="${1:-}"
+    is_num "$keep" || die "usage: zohara-snapshots prune <how-many-to-keep>"
+    [ "$keep" -ge 1 ] || die "keep at least one snapshot"
+    configured || die "snapshots are not set up on this system"
+    local nums n total
+    nums="$("${SNAPPER[@]}" --csvout list --columns number | grep -E '^[0-9]+$' | grep -vx 0 | sort -n)"
+    total="$(echo "$nums" | grep -c . || true)"
+    [ "$total" -gt "$keep" ] || { echo "Nothing to delete."; return 0; }
+    while read -r n; do
+        "${SNAPPER[@]}" delete "$n"
+    done < <(echo "$nums" | head -n "$((total - keep))")
+    echo "Kept the newest $keep snapshots."
+}
+
+cmd_set_limit() {
+    need_root
+    local n="${1:-}"
+    is_num "$n" && [ "$n" -ge 2 ] && [ "$n" -le 50 ] || die "usage: zohara-snapshots set-limit <2-50>"
+    [ -f "$CONF" ] || die "snapshots are not set up on this system"
+    sed -i "s/^NUMBER_LIMIT=.*/NUMBER_LIMIT=\"$n\"/" "$CONF"
+    echo "Keeping at most $n snapshots."
+}
+
+cmd_size() {
+    need_root
+    configured || die "snapshots are not set up on this system"
+    # `btrfs filesystem du -s`: Total / Exclusive / Set shared. Exclusive is what deleting frees.
+    local line total excl
+    line="$(btrfs filesystem du -s --raw "$SNAP_DIR" 2>/dev/null | tail -1)"
+    total="$(echo "$line" | awk '{print $1}')"
+    excl="$(echo "$line" | awk '{print $2}')"
+    printf '{"total":%s,"exclusive":%s}\n' "${total:-0}" "${excl:-0}"
+}
+
+cmd_auto() {
+    need_root
+    case "${1:-}" in
+        on)  printf '[root]\nsnapshot = yes\n' > /etc/snap-pac.ini ;;
+        off) printf '[root]\nsnapshot = no\n'  > /etc/snap-pac.ini ;;
+        *)   die "usage: zohara-snapshots auto on|off" ;;
+    esac
+    echo "Automatic snapshots: $1"
+}
+
+# Used by the installer, inside the new system: lets a snapshot be booted from
+# the GRUB menu (grub-btrfs runs it read-only on top of an overlay).
+cmd_prepare_initramfs() {
+    need_root
+    is_btrfs_root || exit 0
+    [ -f /usr/lib/initcpio/install/grub-btrfs-overlayfs ] || exit 0
+    grep -q '^HOOKS=.*grub-btrfs-overlayfs' /etc/mkinitcpio.conf && exit 0
+    sed -i 's/^HOOKS=(\(.*\))/HOOKS=(\1 grub-btrfs-overlayfs)/' /etc/mkinitcpio.conf
+}
+
+case "${1:-}" in
+    prepare-initramfs) cmd_prepare_initramfs ;;
+    status)     cmd_status ;;
+    setup)      cmd_setup ;;
+    list-json)  cmd_list_json ;;
+    restore)    cmd_restore "${2:-}" ;;
+    prune)      cmd_prune "${2:-}" ;;
+    set-limit)  cmd_set_limit "${2:-}" ;;
+    size)       cmd_size ;;
+    auto)       cmd_auto "${2:-}" ;;
+    *)          sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

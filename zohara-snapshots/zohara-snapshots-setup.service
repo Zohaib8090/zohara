@@ -1,0 +1,14 @@
+[Unit]
+Description=Set up Zohara system snapshots
+Documentation=https://github.com/Zohaib8090/zohara
+# Only where the installer created the snapshot layout (Btrfs with /.snapshots).
+ConditionPathIsMountPoint=/.snapshots
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/zohara-snapshots setup
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

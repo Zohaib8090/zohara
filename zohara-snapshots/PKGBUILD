@@ -1,0 +1,23 @@
+# Maintainer: Zohara OS Team <https://github.com/Zohaib8090/zohara>
+# System snapshots for Zohara (Btrfs + snapper): first-boot setup, restore and
+# housekeeping. Bump pkgrel to ship a change; installed systems then see it as
+# an update in Zohara Store.
+pkgname=zohara-snapshots
+pkgver=1
+pkgrel=1
+pkgdesc="System snapshots and one-click restore for Zohara OS (Btrfs, snapper)"
+arch=('any')
+url="https://github.com/Zohaib8090/zohara"
+license=('GPL-3.0-or-later')
+depends=('bash' 'snapper' 'snap-pac' 'grub-btrfs' 'btrfs-progs' 'inotify-tools' 'polkit')
+install=zohara-snapshots.install
+options=(!strip !debug)
+source=("zohara-snapshots" "snapper-root.conf" "zohara-snapshots-setup.service" "grub-btrfsd-zohara.conf" "zohara-snapshots.install")
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+
+package() {
+  install -Dm755 "$srcdir/zohara-snapshots" "$pkgdir/usr/bin/zohara-snapshots"
+  install -Dm644 "$srcdir/snapper-root.conf" "$pkgdir/usr/share/zohara/snapshots/snapper-root.conf"
+  install -Dm644 "$srcdir/zohara-snapshots-setup.service" "$pkgdir/usr/lib/systemd/system/zohara-snapshots-setup.service"
+  install -Dm644 "$srcdir/grub-btrfsd-zohara.conf" "$pkgdir/usr/lib/systemd/system/grub-btrfsd.service.d/zohara.conf"
+}

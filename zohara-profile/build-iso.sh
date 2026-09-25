@@ -62,7 +62,7 @@ rm -f "$PROFILE_DIR/airootfs/usr/bin/zohara-store" "$PROFILE_DIR/airootfs/usr/bi
       "$PROFILE_DIR/airootfs/usr/local/bin/zohara-store"
 # Welcome/migrate and voice typing ship as packages too (installed by
 # customize_airootfs.sh), so Zohara Store can update them later.
-for p in zohara-welcome zohara-voice zohara-voice-model; do
+for p in zohara-welcome zohara-voice zohara-voice-model zohara-snapshots; do
     install -Dm644 "/opt/build/$p.pkg.tar.zst" "$PROFILE_DIR/airootfs/root/$p.pkg.tar.zst"
 done
 # Leftovers from older builds that these packages now own:

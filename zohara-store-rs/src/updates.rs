@@ -441,6 +441,112 @@ pub fn flatpak_go_back(app_id: &str, hash: &str, tx: &Sender<String>) -> Result<
     run_logged(c, tx)
 }
 
+// ── System snapshots (Btrfs restore points) ────────────────────────────────
+
+/// What `zohara-snapshots status` reports.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SnapStatus {
+    /// The system is on Btrfs.
+    pub supported: bool,
+    /// The snapshot area is mounted and snapper is configured.
+    pub configured: bool,
+    /// A snapshot is taken around every package change.
+    pub auto: bool,
+    pub limit: u32,
+}
+
+pub fn parse_snap_status(text: &str) -> SnapStatus {
+    let v: serde_json::Value = serde_json::from_str(text).unwrap_or_default();
+    SnapStatus {
+        supported: v["supported"].as_bool().unwrap_or(false),
+        configured: v["configured"].as_bool().unwrap_or(false),
+        auto: v["auto"].as_bool().unwrap_or(true),
+        limit: v["limit"].as_u64().unwrap_or(10) as u32,
+    }
+}
+
+pub fn snapshot_status() -> SnapStatus {
+    let out = Command::new("zohara-snapshots").arg("status").output();
+    match out {
+        Ok(o) => parse_snap_status(&String::from_utf8_lossy(&o.stdout)),
+        Err(_) => SnapStatus { supported: false, configured: false, auto: false, limit: 10 },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Snapshot {
+    pub number: u32,
+    /// `single`, `pre` (before a change) or `post` (after it).
+    pub kind: String,
+    pub date: String,
+    pub description: String,
+}
+
+impl Snapshot {
+    /// A name a person can read: "Before: pacman -Syu".
+    pub fn title(&self) -> String {
+        let d = self.description.trim();
+        match self.kind.as_str() {
+            "pre" => format!("Before: {}", if d.is_empty() { "a change" } else { d }),
+            "post" => format!("After: {}", if d.is_empty() { "a change" } else { d }),
+            _ => if d.is_empty() { format!("Restore point {}", self.number) } else { d.to_string() },
+        }
+    }
+}
+
+fn json_u32(v: &serde_json::Value) -> Option<u32> {
+    v.as_u64().map(|n| n as u32).or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+}
+
+/// `snapper --jsonout list`: an object whose value is the array of snapshots.
+/// Snapshot 0 is the running system and is left out. Newest first.
+pub fn parse_snapshots(text: &str) -> Vec<Snapshot> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return Vec::new() };
+    let arr = match &v {
+        serde_json::Value::Array(a) => Some(a),
+        serde_json::Value::Object(o) => o.values().find_map(|x| x.as_array()),
+        _ => None,
+    };
+    let mut out: Vec<Snapshot> = arr
+        .into_iter()
+        .flatten()
+        .filter_map(|s| {
+            let number = json_u32(&s["number"])?;
+            (number > 0).then(|| Snapshot {
+                number,
+                kind: s["type"].as_str().unwrap_or("single").to_string(),
+                date: s["date"].as_str().unwrap_or("").to_string(),
+                description: s["description"].as_str().unwrap_or("").to_string(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| b.number.cmp(&a.number));
+    out
+}
+
+const SNAP_COLUMNS: &str = "number,type,pre-number,date,description,cleanup";
+
+/// Lists snapshots. Without `admin` this is silent (works for administrators);
+/// with it, asks for the password.
+pub fn list_snapshots(admin: bool) -> Result<Vec<Snapshot>, String> {
+    let out = if admin {
+        Command::new("pkexec").args(["zohara-snapshots", "list-json"]).output()
+    } else {
+        Command::new("snapper").args(["--jsonout", "-c", "root", "list", "--columns", SNAP_COLUMNS]).output()
+    }
+    .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(if admin { "Couldn't read the restore points.".into() } else { "needs a password".into() });
+    }
+    Ok(parse_snapshots(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// Makes snapshot `n` the system (takes effect after a restart).
+pub fn restore_snapshot(n: u32, tx: &Sender<String>) -> Result<(), String> {
+    let _ = tx.send(format!("Restoring the system to restore point {n}…"));
+    run_logged(pkexec(&["zohara-snapshots", "restore", &n.to_string()]), tx)
+}
+
 // ── Notifications for the background check ─────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -568,6 +674,23 @@ mod tests {
         let c = parse_flatpak_log(text);
         assert_eq!(c.len(), 2);
         assert_eq!(c[1], FlatpakCommit { hash: "bbbb2222".into(), subject: "Older".into(), date: "2026-09-01".into() });
+    }
+
+    #[test]
+    fn snapshot_json() {
+        let json = r#"{"root":[
+            {"number":0,"type":"single","date":"","description":"current","cleanup":""},
+            {"number":3,"type":"pre","pre-number":"","date":"Fri 25 Sep 2026","description":"pacman -Syu","cleanup":"number"},
+            {"number":"4","type":"post","pre-number":3,"date":"Fri 25 Sep 2026","description":"linux-zen","cleanup":"number"},
+            {"number":1,"type":"single","date":"Thu","description":"Fresh install","cleanup":"number"}]}"#;
+        let s = parse_snapshots(json);
+        assert_eq!(s.iter().map(|x| x.number).collect::<Vec<_>>(), [4, 3, 1]);
+        assert_eq!(s[0].title(), "After: linux-zen");
+        assert_eq!(s[1].title(), "Before: pacman -Syu");
+        assert_eq!(s[2].title(), "Fresh install");
+        assert!(parse_snapshots("not json").is_empty());
+        let st = parse_snap_status(r#"{"supported":true,"configured":false,"auto":false,"limit":12}"#);
+        assert!(st.supported && !st.configured && !st.auto && st.limit == 12);
     }
 
     #[test]

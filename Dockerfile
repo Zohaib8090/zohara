@@ -99,11 +99,14 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
 # PKGBUILD builds it from a pinned release, twice, for AVX2 and older CPUs.)
 COPY --chown=builder:builder zohara-voice /tmp/zohara-voice
 COPY --chown=builder:builder zohara-voice-model /tmp/zohara-voice-model
+COPY --chown=builder:builder zohara-snapshots /tmp/zohara-snapshots
 USER builder
 RUN cd /tmp/zohara-voice-model && makepkg --nodeps --nocheck && \
     mv zohara-voice-model-*.pkg.tar.zst /tmp/zohara-voice-model.pkg.tar.zst && \
     cd /tmp/zohara-voice && makepkg --nodeps --nocheck && \
-    mv zohara-voice-[0-9]*.pkg.tar.zst /tmp/zohara-voice.pkg.tar.zst
+    mv zohara-voice-[0-9]*.pkg.tar.zst /tmp/zohara-voice.pkg.tar.zst && \
+    cd /tmp/zohara-snapshots && makepkg --nodeps --nocheck && \
+    mv zohara-snapshots-[0-9]*.pkg.tar.zst /tmp/zohara-snapshots.pkg.tar.zst
 USER root
 
 # ── 8. Build zohara-settings & zohara-store (Rust/GTK4/libadwaita) ───────────
@@ -170,7 +173,7 @@ RUN mkdir -p /opt/build && \
     cp /tmp/zohara-settings-rs/target/release/zohara-settings /opt/build/ && \
     cp /tmp/zohara-store.pkg.tar.zst                         /opt/build/ && \
     cp /tmp/zohara-settings.pkg.tar.zst                      /opt/build/ && \
-    cp /tmp/zohara-welcome.pkg.tar.zst /tmp/zohara-voice.pkg.tar.zst /tmp/zohara-voice-model.pkg.tar.zst /opt/build/
+    cp /tmp/zohara-welcome.pkg.tar.zst /tmp/zohara-voice.pkg.tar.zst /tmp/zohara-voice-model.pkg.tar.zst /tmp/zohara-snapshots.pkg.tar.zst /opt/build/
 
 # ── 9. Entry point ────────────────────────────────────────────────────────────
 # set -euo pipefail so that:

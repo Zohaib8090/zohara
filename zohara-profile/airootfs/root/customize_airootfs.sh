@@ -19,11 +19,11 @@ echo "  -> Zohara binaries marked executable."
 # upgrades don't hit "exists in filesystem" conflicts.
 ZOHARA_PKGS=()
 for f in /root/zohara-settings.pkg.tar.zst /root/zohara-store.pkg.tar.zst /root/zohara-welcome.pkg.tar.zst \
-         /root/zohara-voice-model.pkg.tar.zst /root/zohara-voice.pkg.tar.zst; do
+         /root/zohara-voice-model.pkg.tar.zst /root/zohara-voice.pkg.tar.zst /root/zohara-snapshots.pkg.tar.zst; do
     if [[ -f "$f" ]]; then ZOHARA_PKGS+=("$f"); else echo "  !! $f missing; it will not be installed."; fi
 done
 if (( ${#ZOHARA_PKGS[@]} )); then
-    echo "  -> Installing Zohara packages (settings, store, welcome, voice typing)..."
+    echo "  -> Installing Zohara packages (settings, store, welcome, voice typing, snapshots)..."
     # Inside the build chroot pacman cannot resolve the root mount point, so CheckSpace
     # aborts with "not enough free disk space". Use a one-off config without it.
     grep -v '^CheckSpace' /etc/pacman.conf > /tmp/pacman-nocheckspace.conf

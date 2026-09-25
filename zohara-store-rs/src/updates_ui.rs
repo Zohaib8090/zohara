@@ -11,7 +11,10 @@ use std::rc::Rc;
 use std::sync::mpsc::{channel, Sender, TryRecvError};
 use std::time::Duration;
 
-use crate::updates::{self, FlatpakInstalled, Transaction, UpdateSet};
+use crate::updates::{self, FlatpakInstalled, SnapStatus, Snapshot, Transaction, UpdateSet};
+
+/// Set by a restore, which always needs a restart (unlike an update).
+static FORCE_RESTART: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 struct Page {
     status_title: gtk4::Label,
@@ -385,8 +388,9 @@ fn run_job(page: &Rc<Page>, parent: &gtk4::Widget, title: &str, work: impl FnOnc
                 spinner.set_visible(false);
                 match result {
                     Ok(()) => {
-                        status.set_text(if updates::restart_pending() { "Done. Restart your computer to finish." } else { "Done." });
-                        restart.set_visible(updates::restart_pending());
+                        let must = FORCE_RESTART.swap(false, std::sync::atomic::Ordering::SeqCst) || updates::restart_pending();
+                        status.set_text(if must { "Done. Restart your computer to finish." } else { "Done." });
+                        restart.set_visible(must);
                     }
                     Err(e) => status.set_text(&format!("Something went wrong.\n{e}")),
                 }
@@ -416,6 +420,9 @@ struct HistoryData {
     last: Option<Transaction>,
     zohara: Vec<String>,
     flatpak: Vec<FlatpakInstalled>,
+    snap: SnapStatus,
+    /// `None`: they exist but listing them needs a password.
+    snaps: Option<Vec<Snapshot>>,
 }
 
 fn load_history(page: &Rc<Page>) {
@@ -427,7 +434,9 @@ fn load_history(page: &Rc<Page>) {
                 .output()
                 .map(|o| String::from_utf8_lossy(&o.stdout).lines().filter(|l| l.starts_with("zohara-")).map(String::from).collect())
                 .unwrap_or_default();
-            HistoryData { last: updates::last_update(), zohara, flatpak: updates::flatpak_installed() }
+            let snap = updates::snapshot_status();
+            let snaps = if snap.configured { updates::list_snapshots(false).ok() } else { Some(Vec::new()) };
+            HistoryData { last: updates::last_update(), zohara, flatpak: updates::flatpak_installed(), snap, snaps }
         },
         move |h| render_history(&p, h),
     );
@@ -516,6 +525,100 @@ fn render_history(page: &Rc<Page>, h: HistoryData) {
         g.add(&ex);
     }
     page.history.append(&g);
+    page.history.append(&restore_group(page, &h));
+}
+
+/// Whole-system restore points (Btrfs snapshots).
+fn restore_group(page: &Rc<Page>, h: &HistoryData) -> adw::PreferencesGroup {
+    let g = adw::PreferencesGroup::new();
+    g.set_title("Restore the whole system");
+    g.set_description(Some("A restore point is saved automatically before and after every update. Restoring one puts apps and system files back as they were; your own files in Home aren't touched."));
+
+    let info = |title: &str, sub: &str, icon: &str| {
+        let r = adw::ActionRow::new();
+        r.set_title(title);
+        r.set_subtitle(sub);
+        r.add_prefix(&gtk4::Image::from_icon_name(icon));
+        r
+    };
+    if !h.snap.supported {
+        g.add(&info("System restore is off", "This computer wasn't installed with Btrfs, which restore points need. A fresh install with Btrfs (the default) turns it on.", "dialog-information-symbolic"));
+        return g;
+    }
+    if !h.snap.configured {
+        g.add(&info("Setting up system restore…", "It finishes the next time you restart.", "emblem-synchronizing-symbolic"));
+        return g;
+    }
+
+    let ex = adw::ExpanderRow::new();
+    ex.set_title("Restore points");
+    ex.add_prefix(&gtk4::Image::from_icon_name("document-open-recent-symbolic"));
+    g.add(&ex);
+    match &h.snaps {
+        Some(list) => fill_restore_points(page, &ex, list),
+        None => {
+            ex.set_subtitle("Show them to choose one");
+            let show = gtk4::Button::with_label("Show…");
+            show.set_valign(gtk4::Align::Center);
+            let (p, ex2) = (page.clone(), ex.clone());
+            show.connect_clicked(move |b| {
+                b.set_sensitive(false);
+                let (p, ex, b) = (p.clone(), ex2.clone(), b.clone());
+                background(|| updates::list_snapshots(true), move |r| {
+                    b.set_sensitive(true);
+                    match r {
+                        Ok(list) => {
+                            b.set_visible(false);
+                            fill_restore_points(&p, &ex, &list);
+                        }
+                        Err(e) => ex.set_subtitle(&glib::markup_escape_text(&e)),
+                    }
+                });
+            });
+            ex.add_suffix(&show);
+        }
+    }
+    g
+}
+
+fn fill_restore_points(page: &Rc<Page>, ex: &adw::ExpanderRow, list: &[Snapshot]) {
+    ex.set_subtitle(&format!("{} saved", list.len()));
+    if list.is_empty() {
+        let r = adw::ActionRow::new();
+        r.set_title("None yet");
+        ex.add_row(&r);
+    }
+    for s in list.iter().take(30) {
+        let row = adw::ActionRow::new();
+        row.set_title(&glib::markup_escape_text(&s.title()));
+        row.set_subtitle(&glib::markup_escape_text(&s.date));
+        let b = gtk4::Button::with_label("Restore…");
+        b.set_valign(gtk4::Align::Center);
+        let (p, n, title) = (page.clone(), s.number, s.title());
+        b.connect_clicked(move |b| {
+            let d = adw::AlertDialog::new(
+                Some("Restore the system to this point?"),
+                Some(&format!("“{title}”. Apps and system files go back as they were then, and you'll restart your computer. Your own files in Home aren't touched. Anything installed or changed since will be undone.")),
+            );
+            d.add_responses(&[("cancel", "Cancel"), ("restore", "Restore")]);
+            d.set_response_appearance("restore", adw::ResponseAppearance::Destructive);
+            let (p2, parent) = (p.clone(), b.clone().upcast::<gtk4::Widget>());
+            d.connect_response(None, move |_, r| {
+                if r == "restore" {
+                    run_job(&p2, &parent, "Restoring", move |tx| {
+                        let res = updates::restore_snapshot(n, tx);
+                        if res.is_ok() {
+                            FORCE_RESTART.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
+                        res
+                    });
+                }
+            });
+            d.present(Some(b));
+        });
+        row.add_suffix(&b);
+        ex.add_row(&row);
+    }
 }
 
 const MAX_CHOICES: usize = 5;

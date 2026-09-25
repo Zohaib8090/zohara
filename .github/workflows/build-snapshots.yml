@@ -1,0 +1,69 @@
+name: Build & Publish Zohara Snapshots
+
+# zohara-snapshots (system snapshots + restore) ships as a package so it can be
+# updated from Zohara Store. It is plain scripts, so this is quick.
+# Bump pkgrel in zohara-snapshots/PKGBUILD to make installed systems offer it.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'zohara-snapshots/**'
+      - 'scripts/publish-package.sh'
+      - '.github/workflows/build-snapshots.yml'
+  pull_request:
+    paths:
+      - 'zohara-snapshots/**'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Release channel'
+        required: true
+        default: stable
+        type: choice
+        options: [stable, beta, alpha]
+
+jobs:
+  build:
+    name: Check + package + publish
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    permissions:
+      contents: write
+    steps:
+      - name: Install Arch build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel git sudo github-cli shellcheck
+          useradd -m builder || true
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+
+      - uses: actions/checkout@v4
+
+      - name: Check the script
+        run: |
+          bash -n zohara-snapshots/zohara-snapshots
+          shellcheck -S error zohara-snapshots/zohara-snapshots
+
+      - name: Run makepkg
+        run: |
+          chown -R builder:builder .
+          cd zohara-snapshots
+          sudo -u builder makepkg --nodeps --nocheck
+          echo "package_file=$(ls *.pkg.tar.zst | head -1)" >> "$GITHUB_ENV"
+          echo "package_ver=$(sed -n 's/^pkgver=//p' PKGBUILD | head -1)" >> "$GITHUB_ENV"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zohara-snapshots-arch-x86_64
+          path: zohara-snapshots/*.pkg.tar.zst
+
+      - name: Publish to zohara-packages
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
+          CHANNEL: ${{ github.event.inputs.channel || 'stable' }}
+        run: |
+          scripts/publish-package.sh "zohara-snapshots/${{ env.package_file }}" zohara-snapshots "${{ env.package_ver }}" zohara-snapshots-arch-x86_64

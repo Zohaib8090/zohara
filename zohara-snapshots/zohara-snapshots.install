@@ -1,0 +1,8 @@
+post_install() {
+    # Harmless where Btrfs snapshots aren't in use: the units check for /.snapshots.
+    systemctl enable zohara-snapshots-setup.service snapper-cleanup.timer grub-btrfsd.service >/dev/null 2>&1 || true
+}
+
+post_upgrade() {
+    post_install
+}
