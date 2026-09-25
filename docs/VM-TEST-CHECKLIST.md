@@ -29,6 +29,10 @@ Note what fails, plus the log from `~/.local/state/zohara/settings.log`.
 | Power | screen off / sleep timers per AC/battery | `powerdevilrc` updated |
 | Time & language | timezone, NTP | `timedatectl` agrees |
 | Privacy | camera / mic / location, firewall | `ufw status`, mic muted in pactl |
+| Privacy > Firewall rules | Load rules, add `8080` allow, block a range, delete a rule | `sudo ufw status numbered` matches; list reloads after each change |
+| Privacy > Access indicators | open a camera app (e.g. `cheese`); record with a voice recorder | camera icon appears in the tray while open, gone after; Plasma's own mic icon shows (Zohara's is off by default); Recent activity lists both |
+| Privacy > Access indicators | turn on the Microphone switch | a second, Zohara microphone icon appears while recording |
+| Privacy > Right now | open the page while the camera is on | shows the app name within a few seconds |
 | Storage | disks, cleanup, Storage Sense | sizes real; cleanup frees space |
 | Accounts | add user, change password, autologin | new user can sign in |
 | Apps | installed list, startup toggles, Flathub | uninstall works; startup switch persists |
