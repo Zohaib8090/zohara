@@ -3,6 +3,12 @@ name: Build Zohara OS ISO
 on:
   push:
     branches: [ "master" ]
+    # Docs-only pushes don't change the image, so they don't need a ~25 minute build.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gsd/**'
+      - '.agent/**'
     tags:
       - "v*"
   workflow_dispatch:
