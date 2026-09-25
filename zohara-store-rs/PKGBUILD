@@ -7,7 +7,7 @@ pkgdesc="Zohara OS app store and update center (GTK4 + libadwaita)"
 arch=('x86_64')
 url="https://github.com/Zohaib8090/zohara"
 license=('GPL-3.0-or-later')
-depends=('gtk4' 'libadwaita' 'glib2' 'curl' 'polkit')
+depends=('gtk4' 'libadwaita' 'glib2' 'curl' 'polkit' 'fakeroot')
 makedepends=('rust' 'cargo' 'pkgconf')
 optdepends=(
   'flatpak: Flatpak app support'
@@ -39,4 +39,10 @@ package() {
   install -Dm644 "$startdir/data/zohara-store.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/zohara-store.svg"
   install -Dm644 "$startdir/data/zohara-store-check-updates.service" "$pkgdir/usr/lib/systemd/user/zohara-store-check-updates.service"
   install -Dm644 "$startdir/data/zohara-store-check-updates.timer" "$pkgdir/usr/lib/systemd/user/zohara-store-check-updates.timer"
+  # The key that signs the update manifest. Present once the maintainer has
+  # generated it (data/manifest.pub); without it the Store keeps the old
+  # behaviour and doesn't gate system updates.
+  if [ -f "$startdir/data/manifest.pub" ]; then
+    install -Dm644 "$startdir/data/manifest.pub" "$pkgdir/usr/share/zohara/manifest.pub"
+  fi
 }

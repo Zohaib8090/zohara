@@ -408,10 +408,11 @@ fn run_job(page: &Rc<Page>, parent: &gtk4::Widget, title: &str, work: impl FnOnc
 }
 
 fn install(page: &Rc<Page>, from: &gtk4::Widget, system: bool, zohara: Vec<String>, flatpaks: Vec<String>) {
+    let pending = !page.set.borrow().system.is_empty();
     if page.busy.get() {
         return;
     }
-    run_job(page, from, "Updating", move |tx| updates::apply(system, &zohara, &flatpaks, tx));
+    run_job(page, from, "Updating", move |tx| updates::apply(system, pending, &zohara, &flatpaks, tx));
 }
 
 // ── Going back ─────────────────────────────────────────────────────────────

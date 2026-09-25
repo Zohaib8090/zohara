@@ -1,0 +1,5 @@
+{
+  "approved_date": "2026/09/20",
+  "held_packages": ["mesa"],
+  "min_updater_version": "0.1.0"
+}

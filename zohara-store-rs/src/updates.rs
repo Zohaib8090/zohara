@@ -17,6 +17,7 @@
 //! `/var/log/pacman.log` says exactly what the last update changed, which is
 //! what "Undo the last update" reverses.
 
+use crate::manifest;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::io::{BufRead, BufReader};
@@ -112,7 +113,51 @@ pub fn parse_flatpak_updates(text: &str) -> Vec<FlatpakUpdate> {
         .collect()
 }
 
+/// Checks against the approved date instead of live Arch: `checkupdates`
+/// reads the system's mirrorlist, so this repeats what it does with a
+/// pacman.conf whose mirrorlist is the pinned one (nothing on the system is touched).
+fn check_pacman_pinned() -> Result<Vec<PkgUpdate>, String> {
+    let signed = manifest::fetch_verified()?;
+    let m = &signed.manifest;
+    manifest::decide(manifest::current_pinned_date().as_deref(), m, env!("CARGO_PKG_VERSION"))?;
+
+    let dir = std::env::temp_dir().join(format!("zohara-check-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("db")).map_err(|e| format!("Couldn't prepare the update check ({e})"))?;
+    let result = (|| {
+        let list = dir.join("mirrorlist");
+        let conf = dir.join("pacman.conf");
+        let system_conf = std::fs::read_to_string("/etc/pacman.conf").map_err(|e| format!("Couldn't read pacman.conf ({e})"))?;
+        std::fs::write(&list, manifest::mirrorlist(m)).map_err(|e| e.to_string())?;
+        std::fs::write(&conf, manifest::conf_with_mirrorlist(&system_conf, &list.to_string_lossy())).map_err(|e| e.to_string())?;
+        // Same trick as checkupdates: a private copy of the databases that
+        // shares the installed-package list.
+        std::os::unix::fs::symlink("/var/lib/pacman/local", dir.join("db/local")).map_err(|e| e.to_string())?;
+        let (conf, db) = (conf.to_string_lossy().into_owned(), dir.join("db").to_string_lossy().into_owned());
+        let sync = Command::new("fakeroot")
+            .args(["--", "pacman", "--config", &conf, "--dbpath", &db, "--logfile", "/dev/null", "-Sy"])
+            .output()
+            .map_err(|_| "Checking for system updates needs fakeroot, which isn't installed".to_string())?;
+        if !sync.status.success() {
+            return Err("Couldn't check for system updates. Are you online?".to_string());
+        }
+        let mut q = Command::new("pacman");
+        q.args(["--config", &conf, "--dbpath", &db, "-Qu"]);
+        if !m.held_packages.is_empty() {
+            q.args(["--ignore", &m.held_packages.join(",")]);
+        }
+        let o = q.output().map_err(|e| e.to_string())?;
+        // -Qu exits 1 when there is nothing to update.
+        Ok(parse_checkupdates(&String::from_utf8_lossy(&o.stdout)))
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
 fn check_pacman() -> Result<Vec<PkgUpdate>, String> {
+    if manifest::enabled() {
+        return check_pacman_pinned();
+    }
     let o = Command::new("checkupdates").output().map_err(|_| "Checking for system updates needs pacman-contrib, which isn't installed".to_string())?;
     match o.status.code() {
         Some(0) => Ok(parse_checkupdates(&String::from_utf8_lossy(&o.stdout))),
@@ -195,9 +240,49 @@ fn pkexec(args: &[&str]) -> Command {
     c
 }
 
+/// The system update on an approved-date system, as one administrator prompt:
+/// verify the signed manifest and move the mirror to its date, refresh the
+/// keyring (so new packages verify), then a full upgrade. pacman's own hooks
+/// (snap-pac) save a restore point before and after.
+fn apply_system_pinned(tx: &Sender<String>) -> Result<(), String> {
+    let _ = tx.send("Checking that this update was approved…".into());
+    let signed = manifest::fetch_verified()?;
+    manifest::decide(manifest::current_pinned_date().as_deref(), &signed.manifest, env!("CARGO_PKG_VERSION"))?;
+
+    let mut upgrade = vec!["-Su", "--noconfirm"];
+    let held = signed.manifest.held_packages.join(",");
+    if !held.is_empty() {
+        upgrade.extend(["--ignore", &held]);
+    }
+    // The date is pinned by the time these run, so the refresh is safe; the
+    // check still guards against anyone editing the arguments unsafely later.
+    if !manifest::sync_args_safe(&["-Sy", "--noconfirm", "--needed", "archlinux-keyring"], true) || !manifest::sync_args_safe(&upgrade, true) {
+        return Err("Refused: an update step wasn't safe.".into());
+    }
+
+    let dir = std::env::temp_dir().join(format!("zohara-update-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new().mode(0o700).create(&dir).map_err(|e| format!("Couldn't prepare the update ({e})"))?;
+    }
+    let (m_path, s_path) = (dir.join("manifest.json"), dir.join("manifest.json.minisig"));
+    let run = (|| {
+        std::fs::write(&m_path, &signed.body).map_err(|e| e.to_string())?;
+        std::fs::write(&s_path, &signed.sig).map_err(|e| e.to_string())?;
+        let script = "store=\"$1\"; m=\"$2\"; s=\"$3\"; shift 3; \
+            \"$store\" --pin-date \"$m\" \"$s\" && pacman -Sy --noconfirm --needed archlinux-keyring && exec pacman \"$@\"";
+        let mut c = pkexec(&["sh", "-c", script, "sh", "/usr/bin/zohara-store", &m_path.to_string_lossy(), &s_path.to_string_lossy()]);
+        c.args(&upgrade);
+        run_logged(c, tx)
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    run
+}
+
 /// Installs what was chosen. `system` updates all of pacman's packages
 /// (Zohara's included); otherwise only the named Zohara packages are updated.
-pub fn apply(system: bool, zohara: &[String], flatpaks: &[String], tx: &Sender<String>) -> Result<(), String> {
+pub fn apply(system: bool, system_pending: bool, zohara: &[String], flatpaks: &[String], tx: &Sender<String>) -> Result<(), String> {
     if zohara.iter().chain(flatpaks).any(|n| !safe_name(n)) {
         return Err("A package name looked wrong, so nothing was changed.".into());
     }
@@ -205,12 +290,23 @@ pub fn apply(system: bool, zohara: &[String], flatpaks: &[String], tx: &Sender<S
 
     if system {
         let _ = tx.send("Updating the system…".into());
-        if let Err(e) = run_logged(pkexec(&["pacman", "-Syu", "--noconfirm"]), tx) {
+        let done = if manifest::enabled() { apply_system_pinned(tx) } else { run_logged(pkexec(&["pacman", "-Syu", "--noconfirm"]), tx) };
+        if let Err(e) = done {
             failures.push(e);
         }
     } else if !zohara.is_empty() {
+        // Zohara's apps are built for the approved system date. While the
+        // system is behind it, they are updated together with it.
+        if manifest::enabled() && system_pending {
+            return Err("Update the system together with Zohara's apps: they're built for the newest approved system.".into());
+        }
         let _ = tx.send(format!("Updating {}…", zohara.join(", ")));
-        // `-Sy` here refreshes only what these packages need to be found.
+        // On the approved date `-Sy` changes nothing in the official
+        // repositories, it only finds the new Zohara packages.
+        let pinned = manifest::current_pinned_date().is_some() || !manifest::enabled();
+        if !manifest::sync_args_safe(&["-Sy", "--noconfirm"], pinned) {
+            return Err("Refused: refreshing the package lists without a full upgrade could break the system.".into());
+        }
         let mut c = pkexec(&["sh", "-c", "pacman -Sy --noconfirm && exec pacman -S --noconfirm --needed \"$@\"", "sh"]);
         c.args(zohara);
         if let Err(e) = run_logged(c, tx) {

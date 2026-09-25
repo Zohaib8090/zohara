@@ -1,5 +1,6 @@
 pub mod app_info;
 pub mod backend;
+pub mod manifest;
 pub mod ui;
 pub mod updates;
 pub mod updates_ui;
@@ -16,6 +17,24 @@ fn main() {
     if std::env::args().any(|a| a == "--check-updates") {
         let found = updates::check_all();
         updates::notify_pending(&found);
+        return;
+    }
+
+    // Root helper for the system update (run through pkexec by the Updates
+    // page): re-verifies the signed manifest itself, then pins the mirror.
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(i) = args.iter().position(|a| a == "--pin-date") {
+        let (Some(m), Some(s)) = (args.get(i + 1), args.get(i + 2)) else {
+            eprintln!("usage: zohara-store --pin-date MANIFEST SIGNATURE");
+            std::process::exit(2);
+        };
+        match manifest::root_pin(m, s, env!("CARGO_PKG_VERSION")) {
+            Ok(msg) => println!("{msg}"),
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
         return;
     }
 
