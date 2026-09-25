@@ -15,10 +15,10 @@ echo "[+] Packaging complete airootfs system tree and configurations..."
 # Dockerfile's stage 8: cargo build, then `cp target/release/* /opt/build/`).
 # We installed zohara-settings as a single source of truth at /opt/build/
 # so the ISO build (build-iso.sh) and the update bundle use the same path.
-install -Dm755 /opt/build/zohara-settings /build/zohara-profile/airootfs/usr/bin/zohara-settings
+# zohara-settings and zohara-store are pacman packages; unpack their payloads into the overlay.
+bsdtar -xf /opt/build/zohara-settings.pkg.tar.zst -C /build/zohara-profile/airootfs --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
 # zohara-store is a pacman package now; unpack its payload (skipping .PKGINFO etc.) into the overlay.
 bsdtar -xf /opt/build/zohara-store.pkg.tar.zst -C /build/zohara-profile/airootfs --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
-install -Dm644 /opt/build/zohara-settings.desktop /build/zohara-profile/airootfs/usr/share/applications/zohara-settings.desktop
 cp -a /opt/build/dictation-root/. /build/zohara-profile/airootfs/
 install -Dm755 /opt/build/zohara-welcome /build/zohara-profile/airootfs/usr/local/bin/zohara-welcome
 install -Dm755 /opt/build/zohara-migrate /build/zohara-profile/airootfs/usr/local/bin/zohara-migrate

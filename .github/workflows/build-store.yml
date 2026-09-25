@@ -62,9 +62,18 @@ jobs:
       - name: Compute version
         id: version
         run: |
-          VER=$(grep '^version' zohara-store-rs/Cargo.toml | head -1 | cut -d'"' -f2)
-          [ -n "$VER" ] || { echo "::error::Could not read version from Cargo.toml"; exit 1; }
+          BASE=$(grep '^version' zohara-store-rs/Cargo.toml | head -1 | cut -d'"' -f2)
+          [ -n "$BASE" ] || { echo "::error::Could not read version from Cargo.toml"; exit 1; }
+          # Cargo version + build time: always newer than the last build, so
+          # pacman on installed systems sees it as an update.
+          VER="$BASE.$(date -u +%Y%m%d%H%M)"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Unit tests
+        run: |
+          chown -R builder:builder .
+          cd zohara-store-rs
+          sudo -u builder cargo test --release
 
       # The PKGBUILD's build() runs `cargo build --release --locked`, so
       # makepkg is also the compile check.
@@ -72,7 +81,7 @@ jobs:
         run: |
           chown -R builder:builder .
           cd zohara-store-rs
-          sudo -u builder makepkg --nocheck --skippgpcheck
+          sudo -u builder env _PKGVER="${{ steps.version.outputs.version }}" makepkg --nocheck --skippgpcheck
           PKG_FILE=$(ls *.pkg.tar.zst | head -1)
           echo "package_file=$PKG_FILE" >> "$GITHUB_ENV"
           echo "package_path=zohara-store-rs/$PKG_FILE" >> "$GITHUB_ENV"

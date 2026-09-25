@@ -17,16 +17,17 @@ echo "  -> Zohara binaries marked executable."
 # The package (built in the Dockerfile, staged by build-iso.sh) owns the binary,
 # .desktop, icon and update-check units, so later `pacman -S zohara-store`
 # upgrades don't hit "exists in filesystem" conflicts.
-if [[ -f /root/zohara-store.pkg.tar.zst ]]; then
-    echo "  -> Installing zohara-store package..."
+ZOHARA_PKGS=()
+for f in /root/zohara-settings.pkg.tar.zst /root/zohara-store.pkg.tar.zst; do
+    if [[ -f "$f" ]]; then ZOHARA_PKGS+=("$f"); else echo "  !! $f missing; it will not be installed."; fi
+done
+if (( ${#ZOHARA_PKGS[@]} )); then
+    echo "  -> Installing Zohara packages (settings, store)..."
     # Inside the build chroot pacman cannot resolve the root mount point, so CheckSpace
     # aborts with "not enough free disk space". Use a one-off config without it.
     grep -v '^CheckSpace' /etc/pacman.conf > /tmp/pacman-nocheckspace.conf
-    pacman --config /tmp/pacman-nocheckspace.conf -U --noconfirm --needed /root/zohara-store.pkg.tar.zst
-    rm -f /tmp/pacman-nocheckspace.conf
-    rm -f /root/zohara-store.pkg.tar.zst
-else
-    echo "  !! zohara-store.pkg.tar.zst missing; Software Store will not be installed."
+    pacman --config /tmp/pacman-nocheckspace.conf -U --noconfirm --needed "${ZOHARA_PKGS[@]}"
+    rm -f /tmp/pacman-nocheckspace.conf "${ZOHARA_PKGS[@]}"
 fi
 
 LOGO_SRC="/etc/calamares/branding/zohara/logo.png"
@@ -298,15 +299,16 @@ cat << 'REPO_EOF' >> /etc/pacman.conf
 #     sudo zohara-channel set beta
 #     sudo zohara-channel set alpha
 #     sudo zohara-channel list
-#[zohara-stable]
-#SigLevel = Optional TrustAll
-#Server = https://github.com/Zohaib8090/zohara-packages/releases/stable/download
+# Stable is on by default, so Zohara Store can find and install Zohara updates.
+[zohara-stable]
+SigLevel = Optional TrustAll
+Server = https://github.com/Zohaib8090/zohara-packages/releases/download/stable
 #[zohara-beta]
 #SigLevel = Optional TrustAll
-#Server = https://github.com/Zohaib8090/zohara-packages/releases/channel-beta/download
+#Server = https://github.com/Zohaib8090/zohara-packages/releases/download/channel-beta
 #[zohara-alpha]
 #SigLevel = Optional TrustAll
-#Server = https://github.com/Zohaib8090/zohara-packages/releases/channel-alpha/download
+#Server = https://github.com/Zohaib8090/zohara-packages/releases/download/channel-alpha
 REPO_EOF
 
 # Mark the default channel in /etc/zohara/channel so zohara-channel

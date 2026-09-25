@@ -159,10 +159,13 @@ COPY --chown=builder:builder zohara-welcome /tmp/zohara-welcome-rs
 # below can install them into the airootfs overlay.
 RUN --mount=type=cache,target=/home/builder/.cargo/registry,uid=1000,sharing=locked \
     --mount=type=cache,target=/home/builder/.cargo/git,uid=1000,sharing=locked \
+    STAMP="$(date -u +%Y%m%d%H%M)" && \
     cd /tmp/zohara-settings-rs && /home/builder/.cargo/bin/cargo build --release && \
+    _PKGVER="0.1.0.$STAMP" makepkg --nodeps --nocheck --skippgpcheck && \
+    mv /tmp/zohara-settings-rs/zohara-settings-[0-9]*.pkg.tar.zst /tmp/zohara-settings.pkg.tar.zst && \
     cd /tmp/zohara-welcome-rs && /home/builder/.cargo/bin/cargo build --release && \
     cd /tmp/zohara-store-rs && /home/builder/.cargo/bin/cargo build --release && \
-    PATH=/home/builder/.cargo/bin:$PATH makepkg --nodeps --nocheck --skippgpcheck && \
+    _PKGVER="0.1.0.$STAMP" PATH=/home/builder/.cargo/bin:$PATH makepkg --nodeps --nocheck --skippgpcheck && \
     mv /tmp/zohara-store-rs/zohara-store-[0-9]*.pkg.tar.zst /tmp/zohara-store.pkg.tar.zst
 
 # /opt is owned by root, so we cannot create /opt/build while still USER
@@ -179,20 +182,14 @@ USER root
 RUN mkdir -p /opt/build && \
     cp /tmp/zohara-settings-rs/target/release/zohara-settings /opt/build/ && \
     cp /tmp/zohara-store.pkg.tar.zst                         /opt/build/ && \
+    cp /tmp/zohara-settings.pkg.tar.zst                      /opt/build/ && \
     cp /tmp/zohara-welcome-rs/target/release/zohara-welcome /tmp/zohara-welcome-rs/target/release/zohara-migrate /opt/build/ && \
     cp /tmp/zohara-settings-rs/data/zohara-settings.desktop  /opt/build/ && \
     cp /tmp/zohara-settings-rs/data/zohara-settings-health.service \
        /tmp/zohara-settings-rs/data/zohara-settings-health.timer /opt/build/ && \
     dest=/opt/build/dictation-root && \
-    install -Dm644 /tmp/zohara-settings-rs/data/zohara-dictation.desktop \
-        "$dest/usr/share/applications/zohara-dictation.desktop" && \
-    mkdir -p "$dest/usr/share/kglobalaccel" && \
-    ln -sf /usr/share/applications/zohara-dictation.desktop \
-        "$dest/usr/share/kglobalaccel/zohara-dictation.desktop" && \
     install -Dm644 /tmp/zohara-settings-rs/data/70-zohara-uinput.rules \
         "$dest/etc/udev/rules.d/70-zohara-uinput.rules" && \
-    install -Dm644 /tmp/zohara-settings-rs/data/zohara-privacy-indicator.desktop \
-        "$dest/etc/xdg/autostart/zohara-privacy-indicator.desktop" && \
     mkdir -p "$dest/etc/modules-load.d" && \
     echo uinput > "$dest/etc/modules-load.d/zohara-uinput.conf"
 

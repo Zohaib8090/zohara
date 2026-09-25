@@ -19,7 +19,13 @@ source=()
 sha256sums=()
 
 pkgver() {
-  grep '^version' "$startdir/Cargo.toml" | head -1 | cut -d'"' -f2
+  # CI and the ISO build pass _PKGVER (Cargo version + build time) so every
+  # build is newer than the last and pacman offers it as an update.
+  if [ -n "${_PKGVER:-}" ]; then
+    echo "$_PKGVER"
+  else
+    grep '^version' "$startdir/Cargo.toml" | head -1 | cut -d'"' -f2
+  fi
 }
 
 build() {

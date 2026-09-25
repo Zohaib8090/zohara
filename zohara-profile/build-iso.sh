@@ -45,24 +45,24 @@ install -Dm755 "$PROFILE_DIR/pacman-overwrite-xorg" "$_WRAP_DIR/pacman"
 export PATH="$_WRAP_DIR:$PATH"
 
 # 1. Stage the prebuilt binaries into the airootfs.
-install -Dm755 /opt/build/zohara-settings \
-    "$PROFILE_DIR/airootfs/usr/bin/zohara-settings"
+# zohara-settings and zohara-store ship as real pacman packages, installed by
+# customize_airootfs.sh via `pacman -U`, so pacman owns their files and the Store
+# can update them later. (Rust welcome/migrate are plain files, below.)
+install -Dm644 /opt/build/zohara-settings.pkg.tar.zst \
+    "$PROFILE_DIR/airootfs/root/zohara-settings.pkg.tar.zst"
 # zohara-store ships as a real pacman package, installed by customize_airootfs.sh via
 # `pacman -U`, so pacman owns its files and can update it later without conflicts.
 install -Dm644 /opt/build/zohara-store.pkg.tar.zst \
     "$PROFILE_DIR/airootfs/root/zohara-store.pkg.tar.zst"
-rm -f "$PROFILE_DIR/airootfs/usr/bin/zohara-store" \
+rm -f "$PROFILE_DIR/airootfs/usr/bin/zohara-store" "$PROFILE_DIR/airootfs/usr/bin/zohara-settings" \
+      "$PROFILE_DIR/airootfs/usr/share/applications/zohara-settings.desktop" \
+      "$PROFILE_DIR/airootfs/usr/lib/systemd/user/zohara-settings-health.service" \
+      "$PROFILE_DIR/airootfs/usr/lib/systemd/user/zohara-settings-health.timer" \
       "$PROFILE_DIR/airootfs/usr/local/bin/zohara-settings" \
       "$PROFILE_DIR/airootfs/usr/local/bin/zohara-store"
-install -Dm644 /opt/build/zohara-settings.desktop \
-    "$PROFILE_DIR/airootfs/usr/share/applications/zohara-settings.desktop"
 # Welcome app and migration tool (Rust; profiledef.sh sets their permissions).
 for tool in zohara-welcome zohara-migrate; do
     install -Dm755 "/opt/build/$tool" "$PROFILE_DIR/airootfs/usr/local/bin/$tool"
-done
-# Background health check (enabled for every user in customize_airootfs.sh).
-for unit in zohara-settings-health.service zohara-settings-health.timer; do
-    install -Dm644 "/opt/build/$unit" "$PROFILE_DIR/airootfs/usr/lib/systemd/user/$unit"
 done
 # Voice typing: whisper.cpp, its model, the Meta+H shortcut and uinput access,
 # laid out in the target filesystem's shape by the Dockerfile (steps 7b and 8).

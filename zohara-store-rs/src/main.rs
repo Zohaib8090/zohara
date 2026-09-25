@@ -2,6 +2,7 @@ pub mod app_info;
 pub mod backend;
 pub mod ui;
 pub mod updates;
+pub mod updates_ui;
 
 use gtk4::prelude::*;
 use libadwaita as adw;
@@ -13,8 +14,8 @@ fn main() {
     // "notify even when the Store isn't open" real, rather than only
     // checking when someone happens to launch the app.
     if std::env::args().any(|a| a == "--check-updates") {
-        let pending = updates::check_for_updates();
-        updates::notify_pending_updates(&pending);
+        let found = updates::check_all();
+        updates::notify_pending(&found);
         return;
     }
 
@@ -23,7 +24,8 @@ fn main() {
         .build();
 
     app.connect_activate(build_ui);
-    app.run();
+    let first: Vec<String> = std::env::args().take(1).collect();
+    app.run_with_args(&first);
 }
 
 fn build_ui(app: &adw::Application) {

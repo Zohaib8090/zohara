@@ -130,7 +130,7 @@ list_channels() {
     for ch in stable beta alpha; do
         local repo
         repo="$(repo_name "$ch")"
-        local url="${REPO_BASE}/$( [ "$ch" = "stable" ] && echo "stable" || echo "channel-$ch" )/download/zohara.db"
+        local url="${REPO_BASE}/download/$( [ "$ch" = "stable" ] && echo "stable" || echo "channel-$ch" )/zohara.db"
         local status="(unknown)"
         # Probe: does the channel have a published zohara.db?
         if curl -sI -o /dev/null -w "%{http_code}" --max-time 5 "$url" 2>/dev/null | grep -q '^200$'; then
