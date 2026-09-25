@@ -162,3 +162,18 @@ each "Done when" item, show real command output.
 
 Before that, verify the in-flight ISO, then boot it in a VM and go through the
 checklist, starting with the installer (Btrfs) and Store > Updates.
+
+## Update 2026-09-26: Python removed, Phase 1 started
+
+- OS-side Python removed: `build-iso.yml` uses `jq`; `zohara-packages` `publish.yml`
+  patches `apps.json` with `jq` (tested locally against the real `apps.json`);
+  python packages dropped from `packages.x86_64`.
+- Phase 1 built: `zohara-store-rs/src/manifest.rs` (minisign verify, strict date,
+  no-backwards, `-Sy` guard, pinned check via temp pacman.conf, `--pin-date` root
+  helper); 20 Store tests green in CI. New public repo `Zohaib8090/zohara-pipeline`
+  (manifest format, `tools/approve.sh`).
+- **Inactive until the owner generates the signing key** (README in zohara-pipeline)
+  and commits the public half as `zohara-store-rs/data/manifest.pub`.
+- Still to do in Phase 1: build Zohara packages in a container pinned to the
+  approved date; build the ISO at the same date; JSON output for the health check;
+  VM proof of GRUB entry and rollback.
