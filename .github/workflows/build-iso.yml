@@ -90,7 +90,7 @@ jobs:
         # Don't let set -e kill us on missing xorriso metadata; we want to
         # warn and continue so the artifact upload still runs.
         set +e
-        sudo apt-get update && sudo apt-get install -y xorriso mtools p7zip-full
+        sudo apt-get update && sudo apt-get install -y xorriso mtools p7zip-full jq
         # The ISO is in zohara-profile/out/ (mkarchiso's -o output).
         # Look there directly to avoid any symlink weirdness.
         ISO=$(ls zohara-profile/out/*.iso 2>/dev/null | head -1)
@@ -109,7 +109,7 @@ jobs:
         # is stable across xorriso versions.
         echo "=== Raw xorriso -report_el_torito output ==="
         JSON_OUT=$(xorriso -indev "$ISO" -report_el_torito json 2>/dev/null || true)
-        if [ -z "$JSON_OUT" ] || ! echo "$JSON_OUT" | python3 -c "import json,sys; json.load(sys.stdin)" >/dev/null 2>&1; then
+        if [ -z "$JSON_OUT" ] || ! echo "$JSON_OUT" | jq -e .  >/dev/null 2>&1; then
             echo "(JSON output failed; falling back to plain text)"
             JSON_OUT=""
             xorriso -indev "$ISO" -report_el_torito plain 2>/dev/null || \
@@ -122,9 +122,9 @@ jobs:
         echo "=== End raw output ==="
 
         # Parse: prefer JSON, fall back to grep.
-        if [ -n "$JSON_OUT" ] && echo "$JSON_OUT" | python3 -c "import json,sys; json.load(sys.stdin)" >/dev/null 2>&1; then
-            LBA=$(echo "$JSON_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(e.get('lba','')) for e in d.get('system_area_entries',[]) if 'UEFI' in e.get('type','').upper()]" 2>/dev/null | head -1)
-            BLOCKS=$(echo "$JSON_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(e.get('load_size','')) for e in d.get('system_area_entries',[]) if 'UEFI' in e.get('type','').upper()]" 2>/dev/null | head -1)
+        if [ -n "$JSON_OUT" ] && echo "$JSON_OUT" | jq -e .  >/dev/null 2>&1; then
+            LBA=$(echo "$JSON_OUT" | jq -r '.system_area_entries[]? | select((.type // "") | ascii_upcase | contains("UEFI")) | .lba // empty' 2>/dev/null | head -1)
+            BLOCKS=$(echo "$JSON_OUT" | jq -r '.system_area_entries[]? | select((.type // "") | ascii_upcase | contains("UEFI")) | .load_size // empty' 2>/dev/null | head -1)
         fi
         # Fallback: parse plain text. Newer xorriso emits:
         #   "EFI image start and size: <start> * 2048 , <size> * 512"

@@ -20,7 +20,6 @@ arch-install-scripts
 pacman-contrib
 os-prober
 rsync
-python
 
 # Display Manager & DE Base
 # sddm is the display manager; xorg-server is its hard dependency and
@@ -131,9 +130,7 @@ fluent-cursor-theme-git
 fluent-gtk-theme-git
 fluent-icon-theme-git
 nordzy-icon-theme-git
-python-pywebview
 webkit2gtk-4.1
-python-gobject
 flatseal
 xdg-desktop-portal-kde
 bluez
@@ -144,12 +141,9 @@ xdg-utils
 xdg-user-dirs
 polkit-kde-agent
 yay
-pyside6
 qt6-declarative
 # (python-pyqt5 removed: zohara-welcome and zohara-migrate are Rust/GTK now,
 # and account/update management lives in Zohara Settings.)
-python-dbus
-python-pydbus
 gtk4
 libadwaita
 
