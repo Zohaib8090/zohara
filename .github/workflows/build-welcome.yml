@@ -84,4 +84,4 @@ jobs:
           GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
           CHANNEL: ${{ github.event.inputs.channel || 'stable' }}
         run: |
-          scripts/publish-package.sh "${{ env.package_path }}" "$PKG" "${{ steps.version.outputs.version }}" zohara-welcome-arch-x86_64
+          bash scripts/publish-package.sh "${{ env.package_path }}" "$PKG" "${{ steps.version.outputs.version }}" zohara-welcome-arch-x86_64

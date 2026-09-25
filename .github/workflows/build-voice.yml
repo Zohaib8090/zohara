@@ -79,5 +79,5 @@ jobs:
           # The model first: the engine depends on it. WAIT=1 holds until
           # zohara-packages has rebuilt its database, so the two publishes
           # don't overwrite each other.
-          WAIT=1 scripts/publish-package.sh "zohara-voice-model/${{ env.model_file }}" zohara-voice-model "${{ env.model_ver }}" zohara-voice-arch-x86_64
-          scripts/publish-package.sh "zohara-voice/${{ env.voice_file }}" zohara-voice "${{ env.voice_ver }}" zohara-voice-arch-x86_64
+          WAIT=1 bash scripts/publish-package.sh "zohara-voice-model/${{ env.model_file }}" zohara-voice-model "${{ env.model_ver }}" zohara-voice-arch-x86_64
+          bash scripts/publish-package.sh "zohara-voice/${{ env.voice_file }}" zohara-voice "${{ env.voice_ver }}" zohara-voice-arch-x86_64
