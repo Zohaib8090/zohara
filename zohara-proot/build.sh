@@ -31,15 +31,30 @@ MOUNTED=()
 # Background processes started inside the chroot (gpg-agent from pacman-key)
 # keep its mounts busy and its sockets in the archive: stop them first.
 kill_chroot_procs() {
-    local root="$1" p
+    local root="$1" sig="${2:-TERM}" p
     for p in /proc/[0-9]*; do
-        if [ "$(readlink "$p/root" 2>/dev/null)" = "$root" ]; then kill "${p#/proc/}" 2>/dev/null || true; fi
+        if [ "$(readlink "$p/root" 2>/dev/null)" = "$root" ]; then kill -"$sig" "${p#/proc/}" 2>/dev/null || true; fi
     done
     sleep 2
 }
 
+mounts_under() { findmnt -rn -o TARGET | grep -E "^$1(/|\$)" || true; }
+
+# Unmounts everything at and below $1 (deepest first), stopping leftover
+# processes that hold it. Returns 1 if something stays mounted.
+unmount_tree() {
+    local root="$1" n m
+    for n in 1 2 3 4 5; do
+        kill_chroot_procs "$root" "$([ "$n" -ge 3 ] && echo KILL || echo TERM)"
+        mounts_under "$root" | sort -r | while read -r m; do umount -l "$m" 2>/dev/null || true; done
+        sleep 1
+        [ -z "$(mounts_under "$root")" ] && return 0
+    done
+    return 1
+}
+
 cleanup() {
-    for ((i = ${#MOUNTED[@]} - 1; i >= 0; i--)); do umount -R "${MOUNTED[i]}" 2>/dev/null || umount -lR "${MOUNTED[i]}" 2>/dev/null || true; done
+    for ((i = ${#MOUNTED[@]} - 1; i >= 0; i--)); do unmount_tree "${MOUNTED[i]}" || true; done
 }
 trap cleanup EXIT
 
@@ -50,8 +65,8 @@ new_root() {
     local root="$1"
     # A leftover from an interrupted run may still have /dev and /sys mounted
     # inside it: unmount first, and never let rm cross into another filesystem.
-    umount -R "$root" 2>/dev/null || true
-    if findmnt -rn -o TARGET | grep -q "^$root"; then die "$root still has mounts; unmount them first"; fi
+    unmount_tree "$root" || true
+    [ -z "$(mounts_under "$root")" ] || die "$root still has mounts; unmount them first"
     rm -rf --one-file-system "$root"
     mkdir -p "$root"
     bsdtar -xpf "$WORK/alarm.tar.gz" -C "$root"
@@ -180,7 +195,7 @@ rm -f "$R/etc/resolv.conf" "$R/etc/machine-id"
 kill_chroot_procs "$R"
 rm -f "$R"/etc/pacman.d/gnupg/S.* "$R"/etc/pacman.d/gnupg/.#* 2>/dev/null || true
 cleanup; MOUNTED=()
-if findmnt -rn -o TARGET | grep -q "^$R"; then die "$R still has mounts; refusing to pack the running system folders"; fi
+if [ -n "$(mounts_under "$R")" ]; then mounts_under "$R" >&2; die "$R still has mounts (listed above); refusing to pack the running system folders"; fi
 
 log "Packing the system"
 tar -C "$WORK" --numeric-owner --one-file-system -cpf - "$NAME" | xz -T0 -6 > "$OUT/zohara-rootfs-aarch64.tar.xz"
