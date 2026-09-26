@@ -52,6 +52,15 @@ jobs:
         echo "sha=$sha" >> "$GITHUB_OUTPUT"
         echo "Resolved zohara-settings main to $sha"
 
+    - name: Resolve approved Arch date
+      id: approved
+      run: |
+        # The ISO is built from the same Arch day users are pinned to.
+        d=$(curl -fsSL https://raw.githubusercontent.com/Zohaib8090/zohara-pipeline/main/manifest.json | sed -n 's/.*"approved_date": *"\([0-9/]*\)".*/\1/p')
+        [ -n "$d" ] || { echo "::error::could not read approved_date from zohara-pipeline"; exit 1; }
+        echo "date=$d" >> "$GITHUB_OUTPUT"
+        echo "Building against Arch as of $d"
+
     - name: Build Docker builder image
       uses: docker/build-push-action@v5
       with:
@@ -60,6 +69,7 @@ jobs:
         tags: zohara-builder:latest
         build-args: |
           ZOHARA_SETTINGS_SHA=${{ steps.settings-sha.outputs.sha }}
+          APPROVED_DATE=${{ steps.approved.outputs.date }}
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 

@@ -1,10 +1,15 @@
 # syntax=docker/dockerfile:1
 FROM archlinux:latest
 
+# The Arch day the OS is pinned to (zohara-pipeline manifest). Passed by CI, so
+# a new approval also busts the cache of the layer below.
+ARG APPROVED_DATE
+
 # ── 1. Base system update ──────────────────────────────────────────────────────
 # Cache mount: pacman package cache persists in a named BuildKit cache
 RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
-    pacman -Syu --noconfirm && \
+    if [ -n "$APPROVED_DATE" ]; then echo "Server = https://archive.archlinux.org/repos/$APPROVED_DATE/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist; fi && \
+    pacman -Syuu --noconfirm && \
     pacman -S --noconfirm \
         archiso \
         base-devel \
