@@ -92,6 +92,8 @@ log "Preparing the build chroot"
 new_root "$B"
 in_root "$B" 'pacman -S --noconfirm --needed base-devel git rust cmake pkgconf gtk4 libadwaita glib2 dbus polkit curl'
 in_root "$B" 'id builder >/dev/null 2>&1 || useradd -m builder'
+# Arch Linux ARM's makepkg may default to .pkg.tar.xz; the repository wants zstd.
+in_root "$B" "sed -i -E 's/^#?PKGEXT=.*/PKGEXT=\".pkg.tar.zst\"/' /etc/makepkg.conf && grep -n '^PKGEXT' /etc/makepkg.conf"
 
 mkdir -p "$B/build"
 cp -a "$REPO/zohara-store-rs" "$REPO/zohara-welcome" "$REPO/zohara-voice" "$REPO/zohara-voice-model" "$B/build/"
@@ -112,6 +114,8 @@ as_builder "$B" 'cd /build/zohara-voice-model && makepkg --nodeps --nocheck'
 
 log "Making the aarch64 package repository"
 rm -rf "$OUT/repo"; mkdir -p "$OUT/repo"
+echo "Packages found:"; find "$B/build" -maxdepth 2 -name '*.pkg.tar.*' -printf '  %p\n'
+ls "$B"/build/*/*.pkg.tar.zst >/dev/null 2>&1 || die "no .pkg.tar.zst packages were produced (see the list above)"
 cp "$B"/build/*/*.pkg.tar.zst "$OUT/repo/"
 in_root "$B" 'rm -rf /tmp/repo && mkdir /tmp/repo'
 cp "$OUT"/repo/*.pkg.tar.zst "$B/tmp/repo/"
