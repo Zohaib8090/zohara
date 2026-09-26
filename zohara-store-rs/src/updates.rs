@@ -291,8 +291,9 @@ pub fn apply(system: bool, system_pending: bool, zohara: &[String], flatpaks: &[
     if system {
         let _ = tx.send("Updating the system…".into());
         let done = if manifest::enabled() { apply_system_pinned(tx) } else { run_logged(pkexec(&["pacman", "-Syu", "--noconfirm"]), tx) };
-        if let Err(e) = done {
-            failures.push(e);
+        match done {
+            Ok(()) => mark_post_update(),
+            Err(e) => failures.push(e),
         }
     } else if !zohara.is_empty() {
         // Zohara's apps are built for the approved system date. While the
@@ -711,6 +712,122 @@ pub fn notify_pending(set: &UpdateSet) {
                 let _ = Command::new(exe).args(["--page", "updates"]).spawn();
             }
         }
+    }
+}
+
+// ── Did the update break anything? ─────────────────────────────────────────
+//
+// After a system update, once the computer has restarted (or straight away if
+// no restart was needed), the Store runs Settings' health check. If the
+// desktop is unhealthy it offers the restore points, one click away.
+
+fn marker_path() -> PathBuf {
+    state_path().with_file_name("post-update-check")
+}
+
+/// Remembers that a system update finished and should be health-checked.
+pub fn mark_post_update() {
+    let p = marker_path();
+    if let Some(dir) = p.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(p, "");
+}
+
+/// A check is due once the computer has restarted since the update, or when
+/// no restart is pending (nothing to wait for).
+pub fn check_due(marker_secs: u64, boot_secs: u64, restart_pending: bool) -> bool {
+    marker_secs < boot_secs || !restart_pending
+}
+
+fn boot_time_secs() -> u64 {
+    std::fs::read_to_string("/proc/stat").ok().and_then(|s| s.lines().find_map(|l| l.strip_prefix("btime ")?.trim().parse().ok())).unwrap_or(0)
+}
+
+/// True (and clears the marker) when a post-update health check is due.
+pub fn take_post_update_check() -> bool {
+    let p = marker_path();
+    let Ok(meta) = std::fs::metadata(&p) else { return false };
+    let secs = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+    if check_due(secs, boot_time_secs(), restart_pending()) {
+        let _ = std::fs::remove_file(p);
+        true
+    } else {
+        false
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Health {
+    pub healthy: bool,
+    /// What failed, in words for the user.
+    pub problems: Vec<String>,
+}
+
+/// `zohara-settings --health-json` output.
+pub fn parse_health(text: &str) -> Option<Health> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let healthy = v["healthy"].as_bool()?;
+    let mut problems: Vec<String> = v["checks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["pass"].as_bool() == Some(false))
+        .map(|c| match c["name"].as_str().unwrap_or("") {
+            "system_state" => "The system didn't finish starting cleanly".to_string(),
+            "login_manager" => "The login screen isn't running".to_string(),
+            "desktop" => "The desktop isn't running".to_string(),
+            "audio" => "No sound device was found".to_string(),
+            "network" => "There's no network connection".to_string(),
+            other => format!("A check failed ({other})"),
+        })
+        .collect();
+    problems.extend(
+        v["issues"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|i| i["severity"].as_str() == Some("Critical"))
+            .filter_map(|i| i["title"].as_str().map(str::to_string)),
+    );
+    Some(Health { healthy, problems })
+}
+
+/// Runs the check (slow); call off the UI thread. `None` if it couldn't run.
+pub fn run_health() -> Option<Health> {
+    // Exit code 1 just means "not healthy"; the JSON still comes on stdout.
+    let o = Command::new("zohara-settings").arg("--health-json").output().ok()?;
+    parse_health(&String::from_utf8_lossy(&o.stdout))
+}
+
+#[cfg(test)]
+mod health_tests {
+    use super::*;
+
+    #[test]
+    fn healthy_report() {
+        let h = parse_health(r#"{"healthy":true,"checks":[{"name":"desktop","pass":true,"detail":""}],"issues":[]}"#).unwrap();
+        assert_eq!(h, Health { healthy: true, problems: vec![] });
+    }
+
+    #[test]
+    fn unhealthy_report_lists_problems() {
+        let h = parse_health(r#"{"healthy":false,"checks":[{"name":"desktop","pass":false,"detail":"x"},{"name":"audio","pass":true,"detail":""}],"issues":[{"severity":"Critical","title":"Disk full"},{"severity":"Info","title":"meh"}]}"#).unwrap();
+        assert!(!h.healthy);
+        assert_eq!(h.problems, vec!["The desktop isn't running".to_string(), "Disk full".to_string()]);
+    }
+
+    #[test]
+    fn garbage_is_not_a_report() {
+        assert!(parse_health("").is_none());
+        assert!(parse_health("{}").is_none());
+    }
+
+    #[test]
+    fn check_waits_for_the_restart() {
+        assert!(!check_due(200, 100, true)); // updated after boot, restart still pending
+        assert!(check_due(100, 200, true)); // restarted since
+        assert!(check_due(200, 100, false)); // no restart needed
     }
 }
 

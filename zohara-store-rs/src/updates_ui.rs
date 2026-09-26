@@ -68,6 +68,22 @@ pub fn build_page() -> gtk4::Widget {
     title.set_xalign(0.0);
     inner.append(&title);
 
+    // Shown when the health check after an update finds a problem.
+    let banner = adw::Banner::new("");
+    banner.set_button_label(Some("Go back"));
+    banner.set_revealed(false);
+    inner.append(&banner);
+    if updates::take_post_update_check() {
+        let banner = banner.clone();
+        background(updates::run_health, move |h| {
+            if let Some(h) = h.filter(|h| !h.healthy) {
+                let what = if h.problems.is_empty() { "Something doesn't look right".to_string() } else { h.problems.join(". ") };
+                banner.set_title(&format!("The last update may have caused a problem. {what}."));
+                banner.set_revealed(true);
+            }
+        });
+    }
+
     // Status card with the main buttons.
     let card = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
     card.add_css_class("card");
@@ -117,6 +133,14 @@ pub fn build_page() -> gtk4::Widget {
 
     clamp.set_child(Some(&inner));
     scroll.set_child(Some(&clamp));
+    {
+        // "Go back" jumps to the restore points at the bottom of the page.
+        let scroll = scroll.clone();
+        banner.connect_button_clicked(move |_| {
+            let adj = scroll.vadjustment();
+            adj.set_value(adj.upper());
+        });
+    }
 
     let page = Rc::new(Page {
         status_title,
