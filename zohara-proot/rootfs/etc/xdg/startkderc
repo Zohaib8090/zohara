@@ -1,0 +1,3 @@
+[General]
+# proot has no systemd: start Plasma's services directly.
+systemdBoot=false

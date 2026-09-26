@@ -1,0 +1,77 @@
+name: Build Zohara for ARM phones
+
+# Zohara for 64-bit ARM phones, run in Termux through proot-distro:
+#   - Zohara's packages built for aarch64 -> release stable-aarch64 in
+#     zohara-packages (the phone's Zohara Store updates from there)
+#   - the phone system (Arch Linux ARM + Plasma + Zohara's apps) and the
+#     Termux installer -> release proot-latest in this repo
+#
+# Runs on GitHub's native ARM machines. Settings lives in its own repo:
+# after changing it, run this workflow by hand to ship it to phones.
+
+on:
+  push:
+    branches: [master, arm-main]
+    paths:
+      - 'zohara-proot/**'
+      - 'zohara-store-rs/**'
+      - 'zohara-welcome/**'
+      - 'zohara-voice/**'
+      - 'zohara-voice-model/**'
+      - '.github/workflows/build-arm.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: build-arm
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build packages + phone system
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libarchive-tools xz-utils
+
+      - name: Check the scripts
+        run: |
+          bash -n zohara-proot/build.sh
+          bash -n zohara-proot/termux/install.sh
+          bash -n zohara-proot/termux/zohara
+          sh -n zohara-proot/rootfs/usr/local/bin/pkexec
+          bash -n zohara-proot/rootfs/usr/local/bin/zohara-session
+
+      - name: Build
+        # Settings is built from the branch of the same role in its repo.
+        run: sudo OUT="$PWD/out-arm" SETTINGS_BRANCH="${{ github.ref_name == 'master' && 'main' || 'arm-main' }}" bash zohara-proot/build.sh
+
+      - name: Upload packages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zohara-packages-aarch64
+          path: out-arm/repo/
+
+      - name: Publish packages to zohara-packages (stable-aarch64)
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
+        run: |
+          R=Zohaib8090/zohara-packages
+          gh release view stable-aarch64 -R "$R" >/dev/null 2>&1 || \
+            gh release create stable-aarch64 -R "$R" --title "Zohara packages (ARM, stable)" \
+              --notes "pacman repository for Zohara on 64-bit ARM phones."
+          gh release upload stable-aarch64 -R "$R" --clobber out-arm/repo/*
+
+      - name: Publish phone system (proot-latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view proot-latest >/dev/null 2>&1 || \
+            gh release create proot-latest --prerelease --title "Zohara OS for phones (Termux)" \
+              --notes "Install in Termux: curl -fsSL https://github.com/Zohaib8090/zohara/releases/download/proot-latest/install.sh | bash"
+          gh release upload proot-latest --clobber \
+            out-arm/zohara-rootfs-aarch64.tar.xz out-arm/zohara.sh out-arm/install.sh out-arm/zohara

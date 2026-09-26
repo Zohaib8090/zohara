@@ -550,7 +550,10 @@ fn render_history(page: &Rc<Page>, h: HistoryData) {
         g.add(&ex);
     }
     page.history.append(&g);
-    page.history.append(&restore_group(page, &h));
+    // Restore points need Btrfs and a boot menu, which phones (proot) don't have.
+    if !updates::is_phone() {
+        page.history.append(&restore_group(page, &h));
+    }
 }
 
 /// Whole-system restore points (Btrfs snapshots).

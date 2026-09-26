@@ -1,0 +1,14 @@
+# proot-distro plugin for Zohara OS. Installed by install.sh as
+# $PREFIX/etc/proot-distro/zohara.sh, so `proot-distro install zohara` works.
+# @URL@ and @SHA256@ are filled in by the build.
+DISTRO_NAME="Zohara OS"
+DISTRO_COMMENT="Zohara OS for phones: Arch Linux ARM with the Plasma desktop and Zohara's apps."
+TARBALL_STRIP_OPT=1
+TARBALL_URL['aarch64']="@URL@"
+TARBALL_SHA256['aarch64']="@SHA256@"
+
+distro_setup() {
+    run_proot_cmd pacman-key --init
+    run_proot_cmd pacman-key --populate archlinuxarm
+    run_proot_cmd xdg-user-dirs-update || true
+}

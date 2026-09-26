@@ -1,0 +1,44 @@
+# Zohara on phones (Arch Linux ARM, run through proot in Termux).
+# No kernel, bootloader, login manager, NetworkManager or Bluetooth: the
+# phone's Android handles those.
+
+# Desktop (drawn by Termux:X11)
+plasma-desktop
+plasma-pa
+breeze
+breeze-gtk
+kde-gtk-config
+xdg-desktop-portal-kde
+dbus
+xorg-xrdb
+xorg-xset
+
+# Apps
+konsole
+dolphin
+kate
+ark
+gwenview
+okular
+firefox
+
+# Fonts
+noto-fonts
+noto-fonts-emoji
+ttf-dejavu
+
+# Sound comes from Termux's PulseAudio over TCP; parecord is for voice typing
+libpulse
+
+# What Zohara's apps use
+gtk4
+libadwaita
+pacman-contrib
+fakeroot
+curl
+libnotify
+xclip
+xdg-utils
+xdg-user-dirs
+sudo
+nano

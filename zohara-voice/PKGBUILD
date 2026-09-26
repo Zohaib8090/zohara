@@ -8,7 +8,7 @@ pkgname=zohara-voice
 pkgver=1.9.4
 pkgrel=1
 pkgdesc="Local speech recognition for Zohara voice typing (whisper.cpp)"
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 url="https://github.com/ggml-org/whisper.cpp"
 license=('MIT')
 depends=('zohara-voice-model' 'wl-clipboard' 'ydotool' 'libpulse' 'libnotify')
@@ -27,15 +27,21 @@ build() {
   unset CFLAGS CXXFLAGS LDFLAGS CPPFLAGS
   local common=(-DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF
                 -DGGML_OPENMP=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF -DWHISPER_SDL2=OFF)
-  cmake -B build-avx2 "${common[@]}"
-  cmake --build build-avx2 -j"$(nproc)" --target whisper-cli
+  if [ "$CARCH" = x86_64 ]; then
+    cmake -B build-avx2 "${common[@]}"
+    cmake --build build-avx2 -j"$(nproc)" --target whisper-cli
+  fi
+  # On ARM (phones) this one build uses NEON, which every aarch64 CPU has;
+  # the x86 options below don't apply there.
   cmake -B build-base "${common[@]}" -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_BMI2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF
   cmake --build build-base -j"$(nproc)" --target whisper-cli
 }
 
 package() {
   cd "whisper.cpp-$pkgver"
-  install -Dm755 build-avx2/bin/whisper-cli "$pkgdir/usr/lib/zohara/whisper/zohara-whisper-avx2"
+  if [ -f build-avx2/bin/whisper-cli ]; then
+    install -Dm755 build-avx2/bin/whisper-cli "$pkgdir/usr/lib/zohara/whisper/zohara-whisper-avx2"
+  fi
   install -Dm755 build-base/bin/whisper-cli "$pkgdir/usr/lib/zohara/whisper/zohara-whisper"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 "$srcdir/70-zohara-uinput.rules" "$pkgdir/usr/lib/udev/rules.d/70-zohara-uinput.rules"

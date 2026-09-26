@@ -225,8 +225,10 @@ pub fn current_pinned_date() -> Option<String> {
 }
 
 /// Whether this system uses signed approvals at all (its OS image ships the key).
+/// Only on x86_64: the dated snapshots come from the Arch Linux Archive, which
+/// has no ARM packages, so Zohara for phones follows Arch Linux ARM directly.
 pub fn enabled() -> bool {
-    Path::new(PUBLIC_KEY_PATH).exists()
+    cfg!(target_arch = "x86_64") && Path::new(PUBLIC_KEY_PATH).exists()
 }
 
 // ── Root helper: `zohara-store --pin-date MANIFEST SIG` ────────────────────

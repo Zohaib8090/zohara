@@ -53,6 +53,16 @@ impl AppCategory {
 }
 
 pub fn get_curated_apps() -> Vec<AppInfo> {
+    let apps = all_curated_apps();
+    if crate::updates::is_phone() {
+        // Flatpak needs kernel sandboxing that proot can't give, and Timeshift
+        // restores whole disks: neither works on Zohara for phones.
+        return apps.into_iter().filter(|a| !matches!(a.source, AppSource::Flatpak) && a.package_name != "timeshift").collect();
+    }
+    apps
+}
+
+fn all_curated_apps() -> Vec<AppInfo> {
     vec![
         // ── Browsers ──────────────────────────────────────────────────────────
         AppInfo {

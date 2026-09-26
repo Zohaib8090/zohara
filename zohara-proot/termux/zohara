@@ -1,0 +1,23 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Starts Zohara OS: sound, the X server (Termux:X11), then the desktop in proot.
+#   zohara          start the desktop
+#   zohara shell    open a terminal inside Zohara instead
+set -e
+
+if [ "${1:-}" = shell ]; then
+    exec proot-distro login zohara --shared-tmp
+fi
+
+# Sound: Zohara's apps reach Termux's PulseAudio over the local network.
+pulseaudio --start --exit-idle-time=-1 \
+    --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" 2>/dev/null || true
+
+# The X server that draws the desktop, and the app that shows it.
+pkill -f "termux.x11" 2>/dev/null || true
+termux-x11 :0 >/dev/null 2>&1 &
+sleep 2
+am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity >/dev/null 2>&1 \
+    || echo "Open the Termux:X11 app to see the desktop."
+
+# --shared-tmp shares Termux's /tmp, where the X server's socket lives.
+exec proot-distro login zohara --shared-tmp -- /usr/local/bin/zohara-session

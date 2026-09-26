@@ -1,0 +1,5 @@
+# Installed when Arch Linux ARM has them. Since Plasma 6.4 the X11 session
+# (which Termux:X11 needs) is split into its own packages; the names can
+# change between releases, so a missing one doesn't stop the build.
+kwin-x11
+plasma-x11-session

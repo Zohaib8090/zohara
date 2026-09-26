@@ -74,6 +74,9 @@ impl UpdateSet {
 }
 
 pub fn needs_restart(pkgs: &[PkgUpdate]) -> bool {
+    if is_phone() {
+        return false;
+    }
     pkgs.iter().any(|p| {
         let n = p.name.as_str();
         n == "linux"
@@ -330,8 +333,19 @@ pub fn apply(system: bool, system_pending: bool, zohara: &[String], flatpaks: &[
     }
 }
 
+/// Zohara for phones: Arch Linux ARM run by proot inside Termux. There is no
+/// kernel of its own, no systemd, no Flatpak and no restore points there, so
+/// the Store hides what can't work. The phone system ships this marker file.
+pub fn is_phone() -> bool {
+    static PHONE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *PHONE.get_or_init(|| Path::new("/etc/zohara-proot").exists() || std::env::var("ZOHARA_PROOT").as_deref() == Ok("1"))
+}
+
 /// Whether a newer kernel (or other core piece) is installed than the one running.
 pub fn restart_pending() -> bool {
+    if is_phone() {
+        return false; // the phone's own (Android) kernel runs; nothing to restart into
+    }
     let release = Command::new("uname").arg("-r").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
     !release.is_empty() && !Path::new("/usr/lib/modules").join(&release).exists()
 }

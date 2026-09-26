@@ -1,0 +1,14 @@
+#!/bin/sh
+# In proot you are already root and there is no polkit daemon, so Zohara's
+# apps (which ask for administrator rights through pkexec) run the command
+# directly. /usr/local/bin comes before /usr/bin, so this is found first.
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --user) shift 2 ;;
+        --*) shift ;;
+        *) break ;;
+    esac
+done
+[ "$(id -u)" = 0 ] || { echo "pkexec: this Zohara session isn't running as root" >&2; exit 127; }
+[ $# -gt 0 ] || { echo "pkexec: no command" >&2; exit 127; }
+exec "$@"
