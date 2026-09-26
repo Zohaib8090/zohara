@@ -28,6 +28,10 @@
 #   wsl -d Ubuntu -- bash /mnt/c/Users/<you>/Documents/zohara/scripts/build-iso-wsl.sh [--image-only]
 #
 #   --image-only   Build the zohara-builder Docker image but stop before running mkarchiso.
+#   --fast         Keep the previous work/ directory so mkarchiso skips steps it already did
+#                  (a warm rebuild takes minutes). Use it for repeat builds; leave it off after
+#                  changing packages.x86_64 or pacman.conf, or when a build looks stale.
+#   --no-pin       Do not build against the approved Arch date (see zohara-pipeline); use live Arch.
 #
 set -euo pipefail
 
@@ -41,6 +45,22 @@ IMAGE="${IMAGE:-zohara-builder}"
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31m!! %s\033[0m\n' "$*" >&2; exit 1; }
+
+IMAGE_ONLY=0; FAST=0; PIN=1
+for arg in "$@"; do
+    case "$arg" in
+        --image-only) IMAGE_ONLY=1 ;;
+        --fast)       FAST=1 ;;
+        --no-pin)     PIN=0 ;;
+        *)            die "unknown option: $arg (see the USAGE comment at the top)" ;;
+    esac
+done
+
+# Small files are what a build is made of: on /mnt/c (Windows NTFS through WSL) they are
+# many times slower, and symlinks/ownership break. Everything must live on WSL's own ext4.
+case "$BUILD_DIR" in
+    /mnt/*) die "BUILD_DIR ($BUILD_DIR) is on the Windows drive. Use a path inside WSL, e.g. /root/zbuild" ;;
+esac
 
 [ -d "$REPO_WIN/.git" ] || die "Windows repo not found at: $REPO_WIN (override with REPO_WIN=...)"
 
@@ -140,12 +160,22 @@ log "Building $IMAGE image (compiles calamares + debtap from AUR and both Rust c
 # once the image had been built here once before.
 settings_sha=$(git ls-remote https://github.com/Zohaib8090/zohara-settings.git main | cut -f1)
 echo "  zohara-settings main: ${settings_sha:-<could not resolve, using cached layer>}"
+# Build against the same Arch day users are pinned to (the signed manifest's approved_date),
+# exactly as CI does, so a local ISO matches a released one.
+approved_date=""
+if [ "$PIN" -eq 1 ]; then
+    approved_date=$(curl -fsSL --max-time 20 https://raw.githubusercontent.com/Zohaib8090/zohara-pipeline/main/manifest.json \
+        | sed -n 's/.*"approved_date": *"\([0-9/]*\)".*/\1/p' || true)
+    [ -n "$approved_date" ] || die "could not read approved_date from zohara-pipeline (offline? use --no-pin for live Arch)"
+fi
+echo "  Arch snapshot day: ${approved_date:-live (not pinned)}"
 docker build \
     --build-arg "ZOHARA_SETTINGS_SHA=${settings_sha:-unknown}" \
+    --build-arg "APPROVED_DATE=$approved_date" \
     -t "$IMAGE" "$BUILD_DIR" 2>&1 | tee /tmp/zohara-image.log | tail -5
 docker image inspect "$IMAGE" >/dev/null 2>&1 || die "image build failed — see /tmp/zohara-image.log"
 
-if [ "${1:-}" = "--image-only" ]; then
+if [ "$IMAGE_ONLY" -eq 1 ]; then
     log "Image built. Stopping here (--image-only)."
     exit 0
 fi
@@ -153,32 +183,43 @@ fi
 # ── 5. Build the ISO ──────────────────────────────────────────────────────────
 # NOTE: do not trust `docker run`'s exit status here. Under WSL + docker.io 29.x it returns 0 even
 # when the container fails, so success is determined by the presence of the ISO artifact.
-mkdir -p "$BUILD_DIR/out" "$BUILD_DIR/pkg-cache"
-rm -rf "$BUILD_DIR/work"          # a stale workdir causes "unable to lock database"
+mkdir -p "$BUILD_DIR/zohara-profile/out" "$BUILD_DIR/pkg-cache"
+if [ "$FAST" -eq 1 ] && [ -d "$BUILD_DIR/zohara-profile/work" ]; then
+    # Keep it: build-iso.sh reuses work/ when packages.x86_64 and pacman.conf are unchanged.
+    # Only a leftover database lock (from an interrupted run) is cleared.
+    log "--fast: keeping work/ for an incremental build"
+    rm -f "$BUILD_DIR"/zohara-profile/work/x86_64/airootfs/var/lib/pacman/db.lck 2>/dev/null || true
+else
+    rm -rf "$BUILD_DIR/zohara-profile/work"      # a stale workdir causes "unable to lock database"
+fi
 
 # Move any pre-existing artifacts aside. mkarchiso stamps the ISO with the build date, so a rebuild
 # on a later day lands a second file next to the old one and it becomes easy to flash the stale
 # image by mistake. Moved, never deleted — previous builds stay recoverable under out/previous/.
 shopt -s nullglob
-prev=("$BUILD_DIR"/out/*.iso "$BUILD_DIR"/out/zohara-update-*.sh)
+prev=("$BUILD_DIR"/zohara-profile/out/*.iso "$BUILD_DIR"/zohara-profile/out/zohara-update-*.sh)
 if [ ${#prev[@]} -gt 0 ]; then
-    mkdir -p "$BUILD_DIR/out/previous"
+    mkdir -p "$BUILD_DIR/zohara-profile/out/previous"
     log "Archiving ${#prev[@]} artifact(s) from a previous build to out/previous/"
     for f in "${prev[@]}"; do
         printf '  %s\n' "$(basename "$f")"
-        mv -f "$f" "$BUILD_DIR/out/previous/"
+        mv -f "$f" "$BUILD_DIR/zohara-profile/out/previous/"
     done
 fi
 
 log "Running mkarchiso (first run downloads ~2.7 GiB; cached afterwards)"
+# Runs the LIVE zohara-profile/build-iso.sh from the mounted tree, as CI does. (The copy baked into
+# the image resolves its profile to /opt and is not used.) It reuses work/ when the package list and
+# pacman.conf are unchanged, and writes the ISO to zohara-profile/out/.
 docker run --rm --name zohara-build --privileged \
+    --entrypoint bash \
     -v "$BUILD_DIR:/build" \
     -v "$BUILD_DIR/pkg-cache:/var/cache/pacman/pkg" \
-    "$IMAGE" 2>&1 | tee /tmp/zohara-iso.log | grep -E '^\[mkarchiso\]|^error|ERROR' || true
+    "$IMAGE" /build/zohara-profile/build-iso.sh 2>&1 | tee /tmp/zohara-iso.log | grep -E '^\[mkarchiso\]|^error|ERROR' || true
 
 # ── 6. Report ─────────────────────────────────────────────────────────────────
 shopt -s nullglob
-isos=("$BUILD_DIR"/out/*.iso)
+isos=("$BUILD_DIR"/zohara-profile/out/*.iso)
 if [ ${#isos[@]} -eq 0 ]; then
     echo
     grep -iE '^error|ERROR:|target not found' /tmp/zohara-iso.log | head -20 || true
@@ -191,4 +232,4 @@ echo "  Reachable directly from Windows (no copy needed) at:"
 echo "    \\\\wsl\$\\Ubuntu${BUILD_DIR//\//\\}\\out\\"
 echo
 echo "  Point Rufus/Etcher straight at that path, or copy it locally first with:"
-echo "    cp $BUILD_DIR/out/*.iso '$REPO_WIN/out/'"
+echo "    cp $BUILD_DIR/zohara-profile/out/*.iso '$REPO_WIN/out/'"
