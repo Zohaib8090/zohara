@@ -28,6 +28,16 @@ die() { printf '\n\033[1;31m!! %s\033[0m\n' "$*" >&2; exit 1; }
 [ "$(uname -m)" = aarch64 ] || die "run on an aarch64 machine (this builds native ARM packages)"
 
 MOUNTED=()
+# Background processes started inside the chroot (gpg-agent from pacman-key)
+# keep its mounts busy and its sockets in the archive: stop them first.
+kill_chroot_procs() {
+    local root="$1" p
+    for p in /proc/[0-9]*; do
+        if [ "$(readlink "$p/root" 2>/dev/null)" = "$root" ]; then kill "${p#/proc/}" 2>/dev/null || true; fi
+    done
+    sleep 2
+}
+
 cleanup() {
     for ((i = ${#MOUNTED[@]} - 1; i >= 0; i--)); do umount -R "${MOUNTED[i]}" 2>/dev/null || umount -lR "${MOUNTED[i]}" 2>/dev/null || true; done
 }
@@ -167,10 +177,13 @@ log "Cleaning up"
 in_root "$R" 'pacman -Scc --noconfirm >/dev/null; rm -rf /var/cache/pacman/pkg/* /var/lib/pacman/sync/* /tmp/* /root/.cache'
 # proot-distro sets these up itself.
 rm -f "$R/etc/resolv.conf" "$R/etc/machine-id"
+kill_chroot_procs "$R"
+rm -f "$R"/etc/pacman.d/gnupg/S.* "$R"/etc/pacman.d/gnupg/.#* 2>/dev/null || true
 cleanup; MOUNTED=()
+if findmnt -rn -o TARGET | grep -q "^$R"; then die "$R still has mounts; refusing to pack the running system folders"; fi
 
 log "Packing the system"
-tar -C "$WORK" --numeric-owner -cpf - "$NAME" | xz -T0 -6 > "$OUT/zohara-rootfs-aarch64.tar.xz"
+tar -C "$WORK" --numeric-owner --one-file-system -cpf - "$NAME" | xz -T0 -6 > "$OUT/zohara-rootfs-aarch64.tar.xz"
 SHA="$(sha256sum "$OUT/zohara-rootfs-aarch64.tar.xz" | cut -d' ' -f1)"
 BASE="https://github.com/Zohaib8090/zohara/releases/download/proot-latest"
 sed -e "s|@URL@|$BASE/zohara-rootfs-aarch64.tar.xz|" -e "s|@SHA256@|$SHA|" "$HERE/termux/zohara.sh.in" > "$OUT/zohara.sh"
