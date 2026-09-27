@@ -97,7 +97,18 @@ echo "  -> Enabling System Services..."
 systemctl enable bluetooth.service || true
 systemctl enable power-profiles-daemon.service || true
 systemctl enable NetworkManager.service || true
-systemctl enable zohara-sync.service || true
+# zohara-sync.service (a `pacman -Sy` on every boot) is gone: refreshing the
+# package lists outside a full upgrade turns the next single-app install into
+# a partial upgrade, and it bypassed the approved-date pinning below. Zohara
+# Store is now the only thing that refreshes them, as part of an update.
+# Inherited from archiso's own profile (as git symlinks, so they only appear on
+# a Linux checkout): iwd, which fights NetworkManager for the Wi-Fi card, and
+# sshd, whose archiso drop-in allows root login by password. Removed by path,
+# the same way as the networkd links below, since `systemctl disable` does
+# nothing when a Windows checkout turned a link into a regular file.
+rm -f /etc/systemd/system/multi-user.target.wants/iwd.service \
+      /etc/systemd/system/multi-user.target.wants/sshd.service
+systemctl disable iwd.service sshd.service 2>/dev/null || true
 
 # Printing: socket-activated CUPS, plus Avahi so network printers are found,
 # and mDNS name resolution so their "printer.local" addresses resolve.
@@ -316,6 +327,46 @@ REPO_EOF
 # shows a sensible value on first run. The user can change it any time.
 mkdir -p /etc/zohara
 echo "stable" > /etc/zohara/channel
+
+# ── Chaotic-AUR on the installed system ─────────────────────────────────────
+# The build's own pacman.conf (zohara-profile/pacman.conf) is not what ends up
+# in the image: mkarchiso keeps it to itself. Without this, everything that
+# came from Chaotic-AUR (Brave, yay, the Fluent/Nordzy themes, latte-dock, and
+# the Store's VSCodium entry) could never be updated or installed after
+# install. Signatures are checked for real here, against chaotic-keyring
+# (installed from packages.x86_64 and populated by pacman-init / the
+# installer's keyring step), unlike the build's trust-all setting.
+if [[ -f /etc/pacman.d/chaotic-mirrorlist ]] && ! grep -q '^\[chaotic-aur\]' /etc/pacman.conf; then
+    printf '\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' >> /etc/pacman.conf
+    echo "  -> Chaotic-AUR registered."
+else
+    echo "  !! chaotic-mirrorlist missing; Chaotic-AUR not registered."
+fi
+
+# ── Pin the official mirrors to the approved date ───────────────────────────
+# build-iso.sh writes the date this ISO was built against (the signed
+# manifest's approved_date). Writing it in the same format Zohara Store uses
+# (the "zohara-approved-date:" marker) means a fresh install starts pinned,
+# so the Store's partial-upgrade guard and update check see it that way from
+# the first boot instead of following live Arch.
+APPROVED_FILE=/root/zohara-approved-date
+if [[ -f "$APPROVED_FILE" ]]; then
+    d="$(tr -d '[:space:]' < "$APPROVED_FILE")"
+    if [[ "$d" =~ ^[0-9]{4}/[0-9]{2}/[0-9]{2}$ ]]; then
+        cat > /etc/pacman.d/mirrorlist <<EOF
+# Written by the Zohara ISO build. Official packages as they were on $d.
+# Zohara only offers updates that were tested, so this date moves forward when they are approved.
+# zohara-approved-date: $d
+Server = https://archive.archlinux.org/repos/$d/\$repo/os/\$arch
+EOF
+        echo "  -> Official mirrors pinned to $d."
+    else
+        echo "  !! Ignoring malformed approved date '$d'; mirrors left unpinned."
+    fi
+    rm -f "$APPROVED_FILE"
+else
+    echo "  !! No approved date baked into this build; mirrors left unpinned."
+fi
 
 echo "  -> Updating icon cache..."
 gtk-update-icon-cache -f -q /usr/share/icons/hicolor/ || true

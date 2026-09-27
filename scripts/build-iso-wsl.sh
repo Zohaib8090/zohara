@@ -28,9 +28,9 @@
 #   wsl -d Ubuntu -- bash /mnt/c/Users/<you>/Documents/zohara/scripts/build-iso-wsl.sh [--image-only]
 #
 #   --image-only   Build the zohara-builder Docker image but stop before running mkarchiso.
-#   --fast         Keep the previous work/ directory so mkarchiso skips steps it already did
-#                  (a warm rebuild takes minutes). Use it for repeat builds; leave it off after
-#                  changing packages.x86_64 or pacman.conf, or when a build looks stale.
+#   --fast         Accepted for compatibility; does nothing now. Every build starts from an empty
+#                  work/ (mkarchiso skips its whole build when work/ is kept, and produced no ISO).
+#                  Rebuilds stay quick because the package cache in pkg-cache/ persists.
 #   --no-pin       Do not build against the approved Arch date (see zohara-pipeline); use live Arch.
 #
 set -euo pipefail
@@ -97,6 +97,21 @@ else
     git -C "$BUILD_DIR" fetch origin --quiet
     git -C "$BUILD_DIR" checkout --quiet -- .
     git -C "$BUILD_DIR" reset --hard --quiet FETCH_HEAD
+    # build-iso.sh writes build artifacts straight into the profile's own
+    # airootfs/ tree (staged .pkg.tar.zst files under airootfs/root/, and
+    # historically, extracted package contents directly under airootfs/usr/)
+    # as *untracked* files, so `reset --hard` above never removes them. Left
+    # in place across runs on a reused clone, a stale one can collide with
+    # this run's own packages ("exists in filesystem") even though nothing
+    # is actually wrong with the source — confirmed by the same commit
+    # building clean on a truly fresh CI checkout. `-fd` (no `-x`) respects
+    # .gitignore, so work/, pkg-cache/ and target/ are left alone.
+    untracked=$(git -C "$BUILD_DIR" clean -fdn -- zohara-profile/airootfs)
+    if [ -n "$untracked" ]; then
+        log "Removing stale untracked file(s) from a previous local build:"
+        echo "$untracked" | sed 's/^/  /'
+        git -C "$BUILD_DIR" clean -fd -- zohara-profile/airootfs
+    fi
 fi
 
 # Paths git is deliberately ignoring on Windows (the symlinks). Must NOT be rsynced, or the clone's
@@ -184,14 +199,8 @@ fi
 # NOTE: do not trust `docker run`'s exit status here. Under WSL + docker.io 29.x it returns 0 even
 # when the container fails, so success is determined by the presence of the ISO artifact.
 mkdir -p "$BUILD_DIR/zohara-profile/out" "$BUILD_DIR/pkg-cache"
-if [ "$FAST" -eq 1 ] && [ -d "$BUILD_DIR/zohara-profile/work" ]; then
-    # Keep it: build-iso.sh reuses work/ when packages.x86_64 and pacman.conf are unchanged.
-    # Only a leftover database lock (from an interrupted run) is cleared.
-    log "--fast: keeping work/ for an incremental build"
-    rm -f "$BUILD_DIR"/zohara-profile/work/x86_64/airootfs/var/lib/pacman/db.lck 2>/dev/null || true
-else
-    rm -rf "$BUILD_DIR/zohara-profile/work"      # a stale workdir causes "unable to lock database"
-fi
+if [ "$FAST" -eq 1 ]; then log "--fast no longer changes anything: every build starts from an empty work/"; fi
+rm -rf "$BUILD_DIR/zohara-profile/work"      # build-iso.sh wipes it too; a stale one causes lock errors
 
 # Move any pre-existing artifacts aside. mkarchiso stamps the ISO with the build date, so a rebuild
 # on a later day lands a second file next to the old one and it becomes easy to flash the stale

@@ -10,21 +10,30 @@ mkdir -p "$BUNDLE_DIR/airootfs" "$BUNDLE_DIR/profile"
 
 echo "[+] Packaging complete airootfs system tree and configurations..."
 
-# Copy compiled binaries into airootfs first
+# Copy the custom airootfs tree first, into the bundle's own scratch directory.
+cp -a /build/zohara-profile/airootfs/. "$BUNDLE_DIR/airootfs/"
+
+# Then layer the compiled packages' payloads on top of that COPY, not the
+# live checkout. Extracting straight into /build/zohara-profile/airootfs (as
+# this used to) leaves every one of these files sitting there afterwards,
+# untracked by git — reset --hard never touches them since they were never
+# committed. On a repo clone reused across local builds (see
+# scripts/build-iso-wsl.sh), that stale cruft then collides with the SAME
+# packages' own install on the next build: "error: failed to commit
+# transaction (conflicting files)". A fresh CI checkout never shows this,
+# which is exactly why it went unnoticed for a while.
+#
 # Both binaries are baked into the docker image at /opt/build/ (see the
 # Dockerfile's stage 8: cargo build, then `cp target/release/* /opt/build/`).
 # We installed zohara-settings as a single source of truth at /opt/build/
 # so the ISO build (build-iso.sh) and the update bundle use the same path.
 # zohara-settings and zohara-store are pacman packages; unpack their payloads into the overlay.
-bsdtar -xf /opt/build/zohara-settings.pkg.tar.zst -C /build/zohara-profile/airootfs --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
+bsdtar -xf /opt/build/zohara-settings.pkg.tar.zst -C "$BUNDLE_DIR/airootfs" --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
 # zohara-store is a pacman package now; unpack its payload (skipping .PKGINFO etc.) into the overlay.
-bsdtar -xf /opt/build/zohara-store.pkg.tar.zst -C /build/zohara-profile/airootfs --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
+bsdtar -xf /opt/build/zohara-store.pkg.tar.zst -C "$BUNDLE_DIR/airootfs" --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
 for p in zohara-welcome zohara-voice zohara-voice-model zohara-snapshots; do
-    bsdtar -xf "/opt/build/$p.pkg.tar.zst" -C /build/zohara-profile/airootfs --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
+    bsdtar -xf "/opt/build/$p.pkg.tar.zst" -C "$BUNDLE_DIR/airootfs" --exclude=.PKGINFO --exclude=.MTREE --exclude=.BUILDINFO --exclude=.INSTALL
 done
-
-# Copy entire custom airootfs tree
-cp -a /build/zohara-profile/airootfs/. "$BUNDLE_DIR/airootfs/"
 
 # Strip build-only and live-ISO-only files from the bundle payload.
 #

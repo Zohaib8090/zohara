@@ -18,22 +18,14 @@
 #      `checking for file conflicts...` waiting on a human.
 #   3. Bundle the resulting airootfs into a self-extracting update script.
 #
-# Incremental build support (Option A):
-#   - The pacstrap step (919 packages, ~5 hours) is BY FAR the slowest part.
-#   - mkarchiso already tracks completed steps via sentinel files in work/
-#     (e.g. work/iso.pacstrap). If work/ exists with valid sentinels and the
-#     package list is unchanged, mkarchiso will SKIP pacstrap and only redo
-#     the squashfs + ISO steps, which takes ~2-5 minutes.
-#   - This script detects whether the package list (or pacman.conf) changed
-#     and only wipes work/ in that case. For code-only rebuilds, work/ is
-#     preserved and the build is fast.
+# Every build starts from an empty work/ (see step 2 for why incremental
+# reuse was removed); the package cache is what keeps rebuilds quick.
 set -euo pipefail
 
 PROFILE_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 PROFILE_NAME="$(basename "$PROFILE_DIR")"
 WORK_DIR="$PROFILE_DIR/work"
 OUT_DIR="$PROFILE_DIR/out"
-STAMP_FILE="$WORK_DIR/.zohara-build-stamp"
 
 # 0. Shadow `pacman` with a wrapper that injects --overwrite=/usr/lib/Xorg to
 #    work around the xorg-server / xorg-server-common dir-vs-file conflict
@@ -65,59 +57,55 @@ rm -f "$PROFILE_DIR/airootfs/usr/bin/zohara-store" "$PROFILE_DIR/airootfs/usr/bi
 for p in zohara-welcome zohara-voice zohara-voice-model zohara-snapshots; do
     install -Dm644 "/opt/build/$p.pkg.tar.zst" "$PROFILE_DIR/airootfs/root/$p.pkg.tar.zst"
 done
-# Leftovers from older builds that these packages now own:
-rm -f "$PROFILE_DIR/airootfs/usr/local/bin/zohara-welcome" "$PROFILE_DIR/airootfs/usr/local/bin/zohara-migrate"
+# Leftovers from older builds that these packages now own. The package
+# installs zohara-welcome/zohara-migrate to /usr/bin (see zohara-welcome's
+# PKGBUILD), not /usr/local/bin, so both paths are covered here.
+rm -f "$PROFILE_DIR/airootfs/usr/local/bin/zohara-welcome" "$PROFILE_DIR/airootfs/usr/local/bin/zohara-migrate" \
+      "$PROFILE_DIR/airootfs/usr/bin/zohara-welcome" "$PROFILE_DIR/airootfs/usr/bin/zohara-migrate"
 rm -rf "$PROFILE_DIR/airootfs/usr/share/zohara-store"
 
-# 2. Decide whether to reuse work/ (fast incremental) or wipe (full rebuild).
+# 2. Always start from an empty work/.
 #
-#    We wipe if:
-#      a) work/ doesn't exist (first run)
-#      b) packages.x86_64 changed since the last successful build
-#      c) pacman.conf changed since the last successful build
-#      d) pacman-overwrite-xorg changed (xorg fix logic changed)
-#      e) FORCE_FULL=1 is set
+#    This used to keep work/ between builds ("incremental") and wipe it only
+#    when packages.x86_64 / pacman.conf changed. That never worked:
+#    mkarchiso marks each finished step, including the whole ISO build mode
+#    (work/build._build_buildmode_iso), with a sentinel file, so a kept work/
+#    makes it skip *everything* -- it prints "Validating options... Done!",
+#    exits 0 and produces no ISO. Seen on a local rebuild 2026-09-27. It also
+#    never noticed changes to Zohara's own packages staged above.
 #
-#    Otherwise we keep work/ and let mkarchiso's sentinels skip pacstrap,
-#    turning a 5-hour build into a 2-5 minute rebuild.
-WIPE=0
-if [[ ! -d "$WORK_DIR" ]]; then
-    WIPE=1
-    echo "[i] No work/ found -- this is a full build (5 hrs first time)."
-elif [[ "${FORCE_FULL:-0}" == "1" ]]; then
-    WIPE=1
-    echo "[i] FORCE_FULL=1 -- forcing full rebuild."
-else
-    # Compare current input files to the stamp. If any differ, wipe.
-    changed=0
-    for f in packages.x86_64 pacman.conf pacman-overwrite-xorg; do
-        if [[ -f "$PROFILE_DIR/$f" ]] && [[ "$PROFILE_DIR/$f" -nt "$STAMP_FILE" ]]; then
-            echo "[i] $f changed since last build -- full rebuild required."
-            changed=1
-        fi
-    done
-    if (( changed )); then
-        WIPE=1
-    else
-        echo "[i] work/ found and inputs unchanged -- incremental build (~5 min)."
-    fi
-fi
-
-if (( WIPE )); then
-    rm -rf "$WORK_DIR"
-fi
+#    The time goes to downloading packages, not installing them, and the
+#    package cache (/var/cache/pacman/pkg, a persistent volume in local
+#    builds) keeps those between builds, so a full build from a warm cache
+#    stays reasonably quick.
+rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR" "$OUT_DIR"
+
+# The Arch day this image is built against (from the signed manifest, via the
+# Dockerfile's APPROVED_DATE). customize_airootfs.sh writes it into the
+# image's mirrorlist so fresh installs start pinned, then deletes this file.
+APPROVED_STAGE="$PROFILE_DIR/airootfs/root/zohara-approved-date"
+rm -f "$APPROVED_STAGE"
+if [[ "${ZOHARA_APPROVED_DATE:-}" =~ ^[0-9]{4}/[0-9]{2}/[0-9]{2}$ ]]; then
+    printf '%s\n' "$ZOHARA_APPROVED_DATE" > "$APPROVED_STAGE"
+    echo "[i] Pinning the image to Arch as of $ZOHARA_APPROVED_DATE."
+else
+    echo "[!] No approved date given (ZOHARA_APPROVED_DATE); the image's mirrors stay unpinned."
+fi
 
 # 3. Run mkarchiso. The `script -qec` pty wrapper auto-answers pacman provider
 #    prompts that would otherwise hang on /dev/tty. `yes "" | ...` ensures any
 #    such prompt gets the default answer.
+set +e
 script -qec "yes '' | mkarchiso -v -w '$WORK_DIR' -o '$OUT_DIR' '$PROFILE_DIR/'" /dev/null
 MKARCHISO_RC=$?
+set -e
+rm -f "$APPROVED_STAGE"
 echo "[i] mkarchiso exited with code $MKARCHISO_RC"
-ls -lh "$OUT_DIR"/*.iso 2>/dev/null || echo "[!] mkarchiso did NOT produce an ISO in $OUT_DIR/"
+if ! ls -lh "$OUT_DIR"/*.iso 2>/dev/null; then
+    echo "[!] mkarchiso did NOT produce an ISO in $OUT_DIR/" >&2
+    exit 1
+fi
 
-# 4. Record the build stamp (mtime = now) so the next run can compare.
-touch "$STAMP_FILE"
-
-# 5. Bundle the resulting airootfs into a self-extracting update script.
+# 4. Bundle the resulting airootfs into a self-extracting update script.
 bash "$PROFILE_DIR/../create_update_bundle.sh"

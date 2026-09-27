@@ -141,6 +141,8 @@ xdg-utils
 xdg-user-dirs
 polkit-kde-agent
 yay
+chaotic-keyring
+chaotic-mirrorlist
 qt6-declarative
 # (python-pyqt5 removed: zohara-welcome and zohara-migrate are Rust/GTK now,
 # and account/update management lives in Zohara Settings.)

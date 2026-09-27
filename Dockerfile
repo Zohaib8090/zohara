@@ -4,6 +4,9 @@ FROM archlinux:latest
 # The Arch day the OS is pinned to (zohara-pipeline manifest). Passed by CI, so
 # a new approval also busts the cache of the layer below.
 ARG APPROVED_DATE
+# Also kept at run time, so build-iso.sh can bake the same date into the image
+# (fresh installs then start pinned to it; see customize_airootfs.sh).
+ENV ZOHARA_APPROVED_DATE=${APPROVED_DATE}
 
 # ── 1. Base system update ──────────────────────────────────────────────────────
 # Cache mount: pacman package cache persists in a named BuildKit cache
