@@ -1,53 +1,103 @@
 #!/usr/bin/env bash
+# Zohara OS - install a double-clicked .deb package, with no terminal.
+#
+#   zohara-deb-engine FILE.deb        (what the file manager runs)
+#
+# 1. Reads the package's name and version straight from the .deb (there is no
+#    dpkg on Zohara) and asks whether to install it.
+# 2. As administrator (one password prompt): converts it with debtap in a
+#    private folder and installs the result with pacman.
+# 3. If conversion fails: installs it inside an Ubuntu container (distrobox)
+#    and adds its app to the menu.
+# Every step reports back in a dialog; nothing needs typing.
+set -u
 
-# Zohara OS - DEB Compatibility Engine
-# This engine processes double-clicked .deb packages.
+info()  { kdialog --title "Install Debian package" --msgbox "$1" 2>/dev/null || zenity --info --text "$1" 2>/dev/null; }
+error() { kdialog --title "Install Debian package" --error "$1" 2>/dev/null || zenity --error --text "$1" 2>/dev/null; }
+ask()   { kdialog --title "Install Debian package" --yesno "$1" 2>/dev/null || zenity --question --text "$1" 2>/dev/null; }
 
-if [ -z "$1" ]; then
-    echo "Usage: zohara-deb-engine <package.deb>"
-    exit 1
-fi
-
-DEB_FILE="$1"
-PACKAGE_NAME=$(basename "$DEB_FILE" .deb)
-
-echo "Processing $DEB_FILE via Zohara DEB Engine..."
-
-# Option A: debtap conversion (Primary Route)
-# debtap must be updated before first use, handled by systemd service or on first run
-if [ ! -f "/var/cache/debtap/virtual-packages" ]; then
-    echo "Initializing debtap database..."
-    sudo debtap -u
-fi
-
-# Convert silently (-q)
-echo "Converting $DEB_FILE to Arch package format..."
-sudo debtap -Q -q "$DEB_FILE"
-
-# Find the generated zst file
-GENERATED_PKG=$(ls ${PACKAGE_NAME}*.pkg.tar.zst 2>/dev/null | head -n 1)
-
-if [ -n "$GENERATED_PKG" ]; then
-    echo "Installing converted package: $GENERATED_PKG"
-    sudo pacman -U --noconfirm "$GENERATED_PKG"
-    
-    # Cleanup
-    rm -f "$GENERATED_PKG"
-    echo "Installation complete."
-else
-    # Fallback Option B: Distrobox (Silent execution container)
-    echo "Debtap conversion failed. Falling back to Distrobox container."
-    
-    # Check if fallback container exists
-    if ! distrobox list | grep -q "zohara-deb-runner"; then
-        echo "Creating zohara-deb-runner container (Ubuntu based)..."
-        distrobox create --name zohara-deb-runner --image ubuntu:latest -Y
+# Shows a "working" window while a command runs; returns the command's status.
+busy() {
+    local msg="$1"; shift
+    local ref=""
+    if command -v kdialog >/dev/null; then
+        ref=$(kdialog --title "Install Debian package" --progressbar "$msg" 0 2>/dev/null) || ref=""
     fi
-    
-    echo "Installing $DEB_FILE in zohara-deb-runner..."
-    distrobox enter zohara-deb-runner -- sudo apt-get install -y "./$DEB_FILE"
-    
-    # Export the app to host menu
-    APP_EXEC=$(dpkg -I "$DEB_FILE" | grep -i "Package:" | awk '{print $2}')
-    distrobox enter zohara-deb-runner -- distrobox-export --app "$APP_EXEC"
+    "$@"; local rc=$?
+    if [ -n "$ref" ]; then qdbus6 $ref close >/dev/null 2>&1 || qdbus $ref close >/dev/null 2>&1 || true; fi
+    return $rc
+}
+
+# The control file's "Field: value", read with bsdtar (handles the .deb's ar
+# container and whichever compression its control.tar uses).
+control_field() {
+    bsdtar -xOf "$1" 'control.tar*' 2>/dev/null | bsdtar -xOf - control ./control 2>/dev/null \
+        | sed -n "s/^$2: *//p" | head -1
+}
+
+# ── Administrator part (run through pkexec) ─────────────────────────────────
+if [ "${1:-}" = "--root" ]; then
+    deb="$2"; work="$3"
+    [ "$(id -u)" = 0 ] || exit 1
+    case "$work" in /tmp/zohara-deb.*) ;; *) exit 1 ;; esac
+    cd "$work" || exit 1
+    if [ ! -f /var/cache/debtap/virtual-packages ]; then
+        debtap -u >/dev/null 2>&1 || exit 3
+    fi
+    debtap -Q -q "$deb" >/dev/null 2>&1 || exit 4
+    pkg=$(find "$work" -maxdepth 1 -name '*.pkg.tar.zst' -newer "$deb" | head -1)
+    [ -n "$pkg" ] || exit 4
+    pacman -U --noconfirm "$pkg" >"$work/pacman.log" 2>&1 || exit 5
+    exit 0
+fi
+
+# ── What the person sees ────────────────────────────────────────────────────
+[ -n "${1:-}" ] || { error "No package was given."; exit 1; }
+DEB="$(realpath -e -- "$1" 2>/dev/null)" || { error "That file couldn't be found."; exit 1; }
+NAME="$(control_field "$DEB" Package)"
+VERSION="$(control_field "$DEB" Version)"
+[ -n "$NAME" ] || { error "This doesn't look like a Debian package, so nothing was installed."; exit 1; }
+
+ask "Install $NAME ${VERSION:+(version $VERSION)}?
+
+Debian packages are made for Ubuntu and Debian. Zohara converts it first; apps from outside Zohara Store aren't checked by Zohara." || exit 0
+
+WORK="$(mktemp -d /tmp/zohara-deb.XXXXXX)"
+trap 'rm -rf "$WORK"' EXIT
+chmod 755 "$WORK"
+cp -- "$DEB" "$WORK/package.deb"
+
+busy "Installing $NAME…" pkexec "$(command -v zohara-deb-engine)" --root "$WORK/package.deb" "$WORK"
+rc=$?
+case $rc in
+    0) info "$NAME is installed."; exit 0 ;;
+    126|127) exit 0 ;;   # password prompt cancelled: nothing changed
+    5) error "$NAME was converted, but installing it failed:
+
+$(tail -3 "$WORK/pacman.log" 2>/dev/null)"; exit 1 ;;
+esac
+
+# Conversion didn't work: offer the container route.
+command -v distrobox >/dev/null || { error "$NAME couldn't be converted for Zohara, so nothing was installed."; exit 1; }
+ask "$NAME couldn't be converted for Zohara.
+
+Install it inside an Ubuntu container instead? The first time, this downloads Ubuntu (a few hundred MB)." || exit 0
+
+if ! distrobox list 2>/dev/null | grep -q "zohara-deb-runner"; then
+    busy "Setting up the Ubuntu container (first time only)…" \
+        distrobox create --name zohara-deb-runner --image ubuntu:latest -Y >/dev/null 2>&1 \
+        || { error "The Ubuntu container couldn't be set up."; exit 1; }
+fi
+# The container sees your home folder, so hand it a copy there.
+mkdir -p "$HOME/.cache/zohara-deb"
+cp -- "$DEB" "$HOME/.cache/zohara-deb/package.deb"
+if busy "Installing $NAME in the Ubuntu container…" \
+    distrobox enter zohara-deb-runner -- sudo apt-get install -y "$HOME/.cache/zohara-deb/package.deb" >/dev/null 2>&1; then
+    distrobox enter zohara-deb-runner -- distrobox-export --app "$NAME" >/dev/null 2>&1 || true
+    rm -f "$HOME/.cache/zohara-deb/package.deb"
+    info "$NAME is installed (in the Ubuntu container). It's in the app menu."
+else
+    rm -f "$HOME/.cache/zohara-deb/package.deb"
+    error "$NAME couldn't be installed in the Ubuntu container either."
+    exit 1
 fi
