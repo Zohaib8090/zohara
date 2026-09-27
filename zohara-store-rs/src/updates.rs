@@ -291,6 +291,9 @@ fn apply_system_pinned(tx: &Sender<String>) -> Result<(), String> {
 /// Installs what was chosen. `system` updates all of pacman's packages
 /// (Zohara's included); otherwise only the named Zohara packages are updated.
 pub fn apply(system: bool, system_pending: bool, zohara: &[String], flatpaks: &[String], tx: &Sender<String>) -> Result<(), String> {
+    // Queue behind any install/removal the Store is already running (pacman
+    // allows one at a time; a second would fail on its database lock).
+    let _guard = crate::backend::PACKAGE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     if zohara.iter().chain(flatpaks).any(|n| !safe_name(n)) {
         return Err("A package name looked wrong, so nothing was changed.".into());
     }
@@ -404,6 +407,7 @@ pub fn older_versions(pkg: &str) -> Vec<Cached> {
 
 /// Installs the given cached package files (an older version).
 pub fn downgrade(files: &[PathBuf], tx: &Sender<String>) -> Result<(), String> {
+    let _guard = crate::backend::PACKAGE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     if files.is_empty() {
         return Err("Nothing to go back to.".into());
     }

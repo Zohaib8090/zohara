@@ -57,89 +57,81 @@ impl InstalledCache {
     }
 }
 
-pub fn install_app(source: &AppSource, package_name: &str) -> bool {
-    match source {
-        AppSource::Pacman => {
-            // 1. Try non-interactive sudo (works instantly in Live ISO / NOPASSWD environment)
-            let sudo_out = Command::new("sudo")
-                .arg("-n")
-                .arg("pacman")
-                .arg("-S")
-                .arg("--noconfirm")
-                .arg("--needed")
-                .arg(package_name)
-                .stdin(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
+/// Only one package operation at a time, across the whole Store (installs,
+/// removals and the Updates page). pacman holds a database lock while it
+/// works; a second pacman started meanwhile fails immediately with "unable
+/// to lock database", which used to make the second of two quick installs
+/// fail with no message. Waiting here queues it instead.
+pub static PACKAGE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-            if let Ok(s) = sudo_out {
-                if s.success() {
-                    return true;
-                }
-            }
+/// Runs a package command and turns its failure into a sentence for the user.
+fn run_pkg(mut cmd: Command) -> Result<(), String> {
+    let out = cmd.stdin(Stdio::null()).output().map_err(|e| format!("Couldn't start the installer ({e})"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    if matches!(out.status.code(), Some(126) | Some(127)) {
+        return Err("The password prompt was cancelled, so nothing was changed.".into());
+    }
+    Err(explain_failure(&String::from_utf8_lossy(&out.stderr)))
+}
 
-            // 2. Fall back to pkexec (triggers Polkit GUI authentication prompt in installed OS)
-            let pkexec_out = Command::new("pkexec")
-                .arg("pacman")
-                .arg("-S")
-                .arg("--noconfirm")
-                .arg("--needed")
-                .arg(package_name)
-                .stdin(Stdio::null())
-                .status();
+/// A readable reason from pacman/flatpak's error output.
+pub fn explain_failure(stderr: &str) -> String {
+    let e = stderr.to_lowercase();
+    if e.contains("unable to lock database") {
+        "Another program is installing or updating software right now. Try again when it has finished.".into()
+    } else if e.contains("target not found") || e.contains("no remote refs found") || e.contains("nothing matches") {
+        "This app isn't available from Zohara's software sources right now.".into()
+    } else if e.contains("failed retrieving file") || e.contains("could not resolve host") || e.contains("couldn't resolve") {
+        "Couldn't download it. Check your internet connection and try again.".into()
+    } else if e.contains("not enough free disk space") || e.contains("no space left") {
+        "There isn't enough free disk space.".into()
+    } else if e.contains("conflicting files") || e.contains("exists in filesystem") || e.contains("conflicts with") {
+        "It conflicts with software that's already installed.".into()
+    } else if e.contains("invalid or corrupted package") || e.contains("signature") {
+        "The download didn't pass its integrity check, so it wasn't installed.".into()
+    } else {
+        let last = stderr.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("unknown error");
+        format!("It didn't finish ({last}).")
+    }
+}
 
-            pkexec_out.map(|s| s.success()).unwrap_or(false)
+/// Runs pacman as administrator: non-interactive sudo first (the live ISO),
+/// then pkexec (asks for the password on an installed system).
+fn pacman_admin(args: &[&str]) -> Result<(), String> {
+    let mut sudo = Command::new("sudo");
+    sudo.arg("-n").arg("pacman").args(args);
+    if let Ok(o) = sudo.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status() {
+        if o.success() {
+            return Ok(());
         }
+    }
+    let mut pk = Command::new("pkexec");
+    pk.arg("pacman").args(args);
+    run_pkg(pk)
+}
+
+pub fn install_app(source: &AppSource, package_name: &str) -> Result<(), String> {
+    let _guard = PACKAGE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    match source {
+        AppSource::Pacman => pacman_admin(&["-S", "--noconfirm", "--needed", package_name]),
         AppSource::Flatpak => {
-            let out = Command::new("flatpak")
-                .arg("install")
-                .arg("-y")
-                .arg("flathub")
-                .arg(package_name)
-                .stdin(Stdio::null())
-                .status();
-            out.map(|s| s.success()).unwrap_or(false)
+            let mut c = Command::new("flatpak");
+            c.args(["install", "-y", "--noninteractive", "flathub", package_name]);
+            run_pkg(c)
         }
     }
 }
 
-pub fn remove_app(source: &AppSource, package_name: &str) -> bool {
+pub fn remove_app(source: &AppSource, package_name: &str) -> Result<(), String> {
+    let _guard = PACKAGE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     match source {
-        AppSource::Pacman => {
-            let sudo_out = Command::new("sudo")
-                .arg("-n")
-                .arg("pacman")
-                .arg("-Rs")
-                .arg("--noconfirm")
-                .arg(package_name)
-                .stdin(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
-
-            if let Ok(s) = sudo_out {
-                if s.success() {
-                    return true;
-                }
-            }
-
-            let pkexec_out = Command::new("pkexec")
-                .arg("pacman")
-                .arg("-Rs")
-                .arg("--noconfirm")
-                .arg(package_name)
-                .stdin(Stdio::null())
-                .status();
-
-            pkexec_out.map(|s| s.success()).unwrap_or(false)
-        }
+        AppSource::Pacman => pacman_admin(&["-Rs", "--noconfirm", package_name]),
         AppSource::Flatpak => {
-            let out = Command::new("flatpak")
-                .arg("uninstall")
-                .arg("-y")
-                .arg(package_name)
-                .stdin(Stdio::null())
-                .status();
-            out.map(|s| s.success()).unwrap_or(false)
+            let mut c = Command::new("flatpak");
+            c.args(["uninstall", "-y", "--noninteractive", package_name]);
+            run_pkg(c)
         }
     }
 }
@@ -220,4 +212,23 @@ pub fn search_apps(query: &str) -> Vec<crate::app_info::AppInfo> {
     }
 
     results
+}
+
+#[cfg(test)]
+mod tests {
+    use super::explain_failure;
+
+    #[test]
+    fn common_failures_read_as_sentences() {
+        assert!(explain_failure("error: failed to init transaction (unable to lock database)").contains("Another program"));
+        assert!(explain_failure("error: target not found: vscodium-bin").contains("isn't available"));
+        assert!(explain_failure("error: failed retrieving file 'x.pkg.tar.zst' from mirror").contains("internet"));
+        assert!(explain_failure("error: failed to commit transaction (conflicting files)\nfoo: /usr/bin/foo exists in filesystem").contains("conflicts"));
+    }
+
+    #[test]
+    fn unknown_failure_keeps_the_last_line() {
+        assert_eq!(explain_failure("warning: x\nerror: something odd\n\n"), "It didn't finish (error: something odd).");
+        assert_eq!(explain_failure(""), "It didn't finish (unknown error).");
+    }
 }

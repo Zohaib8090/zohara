@@ -360,15 +360,37 @@ fn build_banner(name: &str, subtitle: &str, css: &str, icon: &str, pkg_id: &str)
     btn.add_css_class("banner-btn");
     btn.set_halign(gtk4::Align::Start);
     let pkg = pkg_id.to_string();
-    btn.connect_clicked(move |_| {
-        // Find the app and trigger install
-        if let Some(app) = get_curated_apps().into_iter().find(|a| a.id == pkg) {
-            let source = app.source.clone();
-            let pkg_name = app.package_name.clone();
-            std::thread::spawn(move || {
-                backend::install_app(&source, &pkg_name);
-            });
-        }
+    btn.connect_clicked(move |b| {
+        // Find the app and install it, showing progress and the outcome.
+        let Some(app) = get_curated_apps().into_iter().find(|a| a.id == pkg) else { return };
+        let source = app.source.clone();
+        let pkg_name = app.package_name.clone();
+        let name = app.name.clone();
+        b.set_sensitive(false);
+        b.set_label("Installing…");
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(backend::install_app(&source, &pkg_name));
+        });
+        let b = b.clone();
+        glib::timeout_add_local(std::time::Duration::from_millis(150), move || match rx.try_recv() {
+            Ok(Ok(())) => {
+                b.set_label("Installed");
+                glib::ControlFlow::Break
+            }
+            Ok(Err(why)) => {
+                b.set_label("Get Now");
+                b.set_sensitive(true);
+                show_error(b.upcast_ref(), &format!("Couldn't install {name}"), &why);
+                glib::ControlFlow::Break
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                b.set_label("Get Now");
+                b.set_sensitive(true);
+                glib::ControlFlow::Break
+            }
+        });
     });
     card.append(&btn);
     card
@@ -626,30 +648,35 @@ fn create_list_row(app: AppInfo, cache: &InstalledCache) -> adw::ActionRow {
         let app_a = app_c.clone();
 
         std::thread::spawn(move || {
-            let ok = if was {
+            let res = if was {
                 backend::remove_app(&app_a.source, &app_a.package_name)
             } else {
                 backend::install_app(&app_a.source, &app_a.package_name)
             };
-            let _ = tx.send(ok);
+            let _ = tx.send(res);
         });
 
         let btn_a = btn_c.clone();
         let pbar_a = pbar_c.clone();
         let st_a = state_c.clone();
+        let name_a = app_c.name.clone();
 
         glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             match rx.try_recv() {
-                Ok(ok) => {
+                Ok(res) => {
                     let mut s = st_a.borrow_mut();
                     s.working = false;
-                    if ok { s.installed = !was; }
+                    if res.is_ok() { s.installed = !was; }
                     let now = s.installed;
                     drop(s);
 
                     pbar_a.set_visible(false);
                     btn_a.set_sensitive(true);
                     set_btn_label(&btn_a, now);
+                    if let Err(why) = res {
+                        let title = if was { format!("Couldn't remove {name_a}") } else { format!("Couldn't install {name_a}") };
+                        show_error(btn_a.upcast_ref(), &title, &why);
+                    }
                     glib::ControlFlow::Break
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
@@ -759,4 +786,13 @@ fn set_btn_label(btn: &gtk4::Button, installed: bool) {
         btn.remove_css_class("destructive-action");
         btn.add_css_class("suggested-action");
     }
+}
+
+/// Tells the person why an install or removal didn't happen, instead of the
+/// button just quietly going back to how it was.
+fn show_error(from: &gtk4::Widget, title: &str, why: &str) {
+    let d = adw::AlertDialog::new(Some(title), Some(why));
+    d.add_response("ok", "OK");
+    d.set_default_response(Some("ok"));
+    d.present(Some(from));
 }
