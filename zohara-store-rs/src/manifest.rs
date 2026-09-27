@@ -153,6 +153,38 @@ pub fn conf_with_mirrorlist(conf: &str, mirrorlist_path: &str) -> String {
         + "\n"
 }
 
+/// `pacman.conf` without the repositories served from the mirrorlist (core,
+/// extra, multilib…). When this computer is already on the approved date, those
+/// can't have changed — a dated archive snapshot is fixed — so an update check
+/// only needs Zohara's own repository and the other non-archive ones. That
+/// keeps every machine from re-downloading the Arch Linux Archive's databases
+/// on every check (it's a volunteer-run, rate-limited service).
+pub fn conf_without_mirrorlist_repos(conf: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    let mut section: Vec<String> = Vec::new();
+    let mut is_repo = false;
+    let mut from_mirrorlist = false;
+    let flush = |section: &mut Vec<String>, is_repo: bool, from_mirrorlist: bool, out: &mut Vec<String>| {
+        if !(is_repo && from_mirrorlist) {
+            out.append(section);
+        }
+        section.clear();
+    };
+    for line in conf.lines() {
+        let t = line.trim();
+        if t.starts_with('[') && t.ends_with(']') {
+            flush(&mut section, is_repo, from_mirrorlist, &mut out);
+            is_repo = t != "[options]";
+            from_mirrorlist = false;
+        } else if t.starts_with("Include") && t.ends_with(MIRRORLIST) {
+            from_mirrorlist = true;
+        }
+        section.push(line.to_string());
+    }
+    flush(&mut section, is_repo, from_mirrorlist, &mut out);
+    out.join("\n") + "\n"
+}
+
 /// `-y` (refresh the package lists) is only safe together with `-u`: a
 /// refreshed list without a full upgrade is a partial upgrade, which is how
 /// Arch systems break. `pinned` says the lists come from a fixed day, where a
@@ -344,6 +376,17 @@ mod tests {
         assert!(out.contains("[core]\nInclude = /tmp/x/mirrorlist\n"));
         assert!(out.contains("Server = https://example/stable"));
         assert!(!out.contains("/etc/pacman.d/mirrorlist"));
+    }
+
+    #[test]
+    fn up_to_date_check_skips_archive_repos() {
+        let conf = "[options]\nHoldPkg = pacman\n\n[core]\nInclude = /etc/pacman.d/mirrorlist\n\n[extra]\nInclude = /etc/pacman.d/mirrorlist\n\n[zohara-stable]\nSigLevel = Optional TrustAll\nServer = https://example/stable\n\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n";
+        let out = conf_without_mirrorlist_repos(conf);
+        assert!(out.contains("[options]\nHoldPkg = pacman"));
+        assert!(!out.contains("[core]"));
+        assert!(!out.contains("[extra]"));
+        assert!(out.contains("[zohara-stable]\nSigLevel = Optional TrustAll\nServer = https://example/stable"));
+        assert!(out.contains("[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist"));
     }
 
     #[test]

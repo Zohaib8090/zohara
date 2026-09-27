@@ -119,7 +119,10 @@ pub fn parse_flatpak_updates(text: &str) -> Vec<FlatpakUpdate> {
 fn check_pacman_pinned() -> Result<Vec<PkgUpdate>, String> {
     let signed = manifest::fetch_verified()?;
     let m = &signed.manifest;
-    manifest::decide(manifest::current_pinned_date().as_deref(), m, env!("CARGO_PKG_VERSION"))?;
+    let decision = manifest::decide(manifest::current_pinned_date().as_deref(), m, env!("CARGO_PKG_VERSION"))?;
+    // Already on the approved date: the archive snapshot for that day never
+    // changes, so only the non-archive repositories need checking.
+    let up_to_date = decision == manifest::Decision::UpToDate;
 
     let dir = std::env::temp_dir().join(format!("zohara-check-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -129,7 +132,12 @@ fn check_pacman_pinned() -> Result<Vec<PkgUpdate>, String> {
         let conf = dir.join("pacman.conf");
         let system_conf = std::fs::read_to_string("/etc/pacman.conf").map_err(|e| format!("Couldn't read pacman.conf ({e})"))?;
         std::fs::write(&list, manifest::mirrorlist(m)).map_err(|e| e.to_string())?;
-        std::fs::write(&conf, manifest::conf_with_mirrorlist(&system_conf, &list.to_string_lossy())).map_err(|e| e.to_string())?;
+        let check_conf = if up_to_date {
+            manifest::conf_without_mirrorlist_repos(&system_conf)
+        } else {
+            manifest::conf_with_mirrorlist(&system_conf, &list.to_string_lossy())
+        };
+        std::fs::write(&conf, check_conf).map_err(|e| e.to_string())?;
         // Same trick as checkupdates: a private copy of the databases that
         // shares the installed-package list.
         std::os::unix::fs::symlink("/var/lib/pacman/local", dir.join("db/local")).map_err(|e| e.to_string())?;
@@ -303,8 +311,13 @@ pub fn apply(system: bool, system_pending: bool, zohara: &[String], flatpaks: &[
         }
         let _ = tx.send(format!("Updating {}…", zohara.join(", ")));
         // On the approved date `-Sy` changes nothing in the official
-        // repositories, it only finds the new Zohara packages.
-        let pinned = manifest::current_pinned_date().is_some() || !manifest::enabled();
+        // repositories, it only finds the new Zohara packages. This must be
+        // "actually pinned right now", nothing weaker: earlier this also
+        // accepted "pinning isn't enabled at all" as safe, which is backwards
+        // — an unpinned system (pinning off, or on but not yet applied)
+        // tracks live repositories, where `-Sy` without `-u` is exactly the
+        // partial-upgrade risk sync_args_safe exists to catch.
+        let pinned = manifest::current_pinned_date().is_some();
         if !manifest::sync_args_safe(&["-Sy", "--noconfirm"], pinned) {
             return Err("Refused: refreshing the package lists without a full upgrade could break the system.".into());
         }
