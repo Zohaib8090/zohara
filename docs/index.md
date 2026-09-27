@@ -30,5 +30,13 @@ Welcome to the Zohara OS documentation. This directory contains the complete ref
 6. **[Build Commands (build command.txt)](./build%20command.txt)**
    - A quick scratchpad/reference for the manual Docker build commands.
 
+7. **[Zohara for phones (../zohara-proot/README.md)](../zohara-proot/README.md)**
+   - Termux + proot build for 64-bit ARM Android phones: no root, separate
+     from the x86 ISO.
+   - What `build.sh` builds, the `zohara-phone` package, and how Settings and
+     the Store detect a phone.
+   - The `arm-main` branch model (this repo and `zohara-settings`) and what's
+     still untested on real hardware.
+
 ---
 *Note: If you are new to the project, start by reading `context.md` in its entirety to understand the nuances of the Archiso build process and the project's repository structure.*
