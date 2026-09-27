@@ -89,3 +89,32 @@ new `/home`).
 For anything that fails: page, what you clicked, what happened, and the last
 lines of `~/.local/state/zohara/settings.log` (Troubleshoot > Save report does
 this for you).
+
+## Fixes from the 2026-09-27 audit (check these first)
+
+Each of these was changed without running on a real install; CI only proves
+they build. Tick them off in a VM (UEFI, and ideally a second VM with a small
+Windows install to test dual boot).
+
+| Area | Try | Expect |
+|---|---|---|
+| Installer | reach the partitioning page | **nothing is pre-selected**; you must pick Erase / Alongside / Manual |
+| Installer | dual-boot VM: "Install alongside" | after reboot, **Windows is in the GRUB menu** (os-prober on) |
+| Installer | install finishes | no error from the "Finishing the installation" step |
+| Installed | `systemctl is-enabled iwd sshd` | both `disabled` (or not found) |
+| Installed | `ls /etc/ssh/sshd_config.d/ /etc/systemd/logind.conf.d/ /etc/systemd/journald.conf.d/` | no `10-archiso.conf`, no `do-not-suspend.conf` / `10-zohara-live.conf`, no `volatile-storage.conf` |
+| Installed | close the lid / press power | the machine suspends / shows the power menu (live-only "ignore" is gone) |
+| Installed | reboot, then `journalctl -b -1` | the previous boot's log is there (journal is persistent) |
+| Installed | `pacman -Q calamares` | not installed |
+| Installed | `grep -A1 chaotic-aur /etc/pacman.conf` and `pacman -Sy` then `pacman -Si brave-origin-bin` | Chaotic-AUR present, signatures accepted, Brave found |
+| Installed | `head -4 /etc/pacman.d/mirrorlist` | `# zohara-approved-date: YYYY/MM/DD` and an archive.archlinux.org server |
+| Installed | `systemctl status zohara-sync` | unit doesn't exist |
+| Installed | `cat /etc/os-release /etc/lsb-release` | the same build-date version in both |
+| Store > Updates | check for updates | no "didn't pass its signature check" error (the manifest was re-signed) |
+| Store | click "Get" on two apps quickly | the second waits and installs; nothing fails silently |
+| Store | install something that fails (e.g. offline) | a dialog says why |
+| Welcome | sign out and in twice | Welcome appears the first time only; still in the app menu |
+| Migration | migrate an Ubuntu-on-Btrfs disk (subvolumes `@`, `@home`) | it's recognised; files land in your home and belong to you |
+| Migration | Ubuntu with LibreOffice | LibreOffice step doesn't abort |
+| .deb | double-click a `.deb` (e.g. VS Code's) | confirm dialog → one password → "installed" dialog; no terminal |
+| Snapshots | restore a snapshot, then restore another **without restarting** | the second restore works; the running system is kept ("Keeping @broken-…") |

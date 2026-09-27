@@ -177,3 +177,40 @@ checklist, starting with the installer (Btrfs) and Store > Updates.
 - Still to do in Phase 1: build Zohara packages in a container pinned to the
   approved date; build the ISO at the same date; JSON output for the health check;
   VM proof of GRUB entry and rollback.
+
+## Update 2026-09-27: audit fixes (x86, straight to master)
+
+An external audit listed 24 issues. Each was checked against the code before
+fixing; all were real (one detail was off: the Releases page wasn't empty, it
+had a stale August v1.0.0). Fixed on master, credited to the owner:
+
+- **zohara-pipeline**: the manifest had been signed with CRLF but git stored
+  LF, so no system could verify it (all updates blocked). Re-signed; the
+  files are marked `-text`; CI now verifies the signature on every push.
+- **Installer**: no "Erase disk" default; install-time cleanup of live-only
+  settings (open sshd drop-in, no-suspend logind, volatile journal, iwd,
+  Calamares itself); GRUB os-prober on. iwd/sshd links removed at build;
+  `zohara-sync.service` (boot-time `pacman -Sy`) deleted.
+- **Installed systems** get Chaotic-AUR (+ chaotic-keyring, real signature
+  checks) and start with a mirrorlist pinned to the build's approved date.
+- **Build**: every ISO build starts from an empty work/ (kept work/ made
+  mkarchiso skip everything); `create_update_bundle.sh` no longer unpacks into
+  the checked-out airootfs/.
+- **Store**: partial-upgrade guard fixed (unpinned was treated as pinned);
+  update checks skip the Arch Archive while on the approved date; installs
+  show why they fail and queue instead of colliding.
+- **Snapshots**: a second restore before restarting no longer deletes the
+  running system (pkgrel 2).
+- **Welcome/migration**: first-login only; old homes go to the right account
+  and owner; no writing through symlinks; old disk mounted nosuid,nodev,noexec;
+  Ubuntu/Fedora Btrfs layouts found; LibreOffice maps to -fresh; Cargo.lock.
+- **.deb installer**: clickable (dialogs + pkexec), no dpkg needed, fallback
+  fixed.
+- **Cleanup**: zohara-migrator and dead config removed, one version string,
+  .gitignore, README (where ISOs are, Secure Boot/AHCI notes, linkd vs connectd).
+
+**Not done: item 17** (packages unsigned, pushes to master go straight to the
+stable channel). Signing needs a key in CI, a keyring on every system and a
+staged SigLevel change, or updates break for everyone; left for a planned
+change. See the checklist section in `docs/VM-TEST-CHECKLIST.md` for what to
+verify in a VM.
