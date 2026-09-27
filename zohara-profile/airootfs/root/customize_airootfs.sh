@@ -61,16 +61,19 @@ CursorTheme=breeze_cursors
 EOF
 
 # ── Remove any lingering Arch-only branding text ───────────────────────────
-# Patch /etc/os-release to make sure it says Zohara everywhere
-cat > /etc/os-release << 'EOF'
+# One version everywhere (os-release, lsb-release, the installer's branding),
+# taken from the day this image was built. These used to disagree: 2026.08
+# here and in the branding, 1.0 in the static os-release/lsb-release files.
+ZOHARA_VERSION="$(date -u +%Y.%m.%d)"
+cat > /etc/os-release << EOF
 NAME="Zohara OS"
 PRETTY_NAME="Zohara OS"
 ID=zohara
 ID_LIKE=arch
-VERSION="2026.08"
-VERSION_ID="2026.08"
+VERSION="$ZOHARA_VERSION"
+VERSION_ID="$ZOHARA_VERSION"
 ZOHARA_CODENAME="Nexus"
-BUILD_ID=rolling
+BUILD_ID=$ZOHARA_VERSION
 ANSI_COLOR="1;36"
 HOME_URL="https://github.com/Zohaib8090/zohara"
 DOCUMENTATION_URL="https://github.com/Zohaib8090/zohara"
@@ -78,6 +81,20 @@ SUPPORT_URL="https://github.com/Zohaib8090/zohara"
 BUG_REPORT_URL="https://github.com/Zohaib8090/zohara/issues"
 LOGO=distributor-logo-zohara
 EOF
+cat > /etc/lsb-release << EOF
+DISTRIB_ID=Zohara
+DISTRIB_RELEASE=$ZOHARA_VERSION
+DISTRIB_DESCRIPTION="Zohara OS"
+EOF
+BRANDING=/etc/calamares/branding/zohara/branding.desc
+if [[ -f "$BRANDING" ]]; then
+    sed -i -E \
+        -e "s/^( *version: *).*/\1$ZOHARA_VERSION/" \
+        -e "s/^( *shortVersion: *).*/\1$ZOHARA_VERSION/" \
+        -e "s/^( *versionedName: *).*/\1Zohara OS $ZOHARA_VERSION/" \
+        -e "s/^( *shortVersionedName: *).*/\1Zohara $ZOHARA_VERSION/" "$BRANDING"
+fi
+echo "  -> Version $ZOHARA_VERSION."
 
 # ── Enable System Services (Bluetooth & Network) ────────────────────────────
 # Enablement happens HERE, not by shipping .wants/ entries in the overlay, because this script runs

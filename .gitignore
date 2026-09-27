@@ -4,7 +4,8 @@
 
 # Cloned standalone repos (zohara-settings etc. are pulled at build time)
 zohara-settings-rs/
-zohara-store-rs/
+# (zohara-store-rs/ is NOT ignored: it lives in this repo. Ignoring it made new
+# files there silently need `git add -f`.)
 
 # Archiso build directories
 work/
@@ -29,10 +30,8 @@ localrepo/
 pkg-cache/
 
 # AI / Agent framework directories (local tooling only, not for repo)
-.agent/
-.agents/
+# .agent/, .agents/ and .gsd/ are tracked, so they are not ignored either.
 .gemini/
-.gsd/
 .GSD-STYLE.md
 .AGENT_STATE.md
 GSD-STYLE.md

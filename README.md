@@ -16,7 +16,7 @@ Zohara is an Arch-based Linux distribution that trades Linux's usual friction fo
 - **Working NVIDIA out of the box.** The ISO ships `nvidia-open-dkms`, so supported NVIDIA GPUs work on first boot with no manual driver installation.
 - **OTA updates for Zohara software.** Settings, the Zohara Store, and future first-party apps update through a pacman-style package repository with stable, beta, and alpha channels — no waiting for the next ISO.
 - **A real software store and a real first-run experience.** `zohara-store` and `zohara-welcome` (autostarted on first login) are first-party, not placeholders.
-- **A "link to your phone" companion app in development.** An Android companion pairs with the OS over the local network to share clipboard, send files, and mirror notifications, backed by the `zohara-connectd` Rust daemon on the OS side.
+- **A "link to your phone" companion app in development.** An Android companion pairs with the OS over the local network to share clipboard, send files, and mirror notifications, backed by the `zohara-linkd` Rust daemon on the OS side (in [zohara-link](https://github.com/Zohaib8090/zohara-link)), which the Zohara Link page in Settings talks to.
 
 ## Screenshots
 
@@ -24,13 +24,18 @@ Screenshots will land here once the project has a stable public release.
 
 ## Download
 
-Stable builds are published on the [GitHub Releases page](../../releases) for this repository. The image file is named `zohara-os-VERSION-x86_64.iso`.
+ISOs are built by GitHub Actions on every change. The image (about 3.7 GB) is larger than GitHub allows for a release file (2 GB), so it isn't on the Releases page (the `v1.0.0` release there is an old August 2026 build). To get the current one:
 
-To install:
+1. Open [Actions → Build Zohara OS ISO](../../actions/workflows/build-iso.yml) and pick the latest successful run (you need to be signed in to GitHub).
+2. Download the `zohara-os-x86_64` artifact (a zip containing `zohara-os-<date>-x86_64.iso`). Each build is kept for 30 days.
+3. Flash the ISO to a USB drive (e.g. `dd`, balenaEtcher, Ventoy).
+4. Boot the USB. The boot menu lets you **Install Zohara** (launches Calamares) or **Try Zohara** (live session).
 
-1. Download the latest ISO from the Releases page.
-2. Flash it to a USB drive (e.g. `dd`, balenaEtcher, Ventoy).
-3. Boot the USB. The boot menu lets you **Install Zohara** (launches Calamares) or **Try Zohara** (live session).
+Before booting on a PC:
+
+- **Turn off Secure Boot** in the firmware settings. Zohara's bootloaders aren't signed yet.
+- If the installer shows no disks, set the storage mode to **AHCI** instead of "RAID On" / Intel RST (VMD).
+- The installer doesn't pick "Erase disk" for you. On a computer with Windows, choose **Install alongside** or **Manual partitioning**; Windows then appears in the boot menu.
 
 ## System requirements
 
@@ -52,11 +57,13 @@ To build an ISO locally you can use the same Docker image CI uses. Read the work
 
 ## Repositories
 
-Zohara OS is split across three repositories:
+Zohara OS is split across these repositories:
 
-- **[Zohaib8090/zohara](https://github.com/Zohaib8090/zohara)** — this repo. The ISO build profile, Docker build environment, GitHub Actions CI, and the `zohara-connectd` companion daemon.
+- **[Zohaib8090/zohara](https://github.com/Zohaib8090/zohara)** — this repo. The ISO build profile, Docker build environment, GitHub Actions CI, and Zohara's own apps other than Settings (Store, Welcome/migration, voice typing, snapshots).
+- **[Zohaib8090/zohara-link](https://github.com/Zohaib8090/zohara-link)** — `zohara-linkd`, the phone-link daemon.
+- **[Zohaib8090/zohara-pipeline](https://github.com/Zohaib8090/zohara-pipeline)** — the signed update manifest: which Arch snapshot date Zohara systems update to.
 - **[Zohaib8090/zohara-settings](https://github.com/Zohaib8090/zohara-settings)** — the GTK4 + libadwaita Windows-style Settings app.
-- **[Zohaib8090/zohara-packages](https://github.com/Zohaib8090/zohara-packages)** — the OTA package repository. Hosts pacman-style Arch packages for `zohara-settings`, `zohara-store`, and future first-party apps, published across stable, beta, and alpha channels.
+- **[Zohaib8090/zohara-packages](https://github.com/Zohaib8090/zohara-packages)** — the OTA package repository: every Zohara package (Settings, Store, Welcome, voice typing, snapshots, Link), for x86_64 and for phones (aarch64).
 
 ## Companion app
 
@@ -66,7 +73,9 @@ A Zohara Companion app for Android is in active development. It pairs with the O
 - File transfer in both directions
 - Notification mirroring on the desktop
 
-The OS-side daemon is `zohara-connectd`, a Rust binary that ships in this repository. The Android app itself is a separate project and not part of this repo. No release date is being promised yet — when it's ready, it will be linked from this repository.
+The OS-side daemon is `zohara-linkd` (in [zohara-link](https://github.com/Zohaib8090/zohara-link)). `zohara-connectd` in this repository is an earlier, unfinished prototype: it parses its options and waits, nothing more, and isn't shipped. The Android app itself is a separate project and not part of this repo. No release date is being promised yet — when it's ready, it will be linked from this repository.
+
+(`VERSION` and `CHANGELOG.md` at the top of this repository belong to the bundled GSD development tooling, which reads and updates them itself; they are not Zohara's version. Zohara's version is the image's build date, shown in `/etc/os-release`.)
 
 ## Contributing
 

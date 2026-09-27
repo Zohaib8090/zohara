@@ -200,7 +200,9 @@ jobs:
         # there for human convenience only; uploads follow the real file
         # to avoid symlink resolution quirks.
         path: zohara-profile/out/*.iso
-        retention-days: 7
+        # Kept 30 days: this is the only place ISOs are published (a 3.7 GB image
+        # is over GitHub's 2 GB limit for release files).
+        retention-days: 30
         if-no-files-found: error
         compression-level: 0  # ISO is already compressed
         overwrite: true
