@@ -4,7 +4,7 @@
 # an update in Zohara Store.
 pkgname=zohara-snapshots
 pkgver=1
-pkgrel=1
+pkgrel=2
 pkgdesc="System snapshots and one-click restore for Zohara OS (Btrfs, snapper)"
 arch=('any')
 url="https://github.com/Zohaib8090/zohara"

@@ -103,12 +103,23 @@ cmd_restore() {
     fi
     # 2. Make a fresh, writable system from the snapshot.
     run btrfs subvolume snapshot "$top/$snapsub/$n/snapshot" "$top/@"
-    # 3. Keep only the most recent set-aside system so they don't pile up.
+    # 3. Keep only the most recent set-aside system so they don't pile up —
+    #    but never the one this computer is running from right now. After a
+    #    restore, the running system *is* an @broken-* until the restart; a
+    #    second restore before restarting would otherwise delete it.
     if [ "${ZS_DRY_RUN:-0}" != "1" ]; then
-        local old olds p
+        local old olds p running_id old_id
+        running_id="$(btrfs inspect-internal rootid / 2>/dev/null || true)"
         mapfile -t olds < <(for p in "$top"/@broken-*; do [ -e "$p" ] && echo "$p"; done | sort | head -n -1)
         for old in "${olds[@]}"; do
-            btrfs subvolume delete --recursive "$old" >/dev/null 2>&1 || btrfs subvolume delete "$old" >/dev/null 2>&1 || true
+            old_id="$(btrfs inspect-internal rootid "$old" 2>/dev/null || true)"
+            if [ -z "$running_id" ] || [ -z "$old_id" ] || [ "$old_id" = "$running_id" ]; then
+                echo "Keeping $(basename "$old"): it is (or may be) the running system." >&2
+                continue
+            fi
+            if ! btrfs subvolume delete --recursive "$old" >/dev/null 2>&1 && ! btrfs subvolume delete "$old" >/dev/null 2>&1; then
+                echo "Warning: couldn't remove the old set-aside system $(basename "$old"); it only uses disk space." >&2
+            fi
         done
     fi
     sync
