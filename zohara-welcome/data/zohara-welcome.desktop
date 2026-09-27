@@ -2,8 +2,8 @@
 Type=Application
 Exec=zohara-welcome
 Name=Zohara Welcome
-Comment=Welcome to Zohara OS
+Comment=Install Zohara, move from another system, or get started
 Icon=distributor-logo
 Terminal=false
-StartupNotify=false
-X-KDE-autostart-after=panel
+StartupNotify=true
+Categories=System;

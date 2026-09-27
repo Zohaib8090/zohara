@@ -106,10 +106,17 @@ fn set_owner(path: &Path, uid: u32, gid: u32) {
     let _ = std::os::unix::fs::lchown(path, Some(uid), Some(gid));
 }
 
-/// Moves one file or symlink. On any error the source is left untouched.
+/// Moves one file or symlink, keeping its owner. On any error the source is left untouched.
 pub fn move_file(src: &Path, dst: &Path) -> Result<Outcome, String> {
+    move_file_as(src, dst, None)
+}
+
+/// Like `move_file`, but the moved file belongs to `owner` (uid, gid) when
+/// given. The old system's numeric IDs mean nothing here: uid 1000 there may
+/// be a different person, or nobody, on this system.
+pub fn move_file_as(src: &Path, dst: &Path, owner: Option<(u32, u32)>) -> Result<Outcome, String> {
     let meta = fs::symlink_metadata(src).map_err(|e| e.to_string())?;
-    let (uid, gid) = (meta.uid(), meta.gid());
+    let (uid, gid) = owner.unwrap_or((meta.uid(), meta.gid()));
     let ft = meta.file_type();
 
     if ft.is_symlink() {
@@ -214,6 +221,9 @@ struct Ctx<'a> {
     done_bytes: u64,
     report: &'a mut Report,
     log: Vec<String>,
+    /// Who the moved files should belong to on this system (None: keep the
+    /// old system's owner IDs).
+    owner: Option<(u32, u32)>,
 }
 
 impl Ctx<'_> {
@@ -231,12 +241,26 @@ fn short(rel: &str) -> String {
     }
 }
 
+/// Where a folder from the old system can safely go. An existing real folder
+/// is merged into; anything else already at that name — in particular a
+/// symlink, which as root would carry the move to wherever it points — is
+/// left alone and the folder goes beside it under a new name.
+fn safe_dir(dst_dir: &Path) -> PathBuf {
+    match fs::symlink_metadata(dst_dir) {
+        Ok(m) if m.is_dir() => dst_dir.to_path_buf(),
+        Ok(_) => alternative(dst_dir),
+        Err(_) => dst_dir.to_path_buf(),
+    }
+}
+
 fn walk(src_dir: &Path, dst_dir: &Path, rel: &Path, ctx: &mut Ctx) {
+    let dst_dir = &safe_dir(dst_dir);
     if let Ok(m) = fs::symlink_metadata(src_dir) {
         if !exists(dst_dir) {
             if fs::create_dir_all(dst_dir).is_ok() {
                 let _ = fs::set_permissions(dst_dir, fs::Permissions::from_mode(m.mode() & 0o7777));
-                set_owner(dst_dir, m.uid(), m.gid());
+                let (uid, gid) = ctx.owner.unwrap_or((m.uid(), m.gid()));
+                set_owner(dst_dir, uid, gid);
             }
         }
     }
@@ -259,7 +283,7 @@ fn walk(src_dir: &Path, dst_dir: &Path, rel: &Path, ctx: &mut Ctx) {
             continue;
         }
         let name = short(&rel.to_string_lossy());
-        match move_file(&path, &dst) {
+        match move_file_as(&path, &dst, ctx.owner) {
             Ok(Outcome::Moved) => {
                 ctx.report.files_moved += 1;
                 (ctx.emit)(Event::File { name, status: "✓ moved".into() });
@@ -347,6 +371,79 @@ fn looks_like_old_system(mp: &Path) -> bool {
     mp.join("etc").is_dir() && (mp.join("usr").is_dir() || mp.join("bin").exists())
 }
 
+fn non_empty_dir(p: &Path) -> bool {
+    fs::read_dir(p).map(|mut r| r.next().is_some()).unwrap_or(false)
+}
+
+/// The old system's root and home folders on the mounted disk. A plain
+/// partition has both at the top. Btrfs installs keep them in subvolumes
+/// instead — Ubuntu's "@" and "@home", Fedora's "root" and "home" — so the disk
+/// is mounted at its top level (subvolid=5) and they're looked for there.
+pub fn locate(top: &Path) -> Option<(PathBuf, PathBuf)> {
+    let root = std::iter::once(top.to_path_buf())
+        .chain(["@", "root", "@rootfs"].iter().map(|c| top.join(c)))
+        .find(|p| looks_like_old_system(p))?;
+    let home = [root.join("home"), top.join("@home"), top.join("home")]
+        .into_iter()
+        .find(|p| non_empty_dir(p))
+        .unwrap_or_else(|| root.join("home"));
+    Some((root, home))
+}
+
+/// A regular user account on this system.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Account {
+    pub name: String,
+    pub uid: u32,
+    pub gid: u32,
+    pub home: PathBuf,
+}
+
+/// Regular accounts (uid 1000–59999) from /etc/passwd.
+pub fn parse_passwd(text: &str) -> Vec<Account> {
+    text.lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split(':').collect();
+            if f.len() < 7 {
+                return None;
+            }
+            let (uid, gid) = (f[2].parse::<u32>().ok()?, f[3].parse::<u32>().ok()?);
+            (1000..60000).contains(&uid).then(|| Account { name: f[0].into(), uid, gid, home: PathBuf::from(f[5]) })
+        })
+        .collect()
+}
+
+/// Where each folder from the old /home goes, and who owns it afterwards.
+///
+/// - An old folder named like an account here goes to that account.
+/// - Otherwise it goes to the person running the migration: straight into
+///   their home when it's the only such folder (the usual case: "john" on
+///   Ubuntu is "zohaib" here), else into "<name> (old system)" inside it.
+/// - With nobody to give it to, it keeps its name under /home and its old
+///   owner IDs, as before.
+pub fn plan_homes(old: &[String], accounts: &[Account], caller: Option<&Account>) -> Vec<(String, PathBuf, Option<(u32, u32)>)> {
+    let old: Vec<&String> = old.iter().filter(|n| n.as_str() != "lost+found").collect();
+    let unmatched = old.iter().filter(|n| !accounts.iter().any(|a| &a.name == **n)).count();
+    old.into_iter()
+        .map(|n| {
+            if let Some(a) = accounts.iter().find(|a| &a.name == n) {
+                (n.clone(), a.home.clone(), Some((a.uid, a.gid)))
+            } else if let Some(c) = caller {
+                let dest = if unmatched == 1 { c.home.clone() } else { c.home.join(format!("{n} (old system)")) };
+                (n.clone(), dest, Some((c.uid, c.gid)))
+            } else {
+                (n.clone(), Path::new(NEW_HOME).join(n), None)
+            }
+        })
+        .collect()
+}
+
+/// The person who started the migration: pkexec (or sudo) records their uid.
+fn caller(accounts: &[Account]) -> Option<Account> {
+    let uid: u32 = std::env::var("PKEXEC_UID").or_else(|_| std::env::var("SUDO_UID")).ok()?.parse().ok()?;
+    accounts.iter().find(|a| a.uid == uid).cloned()
+}
+
 fn same_disk_as_root(mp: &Path) -> bool {
     match (fs::metadata(mp), fs::metadata("/")) {
         (Ok(a), Ok(b)) => a.dev() == b.dev(),
@@ -378,7 +475,12 @@ pub fn run_job(dev: &str, delete_system: bool, emit: &dyn Fn(Event), cancel: &Ar
     }
     progress(2, "Opening the old system's disk…");
     let mp = Path::new(MOUNT_POINT);
-    if let Err(e) = fs::create_dir_all(mp).map_err(|e| e.to_string()).and_then(|_| run("mount", &[dev, MOUNT_POINT]).map(|_| ())) {
+    // Nothing on the old disk may run or act as a device while it's open
+    // here as root. Btrfs is opened at its top level so subvolume layouts
+    // (Ubuntu's @/@home, Fedora's root/home) can be found; see `locate`.
+    let btrfs = run("lsblk", &["-no", "FSTYPE", dev]).map(|t| t.trim() == "btrfs").unwrap_or(false);
+    let opts = if btrfs { "subvolid=5,nosuid,nodev,noexec" } else { "nosuid,nodev,noexec" };
+    if let Err(e) = fs::create_dir_all(mp).map_err(|e| e.to_string()).and_then(|_| run("mount", &["-o", opts, dev, MOUNT_POINT]).map(|_| ())) {
         report.fatal = Some(format!("Couldn't open {dev}: {e}"));
         return report;
     }
@@ -415,21 +517,40 @@ fn job_on_mounted(
     if same_disk_as_root(mp) {
         return Err("That is the disk this system is running from. Nothing was changed.".into());
     }
-    if !looks_like_old_system(mp) {
+    let Some((root, old_home)) = locate(mp) else {
         return Err("This partition doesn't look like a Linux system (no /etc). Nothing was changed.".into());
-    }
+    };
 
     progress(5, "Reading the list of installed apps…");
-    let status = fs::read_to_string(mp.join("var/lib/dpkg/status")).unwrap_or_default();
+    let status = fs::read_to_string(root.join("var/lib/dpkg/status")).unwrap_or_default();
     let (arch, unmapped) = packages::translate(&packages::parse_dpkg_status(&status));
     report.unmapped = unmapped;
 
     progress(15, "Counting files…");
-    let old_home = mp.join("home");
     if old_home.is_dir() {
         let mut t = Tally { files: 0, bytes: 0 };
         count(&old_home, &mut t);
         progress(15, &format!("Moving {} files ({})…", t.files, human(t.bytes)));
+        let accounts = fs::read_to_string("/etc/passwd").map(|t| parse_passwd(&t)).unwrap_or_default();
+        let who = caller(&accounts);
+        let mut names: Vec<String> = fs::read_dir(&old_home)
+            .map(|rd| {
+                rd.flatten()
+                    .filter(|e| fs::symlink_metadata(e.path()).map(|m| m.is_dir()).unwrap_or(false))
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        names.sort();
+        let plan = plan_homes(&names, &accounts, who.as_ref());
+        let mut notes = Vec::new();
+        for (name, dest, owner) in &plan {
+            if owner.is_none() {
+                notes.push(format!("{name}'s files went to {} with their old owner, because no account here matches them.", dest.display()));
+            } else if dest != &Path::new(NEW_HOME).join(name) {
+                notes.push(format!("{name}'s files from the old system are now in {}.", dest.display()));
+            }
+        }
         let mut ctx = Ctx {
             emit,
             cancel: cancel.as_ref(),
@@ -439,9 +560,14 @@ fn job_on_mounted(
             done_bytes: 0,
             report: &mut *report,
             log: Vec::new(),
+            owner: None,
         };
-        walk(&old_home, Path::new(NEW_HOME), Path::new(""), &mut ctx);
+        for (name, dest, owner) in plan {
+            ctx.owner = owner;
+            walk(&old_home.join(&name), &dest, Path::new(&name), &mut ctx);
+        }
         log.append(&mut ctx.log);
+        report.notes.extend(notes);
         prune_empty(&old_home);
     }
     if cancel.load(Ordering::Relaxed) {
@@ -474,7 +600,7 @@ fn job_on_mounted(
         } else {
             progress(90, "Removing the old system files…");
             for d in OLD_SYSTEM_DIRS {
-                let target = mp.join(d);
+                let target = root.join(d);
                 if fs::symlink_metadata(&target).map(|m| m.is_dir()).unwrap_or(false) {
                     if let Err(e) = fs::remove_dir_all(&target) {
                         report.notes.push(format!("Couldn't fully remove /{d} from the old system: {e}"));
@@ -566,13 +692,94 @@ mod tests {
         let mut report = Report::default();
         let events = std::cell::RefCell::new(0);
         let emit = |_e: Event| *events.borrow_mut() += 1;
-        let mut ctx = Ctx { emit: &emit, cancel: &cancel, total_files: 2, total_bytes: 2, done_files: 0, done_bytes: 0, report: &mut report, log: vec![] };
+        let mut ctx = Ctx { emit: &emit, cancel: &cancel, total_files: 2, total_bytes: 2, done_files: 0, done_bytes: 0, report: &mut report, log: vec![], owner: None };
         walk(&old, &new, Path::new(""), &mut ctx);
         assert!(report.failed.is_empty());
         assert_eq!(report.files_moved, 2);
         assert_eq!(fs::read_to_string(new.join("bob/Docs/a.txt")).unwrap(), "1");
         prune_empty(&old);
         assert!(!old.join("bob").exists(), "emptied folders are removed");
+    }
+
+    fn fake_system(at: &Path) {
+        fs::create_dir_all(at.join("etc")).unwrap();
+        fs::create_dir_all(at.join("usr")).unwrap();
+    }
+
+    #[test]
+    fn finds_plain_and_btrfs_layouts() {
+        // Plain partition: system and home at the top.
+        let d = tempdir().unwrap();
+        fake_system(d.path());
+        fs::create_dir_all(d.path().join("home/john")).unwrap();
+        assert_eq!(locate(d.path()), Some((d.path().to_path_buf(), d.path().join("home"))));
+
+        // Ubuntu on Btrfs: "@" and "@home" subvolumes.
+        let u = tempdir().unwrap();
+        fake_system(&u.path().join("@"));
+        fs::create_dir_all(u.path().join("@/home")).unwrap(); // empty mount point
+        fs::create_dir_all(u.path().join("@home/john")).unwrap();
+        assert_eq!(locate(u.path()), Some((u.path().join("@"), u.path().join("@home"))));
+
+        // Fedora on Btrfs: "root" and "home" subvolumes.
+        let f = tempdir().unwrap();
+        fake_system(&f.path().join("root"));
+        fs::create_dir_all(f.path().join("home/jane")).unwrap();
+        assert_eq!(locate(f.path()), Some((f.path().join("root"), f.path().join("home"))));
+
+        // Not a Linux system at all.
+        let n = tempdir().unwrap();
+        fs::create_dir_all(n.path().join("Documents")).unwrap();
+        assert_eq!(locate(n.path()), None);
+    }
+
+    #[test]
+    fn reads_regular_accounts_only() {
+        let text = "root:x:0:0::/root:/bin/bash\nzohaib:x:1000:1000:Zohaib:/home/zohaib:/bin/zsh\nnobody:x:65534:65534::/:/usr/bin/nologin\n";
+        assert_eq!(parse_passwd(text), vec![Account { name: "zohaib".into(), uid: 1000, gid: 1000, home: "/home/zohaib".into() }]);
+    }
+
+    #[test]
+    fn old_homes_go_to_the_right_people() {
+        let zohaib = Account { name: "zohaib".into(), uid: 1000, gid: 1000, home: "/home/zohaib".into() };
+        let sara = Account { name: "sara".into(), uid: 1001, gid: 1001, home: "/home/sara".into() };
+        let accounts = vec![zohaib.clone(), sara];
+
+        // One unmatched old home: merged into the person migrating.
+        let p = plan_homes(&["john".into(), "lost+found".into()], &accounts, Some(&zohaib));
+        assert_eq!(p, vec![("john".into(), PathBuf::from("/home/zohaib"), Some((1000, 1000)))]);
+
+        // A name that exists here goes to that account.
+        let p = plan_homes(&["sara".into(), "john".into()], &accounts, Some(&zohaib));
+        assert_eq!(p[0], ("sara".into(), PathBuf::from("/home/sara"), Some((1001, 1001))));
+        assert_eq!(p[1], ("john".into(), PathBuf::from("/home/zohaib"), Some((1000, 1000))));
+
+        // Several unmatched: each gets its own folder in the migrating person's home.
+        let p = plan_homes(&["a".into(), "b".into()], &accounts, Some(&zohaib));
+        assert_eq!(p[0].1, PathBuf::from("/home/zohaib/a (old system)"));
+        assert_eq!(p[1].1, PathBuf::from("/home/zohaib/b (old system)"));
+
+        // Nobody to give them to: old behaviour.
+        let p = plan_homes(&["john".into()], &[], None);
+        assert_eq!(p, vec![("john".into(), PathBuf::from("/home/john"), None)]);
+    }
+
+    #[test]
+    fn never_writes_through_a_symlinked_folder() {
+        let d = tempdir().unwrap();
+        let (old, new, elsewhere) = (d.path().join("old"), d.path().join("new"), d.path().join("elsewhere"));
+        fs::create_dir_all(old.join("Docs")).unwrap();
+        fs::write(old.join("Docs/a.txt"), "1").unwrap();
+        fs::create_dir_all(&new).unwrap();
+        fs::create_dir_all(&elsewhere).unwrap();
+        symlink(&elsewhere, new.join("Docs")).unwrap();
+        let cancel = AtomicBool::new(false);
+        let mut report = Report::default();
+        let emit = |_e: Event| {};
+        let mut ctx = Ctx { emit: &emit, cancel: &cancel, total_files: 1, total_bytes: 1, done_files: 0, done_bytes: 0, report: &mut report, log: vec![], owner: None };
+        walk(&old, &new, Path::new(""), &mut ctx);
+        assert!(!elsewhere.join("a.txt").exists(), "nothing may land where the symlink points");
+        assert_eq!(fs::read_to_string(new.join("Docs (old system)/a.txt")).unwrap(), "1");
     }
 
     #[test]

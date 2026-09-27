@@ -12,7 +12,28 @@ use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 use zohara_welcome::{is_live, is_root};
 
+/// Remembers that an installed system has already shown the welcome once.
+fn seen_marker() -> std::path::PathBuf {
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())).join(".config"));
+    base.join("zohara").join("welcome-seen")
+}
+
 fn main() -> glib::ExitCode {
+    // Started at sign-in (the autostart entry passes --autostart): on the live
+    // USB it always shows; on an installed system only the first time. From
+    // the app menu it always opens.
+    if std::env::args().any(|a| a == "--autostart") && !is_live() {
+        let marker = seen_marker();
+        if marker.exists() {
+            return glib::ExitCode::SUCCESS;
+        }
+        if let Some(dir) = marker.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&marker, "");
+    }
     let app = adw::Application::builder().application_id("os.zohara.Welcome").build();
     app.connect_activate(build_ui);
     app.run_with_args::<&str>(&[])

@@ -29,12 +29,15 @@ pkgver() {
 
 build() {
   cd "$startdir"
-  cargo build --release
+  cargo build --release --locked
 }
 
 package() {
   install -Dm755 "$startdir/target/release/zohara-welcome" "$pkgdir/usr/bin/zohara-welcome"
   install -Dm755 "$startdir/target/release/zohara-migrate" "$pkgdir/usr/bin/zohara-migrate"
-  install -Dm644 "$startdir/data/zohara-welcome.desktop" "$pkgdir/etc/xdg/autostart/zohara-welcome.desktop"
+  # Shown at sign-in: always on the live USB, only the first time once installed
+  # (see seen_marker in src/main.rs). The menu entry opens it any time.
+  install -Dm644 "$startdir/data/zohara-welcome-autostart.desktop" "$pkgdir/etc/xdg/autostart/zohara-welcome.desktop"
+  install -Dm644 "$startdir/data/zohara-welcome.desktop" "$pkgdir/usr/share/applications/zohara-welcome.desktop"
   install -Dm644 "$startdir/data/zohara-usermgr.desktop" "$pkgdir/usr/share/applications/zohara-usermgr.desktop"
 }

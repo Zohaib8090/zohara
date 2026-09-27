@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Exec=zohara-welcome --autostart
+Name=Zohara Welcome
+Comment=Welcome to Zohara OS
+Icon=distributor-logo
+Terminal=false
+StartupNotify=false
+NoDisplay=true
+X-KDE-autostart-after=panel

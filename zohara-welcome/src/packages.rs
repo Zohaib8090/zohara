@@ -8,11 +8,11 @@ pub const DEB_TO_ARCH: &[(&str, Option<&str>)] = &[
     ("libgtk-3-0", Some("gtk3")), ("libgtk-4-1", Some("gtk4")),
     ("libnss3", Some("nss")), ("ffmpeg", Some("ffmpeg")), ("vlc", Some("vlc")),
     ("gimp", Some("gimp")), ("inkscape", Some("inkscape")),
-    ("libreoffice-common", Some("libreoffice-still")),
-    ("libreoffice-core", Some("libreoffice-still")),
-    ("libreoffice-writer", Some("libreoffice-still")),
-    ("libreoffice-calc", Some("libreoffice-still")),
-    ("libreoffice-impress", Some("libreoffice-still")),
+    ("libreoffice-common", Some("libreoffice-fresh")),
+    ("libreoffice-core", Some("libreoffice-fresh")),
+    ("libreoffice-writer", Some("libreoffice-fresh")),
+    ("libreoffice-calc", Some("libreoffice-fresh")),
+    ("libreoffice-impress", Some("libreoffice-fresh")),
     ("git", Some("git")), ("curl", Some("curl")), ("wget", Some("wget")),
     ("vim", Some("vim")), ("nano", Some("nano")), ("htop", Some("htop")), ("btop", Some("btop")),
     ("neofetch", Some("fastfetch")), ("chromium-browser", Some("chromium")),
@@ -97,7 +97,7 @@ mod tests {
         let deb: Vec<String> = ["libreoffice-core", "libreoffice-writer", "snap", "libc6", "someapp", "vlc"]
             .iter().map(|s| s.to_string()).collect();
         let (arch, unmapped) = translate(&deb);
-        assert_eq!(arch, ["libreoffice-still", "vlc"]);
+        assert_eq!(arch, ["libreoffice-fresh", "vlc"]);
         assert_eq!(unmapped.len(), 2);
         assert!(unmapped[0].starts_with("snap") && unmapped[1].starts_with("someapp"));
     }
