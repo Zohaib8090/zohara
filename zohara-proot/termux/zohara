@@ -1,6 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Starts Zohara OS: sound, the X server (Termux:X11), then the desktop in proot.
 #   zohara          start the desktop
+#   zohara gpu      start it with GPU acceleration (faster, less stable)
 #   zohara shell    open a terminal inside Zohara instead
 set -e
 
@@ -19,5 +20,17 @@ sleep 2
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity >/dev/null 2>&1 \
     || echo "Open the Termux:X11 app to see the desktop."
 
-# --shared-tmp shares Termux's /tmp, where the X server's socket lives.
-exec proot-distro login zohara --shared-tmp -- /usr/local/bin/zohara-session
+GPU=""
+if [ "${1:-}" = gpu ]; then
+    if command -v virgl_test_server_android >/dev/null; then
+        pkill -f virgl_test_server 2>/dev/null || true
+        TMPDIR="$PREFIX/tmp" virgl_test_server_android >/dev/null 2>&1 &
+        sleep 1
+        GPU="ZOHARA_GPU=virgl"
+    else
+        echo "GPU mode needs:  pkg install virglrenderer-android   (starting without it)"
+    fi
+fi
+
+# --shared-tmp shares Termux's /tmp, where the X server's (and virgl's) socket lives.
+exec proot-distro login zohara --shared-tmp -- env $GPU /usr/bin/zohara-session

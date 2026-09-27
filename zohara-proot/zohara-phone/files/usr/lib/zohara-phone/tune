@@ -1,0 +1,14 @@
+#!/bin/bash
+# Runs once per session, after the desktop is up: makes the panel finger-sized.
+# Done through Plasma's own scripting, once (a marker remembers it).
+MARK="$HOME/.config/zohara-phone-tuned"
+[ -e "$MARK" ] && exit 0
+for _ in $(seq 1 60); do
+    if qdbus6 org.kde.plasmashell /PlasmaShell >/dev/null 2>&1; then
+        qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \
+            'var ps = panels(); for (var i = 0; i < ps.length; i++) { ps[i].height = 52; }' >/dev/null 2>&1 \
+            && { mkdir -p "$(dirname "$MARK")"; touch "$MARK"; }
+        exit 0
+    fi
+    sleep 2
+done

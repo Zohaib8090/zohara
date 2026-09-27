@@ -1,0 +1,3 @@
+#!/bin/sh
+# KDE's own System Settings is replaced by Zohara Settings on Zohara.
+exec zohara-settings "$@"

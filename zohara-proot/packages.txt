@@ -29,6 +29,7 @@ ttf-dejavu
 
 # Sound comes from Termux's PulseAudio over TCP; parecord is for voice typing
 libpulse
+qt6-tools
 
 # What Zohara's apps use
 gtk4

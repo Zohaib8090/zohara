@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+Exec=zohara-settings
+Icon=preferences-system
+Terminal=false
+NoDisplay=true

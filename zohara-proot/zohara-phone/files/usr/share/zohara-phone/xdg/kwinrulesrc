@@ -1,0 +1,12 @@
+[General]
+count=1
+rules=1
+
+[1]
+Description=Zohara phone: full-screen windows
+maximizehoriz=true
+maximizehorizrule=2
+maximizevert=true
+maximizevertrule=2
+types=1
+wmclassmatch=0

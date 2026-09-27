@@ -1,0 +1,45 @@
+#!/bin/bash
+# Starts the Zohara desktop inside proot. Termux's `zohara` command runs this
+# after starting the X server (Termux:X11) and PulseAudio.
+#
+# Settings (SCALE, QUICK, EFFECTS) come from /etc/zohara-phone.conf and can be
+# overridden in ~/.config/zohara-phone.conf.
+SCALE=2 QUICK=software EFFECTS=off
+[ -r /etc/zohara-phone.conf ] && . /etc/zohara-phone.conf
+[ -r "$HOME/.config/zohara-phone.conf" ] && . "$HOME/.config/zohara-phone.conf"
+case "$SCALE" in 1|2|3|4) ;; *) SCALE=2 ;; esac
+
+export DISPLAY="${DISPLAY:-:0}"
+export PULSE_SERVER="${PULSE_SERVER:-tcp:127.0.0.1:4713}"
+export XDG_RUNTIME_DIR="/tmp/runtime-$(id -u)"
+mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+export XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=KDE KDE_FULL_SESSION=true
+export QT_QPA_PLATFORM=xcb GDK_BACKEND=x11 ZOHARA_PROOT=1
+
+# Zohara's phone settings come first, ahead of KDE's own (nothing is overwritten):
+# a lighter desktop, and Zohara Settings in place of KDE's System Settings.
+export XDG_CONFIG_DIRS="/usr/share/zohara-phone/xdg:${XDG_CONFIG_DIRS:-/etc/xdg}"
+export XDG_DATA_DIRS="/usr/share/zohara-phone/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export PATH="/usr/lib/zohara-phone/bin:$PATH"
+
+# Screen size: everything is drawn larger so it can be used with a finger.
+export QT_AUTO_SCREEN_SCALE_FACTOR=0 QT_SCALE_FACTOR="$SCALE" GDK_SCALE="$SCALE"
+export GTK_OVERLAY_SCROLLING=1
+
+# Drawing. Without a GPU, Qt's software renderer is the fastest way.
+if [ "${ZOHARA_GPU:-}" = virgl ]; then
+    # GPU acceleration through Termux's virgl server (started by `zohara gpu`).
+    export GALLIUM_DRIVER=virpipe MESA_GL_VERSION_OVERRIDE=4.0 QT_QUICK_BACKEND=
+    [ "$EFFECTS" = on ] || export KWIN_COMPOSE=N
+else
+    export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe LP_NUM_THREADS="$(nproc)"
+    [ "$QUICK" = software ] && export QT_QUICK_BACKEND=software
+    [ "$EFFECTS" = on ] || export KWIN_COMPOSE=N
+fi
+
+if ! command -v startplasma-x11 >/dev/null; then
+    echo "The Plasma X11 session isn't installed in this Zohara build." >&2
+    exit 1
+fi
+/usr/lib/zohara-phone/tune &
+exec dbus-run-session startplasma-x11

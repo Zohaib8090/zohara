@@ -6,12 +6,13 @@ name: Build Zohara for ARM phones
 #   - the phone system (Arch Linux ARM + Plasma + Zohara's apps) and the
 #     Termux installer -> release proot-latest in this repo
 #
-# Runs on GitHub's native ARM machines. Settings lives in its own repo:
+# Runs on GitHub's native ARM machines, only from the arm-main branches: the
+# x86 OS is built from master/main and this never touches it. Settings lives in its own repo:
 # after changing it, run this workflow by hand to ship it to phones.
 
 on:
   push:
-    branches: [master, arm-main]
+    branches: [arm-main]
     paths:
       - 'zohara-proot/**'
       - 'zohara-store-rs/**'
@@ -43,12 +44,15 @@ jobs:
           bash -n zohara-proot/build.sh
           bash -n zohara-proot/termux/install.sh
           bash -n zohara-proot/termux/zohara
-          sh -n zohara-proot/rootfs/usr/local/bin/pkexec
-          bash -n zohara-proot/rootfs/usr/local/bin/zohara-session
+          sh -n zohara-proot/zohara-phone/files/usr/lib/zohara-phone/bin/pkexec
+          sh -n zohara-proot/zohara-phone/files/usr/lib/zohara-phone/bin/systemsettings
+          bash -n zohara-proot/zohara-phone/files/usr/lib/zohara-phone/tune
+          bash -n zohara-proot/zohara-phone/PKGBUILD
+          bash -n zohara-proot/zohara-phone/files/usr/bin/zohara-session
 
       - name: Build
-        # Settings is built from the branch of the same role in its repo.
-        run: sudo OUT="$PWD/out-arm" SETTINGS_BRANCH="${{ github.ref_name == 'master' && 'main' || 'arm-main' }}" bash zohara-proot/build.sh
+        # The phone OS is built only from the arm-main branches (this repo and zohara-settings).
+        run: sudo OUT="$PWD/out-arm" SETTINGS_BRANCH=arm-main bash zohara-proot/build.sh
 
       - name: Upload packages artifact
         uses: actions/upload-artifact@v4
@@ -74,4 +78,4 @@ jobs:
             gh release create proot-latest --prerelease --title "Zohara OS for phones (Termux)" \
               --notes "Install in Termux: curl -fsSL https://github.com/Zohaib8090/zohara/releases/download/proot-latest/install.sh | bash"
           gh release upload proot-latest --clobber \
-            out-arm/zohara-rootfs-aarch64.tar.xz out-arm/zohara.sh out-arm/install.sh out-arm/zohara
+            out-arm/zohara-rootfs-aarch64.tar.xz out-arm/zohara-rootfs-aarch64.tar.xz.sha256 out-arm/zohara.sh out-arm/install.sh out-arm/zohara

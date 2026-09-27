@@ -1,0 +1,12 @@
+[Compositing]
+Enabled=false
+
+[Plugins]
+blurEnabled=false
+contrastEnabled=false
+slidingpopupsEnabled=false
+kwin4_effect_fadeEnabled=false
+kwin4_effect_scaleEnabled=false
+
+[Windows]
+BorderlessMaximizedWindows=true

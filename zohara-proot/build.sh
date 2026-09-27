@@ -18,7 +18,7 @@ OUT="${OUT:-$REPO/out-arm}"
 WORK="${WORK:-/var/tmp/zohara-arm}"
 ALARM_URL="${ALARM_URL:-http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz}"
 SETTINGS_REPO="${SETTINGS_REPO:-https://github.com/Zohaib8090/zohara-settings.git}"
-SETTINGS_BRANCH="${SETTINGS_BRANCH:-main}"
+SETTINGS_BRANCH="${SETTINGS_BRANCH:-arm-main}"
 STAMP="$(date -u +%Y%m%d%H%M)"
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
@@ -121,7 +121,7 @@ in_root "$B" 'id builder >/dev/null 2>&1 || useradd -m builder'
 in_root "$B" "sed -i -E 's/^#?PKGEXT=.*/PKGEXT=\".pkg.tar.zst\"/' /etc/makepkg.conf && grep -n '^PKGEXT' /etc/makepkg.conf"
 
 mkdir -p "$B/build"
-cp -a "$REPO/zohara-store-rs" "$REPO/zohara-welcome" "$REPO/zohara-voice" "$REPO/zohara-voice-model" "$B/build/"
+cp -a "$REPO/zohara-store-rs" "$REPO/zohara-welcome" "$REPO/zohara-voice" "$REPO/zohara-voice-model" "$HERE/zohara-phone" "$B/build/"
 rm -rf "$B/build/zohara-store-rs/target" "$B/build/zohara-welcome/target"
 git clone --depth 1 --branch "$SETTINGS_BRANCH" "$SETTINGS_REPO" "$B/build/zohara-settings"
 in_root "$B" 'chown -R builder:builder /build'
@@ -136,6 +136,8 @@ log "Building zohara-voice (whisper.cpp for ARM)"
 as_builder "$B" 'cd /build/zohara-voice && makepkg --nodeps --nocheck'
 log "Building zohara-voice-model"
 as_builder "$B" 'cd /build/zohara-voice-model && makepkg --nodeps --nocheck'
+log "Building zohara-phone"
+as_builder "$B" "cd /build/zohara-phone && _PKGVER=0.1.0.$STAMP makepkg --nodeps --nocheck"
 
 log "Making the aarch64 package repository"
 rm -rf "$OUT/repo"; mkdir -p "$OUT/repo"
@@ -144,10 +146,12 @@ ls "$B"/build/*/*.pkg.tar.zst >/dev/null 2>&1 || die "no .pkg.tar.zst packages w
 cp "$B"/build/*/*.pkg.tar.zst "$OUT/repo/"
 in_root "$B" 'rm -rf /tmp/repo && mkdir /tmp/repo'
 cp "$OUT"/repo/*.pkg.tar.zst "$B/tmp/repo/"
-in_root "$B" 'cd /tmp/repo && repo-add -q zohara.db.tar.gz ./*.pkg.tar.zst'
+in_root "$B" 'cd /tmp/repo && repo-add -q zohara-stable.db.tar.gz ./*.pkg.tar.zst'
 # Real files, not symlinks: GitHub release assets can't be symlinks.
-for f in zohara.db zohara.files; do cp -L "$B/tmp/repo/$f" "$OUT/repo/$f"; done
-cp "$B/tmp/repo/zohara.db.tar.gz" "$B/tmp/repo/zohara.files.tar.gz" "$OUT/repo/"
+for f in zohara-stable.db zohara-stable.files; do cp -L "$B/tmp/repo/$f" "$OUT/repo/$f"; done
+cp "$B/tmp/repo/zohara-stable.db.tar.gz" "$B/tmp/repo/zohara-stable.files.tar.gz" "$OUT/repo/"
+# Phones set up before this fix look for zohara.db: keep serving that name too.
+cp -L "$B/tmp/repo/zohara-stable.db" "$OUT/repo/zohara.db"; cp -L "$B/tmp/repo/zohara-stable.files" "$OUT/repo/zohara.files"
 ls -lh "$OUT/repo"
 
 # ── 2. The phone system ────────────────────────────────────────────────────
@@ -166,14 +170,12 @@ in_root "$R" "pacman -S --noconfirm --needed ${WANT[*]}"
 log "Installing Zohara's apps"
 mkdir -p "$R/tmp/zohara"
 cp "$OUT"/repo/*.pkg.tar.zst "$R/tmp/zohara/"
-in_root "$R" 'pacman -U --noconfirm --needed /tmp/zohara/zohara-settings-*.pkg.tar.zst /tmp/zohara/zohara-store-*.pkg.tar.zst /tmp/zohara/zohara-welcome-*.pkg.tar.zst'
+in_root "$R" 'pacman -U --noconfirm --needed /tmp/zohara/zohara-settings-*.pkg.tar.zst /tmp/zohara/zohara-store-*.pkg.tar.zst /tmp/zohara/zohara-welcome-*.pkg.tar.zst /tmp/zohara/zohara-phone-*.pkg.tar.zst'
 # Voice typing (zohara-voice*) is built into the ARM repository but not
 # installed here: typing into apps needs /dev/uinput, which proot can't reach,
 # and Settings hides it on phones.
 
-log "Applying Zohara's phone configuration"
-cp -a "$HERE/rootfs/." "$R/"
-chmod 755 "$R/usr/local/bin/"*
+log "Applying Zohara's phone configuration (the rest ships in the zohara-phone package)"
 # Updates for the phone come from the aarch64 repository.
 grep -q '^\[zohara-stable\]' "$R/etc/pacman.conf" || cat >> "$R/etc/pacman.conf" <<'EOF'
 
@@ -200,6 +202,7 @@ if [ -n "$(mounts_under "$R")" ]; then mounts_under "$R" >&2; die "$R still has 
 log "Packing the system"
 tar -C "$WORK" --numeric-owner --one-file-system -cpf - "$NAME" | xz -T0 -6 > "$OUT/zohara-rootfs-aarch64.tar.xz"
 SHA="$(sha256sum "$OUT/zohara-rootfs-aarch64.tar.xz" | cut -d' ' -f1)"
+echo "$SHA  zohara-rootfs-aarch64.tar.xz" > "$OUT/zohara-rootfs-aarch64.tar.xz.sha256"
 BASE="https://github.com/Zohaib8090/zohara/releases/download/proot-latest"
 sed -e "s|@URL@|$BASE/zohara-rootfs-aarch64.tar.xz|" -e "s|@SHA256@|$SHA|" "$HERE/termux/zohara.sh.in" > "$OUT/zohara.sh"
 cp "$HERE/termux/install.sh" "$HERE/termux/zohara" "$OUT/"

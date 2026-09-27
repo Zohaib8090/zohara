@@ -1,0 +1,33 @@
+# Maintainer: Zohara OS Team <https://github.com/Zohaib8090/zohara>
+# Zohara for phones (Termux + proot): touch and speed tuning, the session
+# script, and Zohara Settings in place of KDE's System Settings. It ships as a
+# package so Zohara Store can update it. Built only for the phone (aarch64).
+#
+# It owns no file that another package owns: KDE's settings are overridden by
+# putting these first in XDG_CONFIG_DIRS / XDG_DATA_DIRS (see zohara-session).
+pkgname=zohara-phone
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Zohara for phones: touch, speed and Settings tuning for the Termux (proot) system"
+arch=('any')
+url="https://github.com/Zohaib8090/zohara"
+license=('GPL-3.0-or-later')
+depends=('bash' 'qt6-tools')
+options=(!debug)
+source=()
+sha256sums=()
+
+pkgver() {
+  # The ARM build passes _PKGVER (version + build time) so every build is newer.
+  echo "${_PKGVER:-0.1.0}"
+}
+
+package() {
+  cp -a "$startdir/files/." "$pkgdir/"
+  # Windows checkouts don't keep the executable bit.
+  chmod 755 "$pkgdir/usr/bin/zohara-session" "$pkgdir/usr/lib/zohara-phone/tune"
+  chmod 755 "$pkgdir"/usr/lib/zohara-phone/bin/*
+  chmod 644 "$pkgdir/etc/zohara-proot" "$pkgdir/etc/zohara-phone.conf"
+  # Users keep their edits to the settings file across updates.
+}
+backup=('etc/zohara-phone.conf')
