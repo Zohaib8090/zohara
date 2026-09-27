@@ -214,3 +214,42 @@ stable channel). Signing needs a key in CI, a keyring on every system and a
 staged SigLevel change, or updates break for everyone; left for a planned
 change. See the checklist section in `docs/VM-TEST-CHECKLIST.md` for what to
 verify in a VM.
+
+## Wrap-up 2026-09-27: everything green, waiting on real-hardware test
+
+- **ISO build succeeded** with every audit fix baked in:
+  [run 36334327163](https://github.com/Zohaib8090/zohara/actions/runs/36334327163)
+  (artifact `zohara-os-x86_64`, kept 30 days). The first attempt at this exact
+  commit failed on a transient AUR clone/SSL error unrelated to any of
+  tonight's changes; the rerun succeeded.
+- Store and Welcome packages built, tested and published from the same commit.
+- The `zohara-pipeline` manifest fix was verified live against the actual
+  bytes GitHub serves, not just locally.
+- **Nothing in tonight's batch has run on real hardware or in a VM yet.**
+  The owner is about to test the ISO above on their dad's Dell (possibly
+  dual-boot with Windows), which is exactly the installer/GRUB scenario the
+  audit flagged. Go through `docs/VM-TEST-CHECKLIST.md`'s "Fixes from the
+  2026-09-27 audit" section, in this priority order:
+  1. Partitioning screen has nothing pre-selected.
+  2. If installing alongside Windows: Windows shows up in the GRUB menu after.
+  3. Store > Updates checks without an error (manifest signature fix).
+  4. Lid close / power button actually suspend (live-only override removed).
+  5. Everything else in that section.
+- **Two harmless loose ends, not worth a commit:**
+  - `.gsd/ARCHITECTURE.md` and `.gsd/STACK.md` are untracked in `zohara`
+    (surfaced once `.gitignore` stopped ignoring `.gsd/`; see the "Cleanup"
+    commit above). They're GSD tooling's own files, not Zohara's — add them
+    or leave them, either is fine.
+  - A stale local branch `fix/ota-packaging` exists in this checkout; it's
+    fully merged into `master` already (nothing ahead of it), just never
+    deleted locally.
+- **Still open, unchanged from before tonight:**
+  - Item 17 (package signing / staged channels) — deliberately deferred; see
+    the note at the end of the previous section for why.
+  - Phase 1's VM proof of the GRUB snapshot entry and a real rollback.
+  - ARM/phone work (`arm-main` branches): the touch-input tuning mentioned
+    early in that thread was never built; last confirmed state is the
+    `zohara-phone` package (scale, full-screen windows, Zohara Settings
+    replacing KDE's) installed successfully via `proot-distro install
+    --name zohara`, but Plasma itself starting under Termux:X11 was never
+    confirmed by the user.
