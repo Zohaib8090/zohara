@@ -96,6 +96,25 @@ if [[ -f "$BRANDING" ]]; then
 fi
 echo "  -> Version $ZOHARA_VERSION."
 
+# ── Work around a Calamares mount-module crash on Btrfs installs ───────────
+# Upstream bug (six years old, unresolved: multiple distros hit it, no fix
+# landed) -- src/modules/mount/main.py's mount_partition() runs
+# `subprocess.check_call(["umount", "-v", root_mount_point])` after creating
+# the @/@home/etc. subvolumes, and that verbose umount sometimes dies with
+# SIGPIPE instead of exiting cleanly, failing the whole install. Confirmed on
+# real hardware (Dell Latitude, fresh partition from a Windows shrink) on the
+# 2026-09-28 ISO. Community workaround: drop the -v flag, which is cosmetic
+# (it only makes umount print what it did) and not needed here.
+MOUNT_MODULE=/usr/lib/calamares/modules/mount/main.py
+if [[ -f "$MOUNT_MODULE" ]]; then
+    sed -i 's/\["umount", "-v", root_mount_point\]/["umount", root_mount_point]/' "$MOUNT_MODULE"
+    if grep -q '"umount", "-v", root_mount_point' "$MOUNT_MODULE"; then
+        echo "  -> WARNING: Calamares mount-module umount patch did not match; upstream code changed." >&2
+    else
+        echo "  -> Patched Calamares mount module (dropped verbose umount, works around upstream SIGPIPE bug)."
+    fi
+fi
+
 # ── Enable System Services (Bluetooth & Network) ────────────────────────────
 # Enablement happens HERE, not by shipping .wants/ entries in the overlay, because this script runs
 # inside arch-chroot on Linux where `systemctl` can create real symlinks. The overlay cannot: it is
