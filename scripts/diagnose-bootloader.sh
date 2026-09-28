@@ -27,6 +27,14 @@ out=/tmp/zohara-bootloader-diag.txt
     fi
 
     echo
+    echo "=== Installer version, and did it mount EFI variables in the new system? ==="
+    $SUDO grep -m1 "Calamares version" /root/.cache/calamares/session.log 2>&1
+    $SUDO grep -n "efivarfs" /root/.cache/calamares/session.log 2>&1 | head -5
+    echo "(no efivarfs line above = the installer never mounted them)"
+    echo -n "This USB has the efivarfs fix (efi: true in mount.conf): "
+    if grep -q "efi: true" /etc/calamares/modules/mount.conf 2>/dev/null; then echo yes; else echo "NO - old ISO"; fi
+
+    echo
     echo "=== Installer log around grub-install ==="
     $SUDO grep -n -B5 -A40 "grub-install" /root/.cache/calamares/session.log 2>&1 | tail -80
 
