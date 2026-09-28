@@ -73,7 +73,7 @@ A Zohara Companion app for Android is in active development. It pairs with the O
 - File transfer in both directions
 - Notification mirroring on the desktop
 
-The OS-side daemon is `zohara-linkd` (in [zohara-link](https://github.com/Zohaib8090/zohara-link)). `zohara-connectd` in this repository is an earlier, unfinished prototype: it parses its options and waits, nothing more, and isn't shipped. The Android app itself is a separate project and not part of this repo. No release date is being promised yet — when it's ready, it will be linked from this repository.
+The OS-side daemon is `zohara-linkd` (in [zohara-link](https://github.com/Zohaib8090/zohara-link)). The Android app itself is a separate project and not part of this repo. No release date is being promised yet — when it's ready, it will be linked from this repository.
 
 (`VERSION` and `CHANGELOG.md` at the top of this repository belong to the bundled GSD development tooling, which reads and updates them itself; they are not Zohara's version. Zohara's version is the image's build date, shown in `/etc/os-release`.)
 
