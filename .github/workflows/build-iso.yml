@@ -11,6 +11,13 @@ on:
       - '.agent/**'
     tags:
       - "v*"
+  # Fired by zohara-settings' Build & Publish workflow after a stable-channel
+  # publish. zohara-settings is compiled straight into this image (the
+  # ZOHARA_SETTINGS_SHA Docker build arg), so without this, a settings-only
+  # release wouldn't be reflected in the ISO until something else happened
+  # to touch zohara/master.
+  repository_dispatch:
+    types: [ app-published ]
   workflow_dispatch:
 
 permissions:
