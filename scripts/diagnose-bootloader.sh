@@ -1,10 +1,15 @@
-# Zohara OS - find out why the installer's bootloader step failed.
+bash <<'ZOHARA_DIAG'
+# Zohara OS: find out why the installer bootloader step failed.
 #
 # Run it on the live USB after the installer shows "Bootloader installation
 # error": copy this whole file from GitHub, paste it into Konsole with
 # Ctrl+Shift+V, press Enter. It prints what it finds and, if it can, also
 # saves it on the Ventoy USB as zohara-bootloader-diag.txt so it can be read
 # on another computer. It changes nothing on the disk except that one file.
+#
+# The whole script is fed to bash as a heredoc so pasting works the same
+# in zsh (the default shell here), which does not treat pasted # lines as
+# comments -- an apostrophe in one opened a quote and hung the paste.
 (
 SUDO=""
 [ "$(id -u)" = 0 ] || SUDO=sudo
@@ -73,3 +78,4 @@ else
     echo ">>> Could not save to the USB. Please take a photo of the output above."
 fi
 )
+ZOHARA_DIAG
