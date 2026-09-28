@@ -152,6 +152,11 @@ xdg-utils
 xdg-user-dirs
 polkit-kde-agent
 yay
+# Emoji and Windows-metric-compatible fonts (Arial/Times New Roman
+# substitutes) -- without these, emoji render as boxes and documents
+# authored on real Windows/Office reflow when opened in LibreOffice.
+noto-fonts-emoji
+ttf-liberation
 chaotic-keyring
 chaotic-mirrorlist
 qt6-declarative
@@ -183,6 +188,10 @@ power-profiles-daemon
 # missing on real hardware (Dell Latitude): the tray showed no battery
 # icon at all, plugged in or not, on the 2026-09-28 live ISO.
 upower
+# v4l2-ctl (Settings > Bluetooth & devices > Cameras list calls this
+# directly, bluetooth.rs:249) -- without it, that list silently shows no
+# cameras even when one exists.
+v4l-utils
 bluedevil
 plasma-systemmonitor
 plasma-firewall
