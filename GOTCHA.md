@@ -36,6 +36,27 @@ file in `work/`, not just the squashfs step. `zohara-profile/build-iso.sh`
 now always `rm -rf`s `work/` before building and explicitly fails if no ISO
 exists afterward, rather than trusting the exit code.
 
+**GRUB's Btrfs reader can't read a file that ends in a sparse hole.** The
+kernel image ends in zero padding; the copy unpacked from the squashfs
+stores that tail as a hole. Plain `cp` keeps the hole, Linux reads it back
+as zeros (so `cmp` says the files are identical), but GRUB 2.16 stops at
+the last stored block and fails with `premature end of file
+/@/boot/vmlinuz-linux-zen`. It looked like a Btrfs reflink/compression
+problem and wasn't -- a standalone `--reflink=never` copy still failed.
+Copy boot files with `cp --sparse=never --reflink=never`. Found by
+installing in the QEMU test VM and reproducing the Dell's exact error.
+
+**A failed install can leave the Windows EFI partition with a corrupted
+`EFI/Zohara_OS` folder**, and grub-install then fails on the next try. Fix
+from Windows (admin): `mountvol S: /s`, `chkdsk S: /f`, `mountvol S: /d`.
+
+**Dell SupportAssist hijacks boot after failed boots.** After two failures
+the firmware auto-launches SupportAssist OS Recovery, and picking Zohara
+just shows its scan screen; if the boot entry is gone it says "no bootable
+device". Turn off BIOS > SupportAssist System Resolution > Auto OS
+Recovery Threshold before testing installs, and use
+`scripts/repair-boot-entry.sh` if the Zohara_OS entry is missing.
+
 ## Build pipeline
 
 **A Docker BuildKit cache mount is a directory *snapshot*, not just a cache
@@ -70,7 +91,8 @@ skip-worktree-pinned path that's supposed to be a symlink.
 started it returns**, even with `nohup` and `&`. Use `setsid nohup ... &
 disown` from inside the `wsl -e bash -lc "..."` command, not just `nohup`,
 or the "background" build silently vanishes the moment the launching
-command completes.
+command completes. Follow the launch with a `sleep` in the same command
+(a few seconds is enough) or the detached job can still be killed.
 
 ## Git / line endings
 

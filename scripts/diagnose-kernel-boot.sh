@@ -92,11 +92,12 @@ fi
 
 echo "Repairing..."
 $SUDO mount -o remount,rw,compress=no "$m" || { echo "Could not make it writable."; $SUDO umount "$m"; exit 1; }
+# --sparse=never: the kernel ends in zeros stored as a hole, which GRUB cannot read
 $SUDO chattr +m "$m/boot" 2>/dev/null
-cp --reflink=never "$src" "$dst.new" && sync && mv -f "$dst.new" "$dst"
+cp --sparse=never --reflink=never "$src" "$dst.new" && sync && mv -f "$dst.new" "$dst"
 for f in initramfs-linux-zen.img initramfs-linux-zen-fallback.img; do
     if [ -f "$m/boot/$f" ]; then
-        cp --reflink=never "$m/boot/$f" "$m/boot/$f.new" && sync && mv -f "$m/boot/$f.new" "$m/boot/$f"
+        cp --sparse=never --reflink=never "$m/boot/$f" "$m/boot/$f.new" && sync && mv -f "$m/boot/$f.new" "$m/boot/$f"
     fi
 done
 
