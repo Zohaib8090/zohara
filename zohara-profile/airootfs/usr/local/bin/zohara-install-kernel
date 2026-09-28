@@ -49,7 +49,25 @@ echo "Cleanup complete."
 KERNEL_SRC=$(ls "$TARGET"/usr/lib/modules/*/vmlinuz 2>/dev/null | head -n 1)
 
 if [ -n "$KERNEL_SRC" ] && [ -f "$KERNEL_SRC" ]; then
-    cp "$KERNEL_SRC" "$TARGET/boot/vmlinuz-linux-zen"
+    # The kernel image ends in zero padding, and the copy unpacked from the
+    # squashfs already has that empty tail stored as a hole. A plain `cp`
+    # keeps the hole (it sees a sparse source), Linux reads the hole back as
+    # zeros so the file compares identical -- but GRUB's Btrfs reader stops at
+    # the last stored block, comes up short and refuses to boot the system:
+    # "premature end of file /@/boot/vmlinuz-linux-zen". Found by installing
+    # in a VM (also seen on a Dell Latitude, 2026-09-28). Write every byte
+    # out, and never share extents with the original.
+    cp --sparse=never --reflink=never "$KERNEL_SRC" "$TARGET/boot/vmlinuz-linux-zen" || exit 1
+    sync
+
+    # Fail the install now rather than leave a machine that cannot boot.
+    if ! cmp -s "$KERNEL_SRC" "$TARGET/boot/vmlinuz-linux-zen"; then
+        echo "Error: /boot/vmlinuz-linux-zen does not match the original after copying."
+        exit 1
+    fi
+    # For the install log: how the file is laid out (a hole shows up as a
+    # last extent that stops short of the file size).
+    command -v filefrag >/dev/null 2>&1 && filefrag -v "$TARGET/boot/vmlinuz-linux-zen" | head -6
     echo "Kernel successfully copied from modules directory to /boot/vmlinuz-linux-zen."
     exit 0
 else
