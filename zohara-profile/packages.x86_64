@@ -47,6 +47,17 @@ vulkan-radeon
 xf86-video-amdgpu
 xf86-video-nouveau
 xf86-video-intel
+# Touch/touchpad/mouse input for the X11 session. kwin-x11 above means X11
+# is an offered login session, not just Wayland -- and unlike Wayland
+# (where KWin talks to libinput directly), X11 needs this driver or input
+# doesn't work at all there: no mouse, no keyboard, no touch. It's an
+# *optional* dependency of xorg-server, so pacman never pulls it in on its
+# own. libinput itself is listed explicitly too rather than relying on it
+# being pulled in transitively by Plasma.
+xf86-input-libinput
+libinput
+# Accelerometer/orientation, for auto-rotate on a convertible touchscreen.
+iio-sensor-proxy
 alsa-utils
 alsa-firmware
 sof-firmware
@@ -154,6 +165,12 @@ libreoffice-fresh
 gwenview
 haruna
 ark
+# Ark (above) has no format backends without these: .zip and .7z --
+# formats any Windows-habituated user downloads constantly -- silently
+# fail to open otherwise. (.rar needs unrar, which isn't in the official
+# repos; left out rather than reaching for an unofficial source.)
+p7zip
+unzip
 okular
 kate
 
@@ -173,6 +190,9 @@ ufw
 btop
 grim
 slurp
+# Firmware updates (BIOS, SSD, peripherals) via fwupdmgr. Real hardware
+# ships firmware fixes through this; nothing else pulls it in.
+fwupd
 
 # KDE Wallet & Online Services Fixes
 kwallet
