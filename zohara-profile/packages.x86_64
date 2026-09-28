@@ -161,6 +161,11 @@ kate
 usbutils
 pciutils
 power-profiles-daemon
+# Battery/AC status for Plasma's system tray icon (PowerDevil/plasma-nm
+# queries this over D-Bus). Not pulled in by anything else -- confirmed
+# missing on real hardware (Dell Latitude): the tray showed no battery
+# icon at all, plugged in or not, on the 2026-09-28 live ISO.
+upower
 bluedevil
 plasma-systemmonitor
 plasma-firewall
