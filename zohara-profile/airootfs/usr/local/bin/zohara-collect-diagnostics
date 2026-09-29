@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# Zohara OS: save a problem report to a USB stick, no typing needed.
+# Started from the "Save a problem report" button in Zohara Welcome on the
+# live USB. It gathers what is needed to debug a failed install, then looks
+# for a USB stick to write it to (the Zohara USB first, then any other). If it
+# cannot write anywhere it asks you to plug in another stick and retries.
+# Nothing on the internal disks is changed except a read-only look.
+
+SUDO=""
+[ "$(id -u)" = 0 ] || SUDO=sudo
+stamp=$(date +%Y%m%d-%H%M%S)
+work=$(mktemp -d)
+report="$work/zohara-report-$stamp.txt"
+
+say() { kdialog --title "Zohara problem report" --msgbox "$1" 2>/dev/null || echo "$1"; }
+ask() { kdialog --title "Zohara problem report" --yesno "$1" 2>/dev/null; }
+
+esp_type=c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+log=$(ls /root/.cache/calamares/session.log /home/*/.cache/calamares/session.log 2>/dev/null | head -1)
+[ -n "$log" ] || log=/dev/null   # no install attempted yet: greps below just find nothing
+
+{
+    echo "=== Zohara problem report, $(date -u '+%Y-%m-%d %H:%M UTC') ==="
+    echo
+    echo "=== Booted in UEFI mode? ==="
+    if [ -d /sys/firmware/efi ]; then echo yes; else echo "NO - legacy BIOS mode"; fi
+    echo
+    echo "=== Machine ==="
+    for f in sys_vendor product_name bios_version; do
+        printf '%s: ' "$f"; cat /sys/class/dmi/id/$f 2>/dev/null || echo unknown
+    done
+    echo
+    echo "=== Installer ==="
+    grep -m1 "Calamares version" "$log" 2>&1
+    echo -n "efivarfs fix present in this ISO: "
+    if grep -q "efi: true" /etc/calamares/modules/mount.conf 2>/dev/null; then echo yes; else echo "NO - old ISO"; fi
+    grep -n "efivarfs" "$log" 2>&1 | head -5
+    echo
+    echo "=== Installer log: errors and the bootloader step ==="
+    grep -n -i -E "error|fail|traceback|premature" "$log" 2>&1 | tail -40
+    echo "--- around grub-install ---"
+    grep -n -B5 -A40 "grub-install" "$log" 2>&1 | tail -80
+    echo
+    echo "=== Kernel copy step ==="
+    grep -n -A8 "vmlinuz-linux-zen" "$log" 2>&1 | tail -30
+    echo
+    echo "=== Disks ==="
+    lsblk -o NAME,SIZE,FSTYPE,LABEL,PARTTYPENAME,RM,TRAN
+    echo
+    echo "=== EFI system partitions: free space and contents ==="
+    lsblk -rno PATH,PARTTYPE | awk -v t="$esp_type" 'tolower($2)==t {print $1}' | while read -r esp; do
+        echo "--- $esp ---"
+        mnt=$(mktemp -d)
+        if $SUDO mount -o ro "$esp" "$mnt" 2>/dev/null; then
+            df -h "$mnt" | tail -1
+            $SUDO find "$mnt/EFI" -maxdepth 2 -printf '%p  %s bytes\n' 2>&1 | sed "s#$mnt##" | head -40
+            $SUDO umount "$mnt"
+        else
+            echo "could not mount (a damaged FAT shows up here)"
+        fi
+        rmdir "$mnt"
+    done
+    echo
+    echo "=== Firmware boot entries ==="
+    $SUDO efibootmgr -v 2>&1 | cut -c1-160 | head -30
+    echo
+    echo "=== Installed Zohara system, if there is one ==="
+    m=$(mktemp -d)
+    for entry in $(lsblk -rno PATH,FSTYPE | awk '$2=="btrfs" || $2=="ext4" {print $1":"$2}'); do
+        dev=${entry%%:*}; fs=${entry##*:}
+        if [ "$fs" = btrfs ]; then
+            $SUDO mount -o ro,subvol=@ "$dev" "$m" 2>/dev/null || $SUDO mount -o ro "$dev" "$m" 2>/dev/null || continue
+        else
+            $SUDO mount -o ro "$dev" "$m" 2>/dev/null || continue
+        fi
+        if [ -f "$m/etc/os-release" ] && ls "$m"/usr/lib/modules/*/vmlinuz >/dev/null 2>&1; then
+            echo "root: $dev ($fs)"
+            ls -la "$m/boot" 2>&1 | head -20
+            src=$(ls "$m"/usr/lib/modules/*/vmlinuz | head -1)
+            if cmp -s "$src" "$m/boot/vmlinuz-linux-zen"; then echo "kernel copy: identical"; else echo "kernel copy: DIFFERENT or missing"; fi
+            command -v filefrag >/dev/null && $SUDO filefrag -v "$m/boot/vmlinuz-linux-zen" 2>&1 | head -8
+            grep -n -m6 -E "^[[:space:]]*(linux|initrd)[[:space:]]" "$m/boot/grub/grub.cfg" 2>&1
+            $SUDO umount "$m"
+            break
+        fi
+        $SUDO umount "$m" 2>/dev/null
+    done
+    rmdir "$m" 2>/dev/null
+    echo
+    echo "=== Kernel messages: disk and Btrfs errors ==="
+    dmesg 2>/dev/null | grep -i -E "btrfs.*(error|csum|corrupt)|nvme.*(error|timeout)|fat-fs|I/O error" | tail -15
+    echo "(nothing above = none)"
+} > "$report" 2>&1
+
+[ -n "$log" ] && [ -f "$log" ] && cp "$log" "$work/zohara-installer-log-$stamp.txt"
+
+# Filesystems on removable/USB devices we can write to. Partitions and whole
+# disks both count (some sticks are formatted without a partition table). The
+# USB the live system came from (Ventoy / ZOHARA_ISO) is offered first.
+usb_candidates() {
+    local line PATH_ FSTYPE LABEL RM TRAN first="" rest="" nl=$'\n'
+    while read -r line; do
+        eval "$line"
+        case "$FSTYPE" in vfat|exfat|ntfs|ext4) ;; *) continue ;; esac
+        [ "$RM" = 1 ] || [ "$TRAN" = usb ] || continue
+        case "$LABEL" in VTOYEFI) continue ;; esac
+        case "$LABEL" in
+            Ventoy|ZOHARA_ISO) first+="$PATH_ $FSTYPE"$nl ;;
+            *)                 rest+="$PATH_ $FSTYPE"$nl ;;
+        esac
+    done < <(lsblk -Pno PATH,FSTYPE,LABEL,RM,TRAN | sed 's/^PATH=/PATH_=/')
+    printf '%s%s' "$first" "$rest"
+}
+
+# Try to write both files to one partition. Candidates: the USB the live system
+# came from (label Ventoy or ZOHARA_ISO) first, then any other removable disk.
+try_save() {
+    local dev fs mnt was_mounted=no target ok=no
+    while read -r dev fs; do
+        [ -n "$dev" ] || continue
+        target=$(findmnt -rno TARGET "$dev" 2>/dev/null | head -1)
+        if [ -n "$target" ]; then
+            was_mounted=yes
+        else
+            was_mounted=no
+            mnt=$(mktemp -d)
+            if ! $SUDO mount "$dev" "$mnt" 2>/dev/null; then rmdir "$mnt"; continue; fi
+            target=$mnt
+        fi
+        if cp "$work"/zohara-* "$target"/ 2>/dev/null; then
+            sync
+            SAVED_TO="$dev ($(lsblk -no LABEL "$dev" 2>/dev/null | head -1))"
+            ok=yes
+        fi
+        [ "$was_mounted" = no ] && { $SUDO umount "$mnt" 2>/dev/null; rmdir "$mnt" 2>/dev/null; }
+        [ "$ok" = yes ] && return 0
+    done < <(usb_candidates)
+    return 1
+}
+
+SAVED_TO=""
+while true; do
+    if try_save; then
+        say "Saved the problem report to the USB stick $SAVED_TO.
+
+Unplug it and give it to Claude."
+        rm -rf "$work"
+        exit 0
+    fi
+    if ask "Could not save the report on this USB stick.
+
+Plug in another USB stick (a normal one is fine), wait a few seconds, then press Yes to try again.
+Press No to just show the report on screen."; then
+        sleep 3
+        continue
+    fi
+    kdialog --title "Zohara problem report" --textbox "$report" 900 600 2>/dev/null || cat "$report"
+    rm -rf "$work"
+    exit 1
+done

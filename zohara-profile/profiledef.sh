@@ -30,4 +30,5 @@ file_permissions=(
   ["/usr/local/bin/zohara-setup-desktop"]="0:0:755"
   ["/usr/local/bin/brave-origin"]="0:0:755"
   ["/usr/local/bin/zohara-install-kernel"]="0:0:755"
+  ["/usr/local/bin/zohara-collect-diagnostics"]="0:0:755"
 )

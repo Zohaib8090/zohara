@@ -1,5 +1,9 @@
 # Zohara OS: session handoff (2026-09-25/26)
 
+> **Superseded in part by [HANDOFF-2026-09-29.md](HANDOFF-2026-09-29.md).** Since this was written a QEMU test rig
+> exists (`scripts/vm/`), a local toolchain is available, and the commit-credit rule is: ask
+> before every commit; "Only me" means no `Co-Authored-By` line.
+
 Read this first when resuming. It records where everything stands, what is
 untested, and what to do next. No secrets are stored here.
 

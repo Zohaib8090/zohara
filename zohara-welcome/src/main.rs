@@ -114,6 +114,13 @@ fn actions() -> Vec<Action> {
             argv: as_root(vec!["calamares"]),
             close_after: true,
         });
+        v.push(Action {
+            title: "Save a problem report",
+            subtitle: "If the install fails, save a report to a USB stick",
+            icon: "dialog-warning-symbolic",
+            argv: as_root(vec!["zohara-collect-diagnostics"]),
+            close_after: false,
+        });
     }
     v.push(Action {
         title: "Migrate from another system",
