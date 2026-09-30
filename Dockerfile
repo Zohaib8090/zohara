@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
         sudo \
         curl
 
-# ── 2. Add Chaotic-AUR (pre-built AUR binaries: brave-bin) ────────────────────
+# ── 2. Add Chaotic-AUR (pre-built AUR binaries: brave-origin-bin) ────────────────────
 RUN pacman-key --init && \
     pacman-key --populate archlinux && \
     pacman-key --recv-key 3056513887B78AEB --keyserver keyserver.ubuntu.com && \
@@ -34,13 +34,14 @@ RUN echo -e "\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist" >> /et
     pacman -Sy --noconfirm
 
 # ── 3. Download pre-built AUR packages into local repo ────────────────────────
-# brave-bin is the only AUR package with a usable binary mirror (Chaotic-AUR).
+# brave-origin-bin (Brave Origin, NOT brave-bin = Brave Browser: two different products) is the only
+# AUR package with a usable binary mirror (Chaotic-AUR).
 # Calamares used to be fetched from an EndeavourOS mirror here, but that
 # mirror dropped Calamares between 2026-08-18 and 2026-08-23 (context.md
 # documents the regression). It is now built from AUR source like debtap.
 RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
     mkdir -p /opt/localrepo && \
-    pacman -Sw --noconfirm --cachedir /opt/localrepo brave-bin
+    pacman -Sw --noconfirm --cachedir /opt/localrepo brave-origin-bin
 
 # ── 4. Build debtap + calamares from AUR source ───────────────────────────────
 # Both packages are AUR-only. The AUR PKGBUILDs are pinned to specific

@@ -89,7 +89,7 @@ The ISO is built using `mkarchiso` inside a custom Arch Linux Docker container (
 ### Key Docker Configurations
 * **`Dockerfile`**:
   - Pre-builds AUR/binary packages into an offline local repo at `/opt/localrepo`, registered with
-    `repo-add`: `brave-bin` via `pacman -Sw` from Chaotic-AUR, and `debtap` + `calamares` compiled
+    `repo-add`: `brave-origin-bin` (Brave Origin, not Brave Browser) via `pacman -Sw` from Chaotic-AUR, and `debtap` + `calamares` compiled
     from AUR source with `makepkg -s` (calamares exists in no binary repo — see the note in §4).
   - `COPY`s the in-tree `zohara-settings-rs/` and `zohara-store-rs/` directories into the image (it does **not** clone them from GitHub) and compiles both with `cargo build --release`.
   - The `ENTRYPOINT` installs the two release binaries straight into
