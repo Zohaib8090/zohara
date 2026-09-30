@@ -64,6 +64,7 @@ Zohara OS is split across these repositories:
 - **[Zohaib8090/zohara-pipeline](https://github.com/Zohaib8090/zohara-pipeline)** — the signed update manifest: which Arch snapshot date Zohara systems update to.
 - **[Zohaib8090/zohara-settings](https://github.com/Zohaib8090/zohara-settings)** — the GTK4 + libadwaita Windows-style Settings app.
 - **[Zohaib8090/zohara-packages](https://github.com/Zohaib8090/zohara-packages)** — the OTA package repository: every Zohara package (Settings, Store, Welcome, voice typing, snapshots, Link), for x86_64 and for phones (aarch64).
+- **[Zohaib8090/zohara-website](https://github.com/Zohaib8090/zohara-website)** — the project website.
 
 ## Companion app
 
@@ -93,6 +94,8 @@ Zohara OS is dual-licensed under **MIT** and **GPL-3.0-or-later**. Per-file and 
 
 ## Maintainer and community
 
-- Maintainer: [@Zohaib8090](https://github.com/Zohaib8090)
+- Maintainer: Zohaib Baig, [@Zohaib8090](https://github.com/Zohaib8090) on GitHub
+- Website: [zohaib8090.github.io/zohara-website](https://zohaib8090.github.io/zohara-website/)
+- Instagram: [@zo._.baig](https://www.instagram.com/zo._.baig/)
 - Project repository: [github.com/Zohaib8090/zohara](https://github.com/Zohaib8090/zohara)
 - Issues, feature requests, and discussion: use the GitHub issue tracker on this repository
