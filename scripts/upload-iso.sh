@@ -92,7 +92,9 @@ computer first.
 - Licence: MIT and GPL-3.0-or-later; third-party software keeps its own licences.
 EOF
 
-RSYNC=(rsync -e "ssh -i $SF_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" --partial --progress "$ISO" "$WORK/SHA256SUMS" "$WORK/README.md" "$SF_USER@$HOST:$DEST")
+# IPQoS=throughput: with ssh's default traffic marking the upload ran at about 17 KB/s from Pakistan (raw uplink
+# 6 MB/s); marked as bulk traffic it runs at about 5.6 MB/s. Round trip to SourceForge is ~400 ms.
+RSYNC=(rsync -e "ssh -i $SF_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o IPQoS=throughput" --partial --progress "$ISO" "$WORK/SHA256SUMS" "$WORK/README.md" "$SF_USER@$HOST:$DEST")
 
 log "Plan"
 echo "  file:        $NAME  ($GIB GiB)"

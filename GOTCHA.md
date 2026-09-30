@@ -148,6 +148,13 @@ every push so this can't silently regress again.
 
 ## Terminal / shell
 
+**ssh to SourceForge can crawl at ~17 KB/s while the connection is fast; use `-o IPQoS=throughput`.** From Pakistan
+the round trip to `frs.sourceforge.net` is ~400 ms, and with ssh's default traffic marking an upload of the ISO
+ran at about 17 KB/s (about 60 hours) although the raw uplink is ~6 MB/s. Marked as bulk traffic it ran at
+about 5.6 MB/s (the whole ISO in ~12 minutes). `scripts/upload-iso.sh` sets it. When a transfer is slow, measure
+the raw link to a neutral server first (`curl -X POST --data-binary @file https://speed.cloudflare.com/__up`), and
+do not trust rsync's own rate display for the first minute. SourceForge usernames are lowercase (`zohaib-baig`).
+
 **`pkill -f PATTERN` (and `pgrep -f`) can match the very shell that runs it.** If PATTERN appears in your own
 command line (for example a script name you are also typing), the shell kills itself and the tool reports exit
 code 144. Anchor the pattern (`pgrep -f '^python3 srv.py'`), use the process id, or stop the thing through its
