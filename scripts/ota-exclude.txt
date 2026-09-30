@@ -5,7 +5,7 @@
 # zohara-profile/airootfs/ is a *live ISO* overlay. Two separate pipelines take that same tree and
 # copy it onto an *already-installed* user system:
 #
-#   1. create_update_bundle.sh  -> self-extracting zohara-update-*.sh, whose install_update.sh does
+#   1. scripts/create_update_bundle.sh  -> self-extracting zohara-update-*.sh, whose install_update.sh does
 #                                  `cp -a "$DIR/airootfs/." /` with no package manager in the way.
 #   2. .github/workflows/build-update.yml -> the `zohara-system` pacman package, whose package()
 #                                  does `cp -a ".../airootfs/." "${pkgdir}/"`.

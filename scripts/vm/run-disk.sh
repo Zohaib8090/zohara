@@ -1,7 +1,7 @@
 #!/bin/bash
 # Boots an already-installed disk image with no ISO attached (tests the real boot path).
-#   run-disk.sh [DISK] [FORMAT]     DISK defaults to /root/vmtest/disk.qcow2, FORMAT to qcow2
-D=/root/vmtest
+#   run-disk.sh [DISK] [FORMAT]     DISK defaults to $ZOHARA_VM_DIR/disk.qcow2 (/root/vmtest if unset), FORMAT to qcow2
+D="${ZOHARA_VM_DIR:-/root/vmtest}"
 exec qemu-system-x86_64 -name zohara-installed -enable-kvm -cpu host -smp 4 -m 4096 -machine q35 \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
   -drive if=pflash,format=raw,file=$D/OVMF_VARS.fd \

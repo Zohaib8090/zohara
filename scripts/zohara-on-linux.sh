@@ -69,10 +69,10 @@ echo "    Output:    ~/zohara/out/zohara-os-*.iso"
 echo
 
 cd "$HOME/zohara"
-chmod +x rebuild_fast.sh zohara-profile/build-iso.sh zohara-profile/pacman-overwrite-xorg
+chmod +x scripts/rebuild_fast.sh zohara-profile/build-iso.sh zohara-profile/pacman-overwrite-xorg
 
-# Use bash rebuild_fast.sh with no SYNC_MODE so the script returns
+# Use bash scripts/rebuild_fast.sh with no SYNC_MODE so the script returns
 # immediately. The build runs in the foreground of this terminal --
 # you can Ctrl-C and re-run later, and mkarchiso's sentinels will
 # skip work that was already done.
-bash rebuild_fast.sh
+bash scripts/rebuild_fast.sh

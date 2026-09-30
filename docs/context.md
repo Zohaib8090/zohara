@@ -94,7 +94,7 @@ The ISO is built using `mkarchiso` inside a custom Arch Linux Docker container (
   - `COPY`s the in-tree `zohara-settings-rs/` and `zohara-store-rs/` directories into the image (it does **not** clone them from GitHub) and compiles both with `cargo build --release`.
   - The `ENTRYPOINT` installs the two release binaries straight into
     `zohara-profile/airootfs/usr/bin/` with `install -Dm755` (no PKGBUILD involved), then runs
-    `mkarchiso` and `create_update_bundle.sh`.
+    `mkarchiso` and `scripts/create_update_bundle.sh`.
 * **`.dockerignore`**: Excludes `out`, `localrepo`, `work`, `pkg-cache`, `*.iso`, `.git`, and `**/target` to optimize Docker build context transfer.
 
 ### Step-by-Step ISO Build Commands
@@ -228,7 +228,7 @@ sudo docker run --rm --name zohara-build \
 > - **There are three delivery channels for `airootfs/`, and each needs its own guard.** (1) the ISO —
 >   mkarchiso deletes `/root/customize_airootfs.sh` from the image after running it; (2) the GitHub OTA
 >   package — `build-update.yml` `rm -f`s both `/root/` and `/usr/local/bin/` copies from `$pkgdir`;
->   (3) the local self-extracting bundle from `create_update_bundle.sh`, whose embedded
+>   (3) the local self-extracting bundle from `scripts/create_update_bundle.sh`, whose embedded
 >   `install_update.sh` does `cp -a "$DIR/airootfs/." /` and strips only the two legacy
 >   `/usr/local/bin/zohara-{settings,store}` binaries. Channel 3 had no guard, so the 2026.08.23 bundle
 >   installed `/root/customize_airootfs.sh` (9249 bytes, 0755) onto users' root filesystems — a script

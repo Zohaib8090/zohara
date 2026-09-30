@@ -52,3 +52,9 @@ zohara-profile/airootfs/usr/bin/zohara-store
 docker-*.log
 zohara-builder-image.tar
 .hermes/
+
+# VM test rig: results posted by the guest, generated audio, packages under test
+scripts/vm/out/
+scripts/vm/guest/speech.wav
+scripts/vm/guest/*.pkg.tar.zst
+__pycache__/

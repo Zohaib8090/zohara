@@ -3,7 +3,7 @@
 #
 # This is the recommended path for the user's Linux partition. It avoids
 # Docker entirely, runs mkarchiso natively, and is significantly faster
-# than the docker-based rebuild_fast.sh (no overlayfs, no bind mounts).
+# than the docker-based scripts/rebuild_fast.sh (no overlayfs, no bind mounts).
 #
 # First run:  ~3-5 hours (full pacstrap of 919 packages)
 # Each rerun: ~5 minutes (just squashfs + ISO + update bundle, work/ is reused)

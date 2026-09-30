@@ -65,7 +65,7 @@ jobs:
             # leaves root with an empty password, the getty/SDDM drop-ins autologin root, and
             # mkinitcpio.conf.d/archiso.conf makes the next kernel update build an unbootable
             # initramfs. scripts/ota-exclude.txt is the shared list of paths that must never ship in
-            # an update, with the reasoning and the command used to derive it; create_update_bundle.sh
+            # an update, with the reasoning and the command used to derive it; scripts/create_update_bundle.sh
             # applies the same list to the self-extracting-bundle channel.
             EXCLUDE_LIST=/work/scripts/ota-exclude.txt
             if [ ! -f "\$EXCLUDE_LIST" ]; then

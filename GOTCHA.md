@@ -67,7 +67,7 @@ mount point from a previous layer and may behave oddly), and the AUR build
 artifacts need to live on the same filesystem layer as the later `cp`
 anyway. Only mount pacman's own package cache dir as a BuildKit cache.
 
-**`create_update_bundle.sh` used to extract package payloads directly into
+**`scripts/create_update_bundle.sh` used to extract package payloads directly into
 the live checked-out `zohara-profile/airootfs`.** That's untracked output,
 so `git reset --hard` never cleans it — it silently accumulates and causes
 "exists in filesystem" conflicts on a reused clone. It now extracts into
@@ -83,6 +83,37 @@ both names. If the section name and the release's file name ever differ again,
 this comes back. The same run showed that two packages published within seconds
 of each other can overwrite each other's entry in the database (`zohara-voice-model`
 was in the release but not in `zohara.db`).
+
+**`makepkg` sets `SOURCE_DATE_EPOCH`, and that silently changes some CMake projects.** whisper.cpp's
+ggml turns every SIMD option (AVX, AVX2, FMA, ...) off by default when it sees that variable. The
+`zohara-voice` "AVX2" build set no flags of its own, so under `makepkg` it came out byte-identical to the
+baseline build: same hash, zero AVX instructions, and every machine ran the slow path (4.4x slower). A
+plain `cmake` run does not show it (no `SOURCE_DATE_EPOCH`), which is why it looked fine when tried by hand.
+Pass the flags explicitly, and check with `objdump -d BINARY | grep -c ymm` on the built package, not on a
+hand build. Found 2026-09-30.
+
+**Brave Origin and Brave Browser are different products.** `brave-origin-bin` is Origin (the one Zohara
+ships), `brave-bin` is Browser. The `Dockerfile` cached `brave-bin` for a while by mistake; nothing installed
+it, it only cost a 192 MB download. Brave Origin is free on Linux but asks once on first launch: the user
+must click "Proceed with Origin for free on Linux".
+
+**A single 503 from `cdn-mirror.chaotic.cx` fails the whole ISO build.** The `Dockerfile` fetches
+`chaotic-keyring` and `chaotic-mirrorlist` with no retry. It happened on 2026-09-29 (run at 06:50 UTC, failed
+after 3 minutes at "Build Docker builder image"). Re-running the build is enough.
+
+## Linux dev machine (Ubuntu / Zorin)
+
+**`docker.io` alone cannot build the ISO image.** The `Dockerfile` uses BuildKit cache mounts, and Ubuntu's
+`docker.io` ships without `buildx`: "BuildKit is enabled but the buildx component is missing". Install
+`docker-buildx` as well. If `docker.service` fails with "no sockets found via socket activation" after a
+remove and reinstall, run `daemon-reload`, `reset-failed docker.socket docker.service`, then restart
+`docker.socket`. Zorin's libadwaita is 1.5, but the apps ask for `v1_6`, so they do not compile on the host:
+build in an Arch container (that is also what makes the result an Arch binary).
+
+**The QEMU test VM drops and sticks keys if you type fast.** `vm.py type` at its default speed left a key
+repeating (a wall of `NNNN`) and the guest stopped answering Ctrl-C. Slow the typing down (0.15 s between
+keys, 120 ms hold), and for anything long serve a script from the host and type one short `curl | bash`.
+See `scripts/vm/README.md`.
 
 ## Windows dev machine
 

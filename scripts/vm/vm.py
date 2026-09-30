@@ -13,12 +13,14 @@
 Only used to drive test VMs; nothing here ships in the OS.
 """
 import json
+import os
 import socket
 import struct
 import sys
 import time
 
-SOCK = "/root/vmtest/qmp.sock"
+VM_DIR = os.environ.get("ZOHARA_VM_DIR", "/root/vmtest")
+SOCK = os.path.join(VM_DIR, "qmp.sock")
 
 SHIFT_SYMBOLS = {
     "!": "1", "@": "2", "#": "3", "$": "4", "%": "5", "^": "6", "&": "7",
@@ -69,13 +71,13 @@ def shot(path):
     qmp("screendump", {"filename": path, "format": "png"})
     time.sleep(0.3)
     w, h = png_size(path)
-    open("/root/vmtest/size", "w").write(f"{w} {h}")
+    open(os.path.join(VM_DIR, "size"), "w").write(f"{w} {h}")
     print(f"{w}x{h}")
 
 
 def screen_size():
     try:
-        w, h = open("/root/vmtest/size").read().split()
+        w, h = open(os.path.join(VM_DIR, "size")).read().split()
         return int(w), int(h)
     except Exception:
         return 1280, 800
@@ -106,7 +108,7 @@ def click(x, y, button="left", double=False):
 
 
 def press(*codes):
-    qmp("send-key", {"keys": [{"type": "qcode", "data": c} for c in codes], "hold-time": 60})
+    qmp("send-key", {"keys": [{"type": "qcode", "data": c} for c in codes], "hold-time": 120})
 
 
 def type_text(text):
@@ -121,7 +123,7 @@ def type_text(text):
             press(PLAIN_SYMBOLS[ch])
         else:
             raise SystemExit(f"cannot type {ch!r}")
-        time.sleep(0.03)
+        time.sleep(0.15)   # slower than this and a key can stick in the guest (see GOTCHA.md)
 
 
 def main():

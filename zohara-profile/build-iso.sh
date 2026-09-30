@@ -108,4 +108,4 @@ if ! ls -lh "$OUT_DIR"/*.iso 2>/dev/null; then
 fi
 
 # 4. Bundle the resulting airootfs into a self-extracting update script.
-bash "$PROFILE_DIR/../create_update_bundle.sh"
+bash "$PROFILE_DIR/../scripts/create_update_bundle.sh"

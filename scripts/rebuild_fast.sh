@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rebuild_fast.sh -- fast (~5 min) local rebuild of the Zohara OS ISO.
+# scripts/rebuild_fast.sh -- fast (~5 min) local rebuild of the Zohara OS ISO.
 #
 # First run: ~3-5 hours (full pacstrap)
 # Every subsequent run: ~5 minutes (just squashfs + ISO + update bundle, via work/ reuse)
@@ -13,11 +13,11 @@
 # Set SYNC_MODE=1 to wait for the build to finish (used by CI).
 #
 # Monitor from a separate terminal:  docker logs -f zohara-build
-# Re-run while build is in progress:  bash rebuild_fast.sh   (attaches to existing)
+# Re-run while build is in progress:  bash scripts/rebuild_fast.sh   (attaches to existing)
 
 set -euo pipefail
 
-REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # scripts/ is one level below the repo root
 IMAGE="zohara-builder:latest"
 CONTAINER_NAME="zohara-build"
 LOG_FILE="$REPO/out/.zohara-build.log"

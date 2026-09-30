@@ -49,7 +49,7 @@ Before booting on a PC:
 
 ## Building from source
 
-This repository builds the Zohara OS ISO. The build runs in a Docker image based on Arch Linux with the Chaotic-AUR repository added for pre-built AUR packages, and is driven by GitHub Actions on every push to `master` and on every `v*` tag. The exact build order — Docker image build, ISO build via `rebuild_fast.sh`, EFI boot validation, and release publish — lives in [`.github/workflows/build-iso.yml`](.github/workflows/build-iso.yml).
+This repository builds the Zohara OS ISO. The build runs in a Docker image based on Arch Linux with the Chaotic-AUR repository added for pre-built AUR packages, and is driven by GitHub Actions on every push to `master` and on every `v*` tag. The exact build order — Docker image build, ISO build via `scripts/rebuild_fast.sh`, EFI boot validation, and release publish — lives in [`.github/workflows/build-iso.yml`](.github/workflows/build-iso.yml).
 
 The Settings app and the OTA package repository live in their own repos (see below) and are pulled in as part of the build pipeline; you don't build them by hand to produce an ISO.
 
