@@ -73,6 +73,17 @@ so `git reset --hard` never cleans it — it silently accumulates and causes
 "exists in filesystem" conflicts on a reused clone. It now extracts into
 the bundle's own scratch copy instead.
 
+**pacman fetches `<section name>.db`, not `zohara.db`.** Installed systems
+have `[zohara-stable]` in `/etc/pacman.conf`, so `pacman -Sy` asks the
+`zohara-packages` release for `zohara-stable.db`. The publish workflow used to
+upload only `zohara.db`, so on every fresh install `pacman -Sy` failed with a
+404 and no system update (kernel included) could be installed. Found by running
+an update in the QEMU test VM (2026-09-30); the publish workflow now uploads
+both names. If the section name and the release's file name ever differ again,
+this comes back. The same run showed that two packages published within seconds
+of each other can overwrite each other's entry in the database (`zohara-voice-model`
+was in the release but not in `zohara.db`).
+
 ## Windows dev machine
 
 **Windows checkouts can't create real symlinks** (no
