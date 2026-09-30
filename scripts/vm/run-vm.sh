@@ -1,7 +1,7 @@
 #!/bin/bash
 # Starts the Zohara test VM: UEFI, NVMe disk (named nvme0n1 like the Dell), KVM.
 #   run-vm.sh ISO [DISK]     (DISK defaults to $ZOHARA_VM_DIR/disk.qcow2, /root/vmtest if unset)
-# Screen and keyboard are driven through /root/vmtest/qmp.sock by vm.py.
+# Screen and keyboard are driven through $D/qmp.sock by vm.py.
 ISO="${1:?usage: run-vm.sh ISO [DISK]}"
 D="${ZOHARA_VM_DIR:-/root/vmtest}"
 DISK="${2:-$D/disk.qcow2}"

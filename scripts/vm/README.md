@@ -36,6 +36,9 @@ All the scripts read `ZOHARA_VM_DIR` (default `/root/vmtest`, so nothing changes
 Needs `/dev/kvm` access (a normal user is fine). Keep a copy of the installed disk (`cp --sparse=always
 disk.qcow2 disk-before.qcow2`) so a test can be repeated from a clean state.
 
+Even so, a keystroke can occasionally be dropped (a name typed as "Test Use" once), so look at a screenshot
+before relying on a typed value.
+
 `vm.py` types slowly on purpose (120 ms key hold, 0.15 s between keys). At the old speed a key could stick in
 the guest and it stopped answering (see `GOTCHA.md`).
 
@@ -52,6 +55,7 @@ open a terminal in the guest (`python3 vm.py key ctrl-alt-t`), and type one shor
 |---|---|
 | `state.sh LABEL` | Records the boot state: kernel, `/boot` files, sparse-hole check, initramfs, pin, DKMS |
 | `upgrade.sh DATE` | Moves the pinned Arch date forward (what Zohara Store does) and runs the upgrade. Run with `sudo` |
+| `check-installed.sh LABEL` | Checks a fresh install: OS version, Brave Origin (not Brave Browser), Zohara package versions, that the two voice engines differ, a real `pacman -Sy`, the kernel file, failed services |
 | `test-update.sh` | A real `pacman -Sy` / `-Su` against the live `zohara-packages` release |
 | `measure.sh LABEL` | Times both whisper engines on `guest/speech.wav` |
 | `test-voice.sh LABEL [PKG]` | Optional package install, both engines, engine selection, and full `zohara-settings --dictate` with the recording played into a virtual microphone |
