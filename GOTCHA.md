@@ -148,6 +148,12 @@ every push so this can't silently regress again.
 
 ## Terminal / shell
 
+**`pkill -f PATTERN` (and `pgrep -f`) can match the very shell that runs it.** If PATTERN appears in your own
+command line (for example a script name you are also typing), the shell kills itself and the tool reports exit
+code 144. Anchor the pattern (`pgrep -f '^python3 srv.py'`), use the process id, or stop the thing through its
+own interface (`vm.py quit`). Also: a wait loop that greps a log for ` Install$` matches `click Install` too;
+wait on a file or a line that only the target produces.
+
 **zsh (the default live-USB shell) does not treat pasted lines starting
 with `#` as comments the way bash does.** A script comment containing an
 apostrophe (`"the installer's..."`) opened an unterminated quote and hung
