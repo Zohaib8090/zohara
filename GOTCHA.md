@@ -155,6 +155,20 @@ about 5.6 MB/s (the whole ISO in ~12 minutes). `scripts/upload-iso.sh` sets it. 
 the raw link to a neutral server first (`curl -X POST --data-binary @file https://speed.cloudflare.com/__up`), and
 do not trust rsync's own rate display for the first minute. SourceForge usernames are lowercase (`zohaib-baig`).
 
+**SourceForge cannot give a browser a direct download; the website uses OCI Object Storage for that.** Both
+`sourceforge.net/projects/.../download` and `downloads.sourceforge.net/project/...` show SourceForge's "Your download
+will start shortly" page to browsers (the second one behind a Cloudflare "Just a moment" check first). `curl` gets a
+plain 302 to a mirror, which is why testing with `curl` looked fine. Do not "fix" the button by switching SourceForge
+link styles. The ISO is on a public OCI bucket (`ap-mumbai-1`, namespace `bm27e3oxmp04`, bucket `zohara-os`) and
+SourceForge stays as a mirror. Details and the upload commands are in `docs/HANDOFF-2026-09-30.md` (open item 7).
+
+**Oracle's OCI CLI installer fails on Python 3.12, and its browser login needs the password every time.**
+`install.sh` bundles virtualenv 20.6, which crashes on 3.12, and `python3 -m venv` needs `python3-venv` (not
+installed). What worked: `python3 -m venv --without-pip DIR`, `get-pip.py`, `DIR/bin/pip install oci-cli`. For
+uploads use `oci session authenticate` (no API key left on disk; the token lasts about an hour, so start the upload
+right after logging in) and `oci os object put --part-size 128 --parallel-upload-count 6`. A browser extension's file
+upload is capped at 10 MB, so the ISO cannot go through the console from an automated browser.
+
 **`pkill -f PATTERN` (and `pgrep -f`) can match the very shell that runs it.** If PATTERN appears in your own
 command line (for example a script name you are also typing), the shell kills itself and the tool reports exit
 code 144. Anchor the pattern (`pgrep -f '^python3 srv.py'`), use the process id, or stop the thing through its

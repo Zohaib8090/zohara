@@ -87,7 +87,7 @@ computer first.
 
 ## More
 
-- Website: https://zohaib8090.github.io/zohara-website/
+- Website: https://zohara-website.onrender.com/
 - Source and issues: https://github.com/Zohaib8090/zohara
 - Licence: MIT and GPL-3.0-or-later; third-party software keeps its own licences.
 EOF

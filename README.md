@@ -95,7 +95,7 @@ Zohara OS is dual-licensed under **MIT** and **GPL-3.0-or-later**. Per-file and 
 ## Maintainer and community
 
 - Maintainer: Zohaib Baig, [@Zohaib8090](https://github.com/Zohaib8090) on GitHub
-- Website: [zohaib8090.github.io/zohara-website](https://zohaib8090.github.io/zohara-website/)
+- Website: [zohara-website.onrender.com](https://zohara-website.onrender.com/)
 - Instagram: [@zo._.baig](https://www.instagram.com/zo._.baig/)
 - Project repository: [github.com/Zohaib8090/zohara](https://github.com/Zohaib8090/zohara)
 - Issues, feature requests, and discussion: use the GitHub issue tracker on this repository
