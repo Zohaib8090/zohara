@@ -21,7 +21,8 @@ Welcome to the Zohara OS documentation. This directory contains the complete ref
    - AI agent instructions and repository standards.
 
 4. **[Handoff, 2026-09-29 (HANDOFF-2026-09-29.md)](./HANDOFF-2026-09-29.md)** and
-   **[Handoff, 2026-09-30 (HANDOFF-2026-09-30.md)](./HANDOFF-2026-09-30.md)**
+   **[Handoff, 2026-09-30 (HANDOFF-2026-09-30.md)](./HANDOFF-2026-09-30.md)** and
+   **[Handoff, 2026-10-04 (HANDOFF-2026-10-04.md)](./HANDOFF-2026-10-04.md)** (ISO hosting, website, the release admin site)
    - Current state, what was tested in the VM, what is fixed, and the open items. Read these first
      after `CLAUDE.md`; the newer one updates the older one.
 

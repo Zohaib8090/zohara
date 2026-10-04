@@ -1,6 +1,6 @@
 # Zohara OS: instructions for Claude
 
-Read these first, in order: `docs/HANDOFF-2026-09-29.md` (current state, how to build and test,
+Read these first, in order: `docs/HANDOFF-2026-10-04.md` (newest: ISO hosting, website, release admin site, open items), `docs/HANDOFF-2026-09-29.md` (how to build and test,
 open items), then `GOTCHA.md` (traps that already cost time).
 
 ## Rules

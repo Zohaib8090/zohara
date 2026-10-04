@@ -101,6 +101,30 @@ must click "Proceed with Origin for free on Linux".
 `chaotic-keyring` and `chaotic-mirrorlist` with no retry. It happened on 2026-09-29 (run at 06:50 UTC, failed
 after 3 minutes at "Build Docker builder image"). Re-running the build is enough.
 
+## Release admin site (zohara-updates-system) and Render
+
+**Render "Resume" restarts the last build that went live, not the newest commit.** Suspending the old open service and resuming
+it later put the old, login-free code back on the internet for minutes (its newer commit had been cancelled by the suspend).
+Add the environment variables first, then resume, then press "Deploy latest commit". Check with `curl -I` that `/` answers
+303 to `/login`, never 200, before leaving it. Suspending needs a typed phrase (`sudo suspend web service <name>`).
+
+**`/publish` on the old service trusted the repository named in the form.** Any repo the GitHub App was installed on, and any
+run id, could be published to the stable channel, and installed systems accept unsigned packages from `[zohara-stable]`
+(`SigLevel = Optional TrustAll`). The new workflow lists the allowed source repos and re-checks the run itself
+(`zohara-packages/scripts/`). Keep both checks when changing either side.
+
+**Never name a file after a secret, and never attach key files or screenshots of secret fields to a chat.** A client secret was
+saved as `<secret>.txt` and a Render screenshot showed the start of a private key: both ended up in a transcript. Rotate
+anything that was shown (see open item 1 in `HANDOFF-2026-10-04.md`).
+
+**The GitHub App repository picker freezes Chrome** (the whole renderer hangs). Submit the settings form directly instead:
+`install_target=selected` plus one `repository_ids[]` hidden input per repo id. Also: a Chrome-extension click on "Generate a
+private key" did nothing; a human click works.
+
+**GitHub Actions: only one run per concurrency group waits, the others are cancelled.** That is why `publish.yml` has no
+`concurrency:` block: with several packages dispatched at once, the middle ones would be dropped. It re-reads the published
+database after upload and merges again instead.
+
 ## Linux dev machine (Ubuntu / Zorin)
 
 **`docker.io` alone cannot build the ISO image.** The `Dockerfile` uses BuildKit cache mounts, and Ubuntu's
