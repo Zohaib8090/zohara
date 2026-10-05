@@ -65,6 +65,9 @@ const CSS: &str = r#"
 .card-desc { font-size: 13px; opacity: 0.85; }
 .card-meta { font-size: 12px; opacity: 0.6; }
 .card-btn { border-radius: 16px; padding: 4px 18px; min-height: 0; font-weight: 600; }
+.card-status { font-size: 12px; opacity: 0.85; }
+.card-status.error { color: @error_color; opacity: 1; }
+progressbar > trough, progressbar > trough > progress { min-height: 6px; border-radius: 3px; }
 
 .chip {
     border-radius: 16px;
@@ -422,8 +425,11 @@ fn app_card(app: &AppInfo, cache: &Cache) -> gtk4::Widget {
     meta.set_hexpand(true);
     meta.set_xalign(0.0);
     foot.append(&meta);
-    foot.append(&install_button(app, cache));
+    let inst = installer(app, cache);
+    foot.append(&inst.button);
     col.append(&foot);
+    inst.status.set_margin_top(6);
+    col.append(&inst.status);
     card.append(&col);
 
     let click = gtk4::GestureClick::new();
@@ -473,10 +479,11 @@ fn show_details(from: &gtk4::Widget, app: &AppInfo, cache: &Cache) {
     titles.append(&t);
     titles.append(&p);
     top.append(&titles);
-    let btn = install_button(app, cache);
-    btn.set_valign(gtk4::Align::Center);
-    top.append(&btn);
+    let inst = installer(app, cache);
+    inst.button.set_valign(gtk4::Align::Center);
+    top.append(&inst.button);
     bx.append(&top);
+    bx.append(&inst.status);
 
     let desc = gtk4::Label::new(Some(if app.description.is_empty() { "No description available." } else { &app.description }));
     desc.set_wrap(true);
@@ -510,6 +517,7 @@ fn show_details(from: &gtk4::Widget, app: &AppInfo, cache: &Cache) {
 // ── Install / remove button ───────────────────────────────────────────────────
 
 fn set_btn_label(btn: &gtk4::Button, installed: bool) {
+    btn.remove_css_class("error");
     if installed {
         btn.set_label("Remove");
         btn.remove_css_class("suggested-action");
@@ -521,21 +529,51 @@ fn set_btn_label(btn: &gtk4::Button, installed: bool) {
     }
 }
 
-/// The Get/Remove button for an app. It reads the shared cache, runs the install or removal on a thread (the package
-/// manager queues operations, see `backend::PACKAGE_LOCK`), and on success updates the cache, which re-labels every
-/// other button for the same app. A failure is explained in a dialog.
-fn install_button(app: &AppInfo, cache: &Cache) -> gtk4::Button {
+/// What the button is doing: nothing, working, or failed (and what it was trying to do, so Retry repeats it).
+#[derive(Clone, Copy, PartialEq)]
+enum Job {
+    Idle,
+    Working,
+    Failed { removing: bool },
+}
+
+/// The Get / Remove button of an app together with its progress area. While a job runs the area shows what it is
+/// doing and a bar (filled when the package manager tells how far it is, pulsing otherwise); if the job fails the
+/// reason is shown there and the button becomes Retry.
+struct Installer {
+    button: gtk4::Button,
+    status: gtk4::Box,
+}
+
+/// The Get/Remove button for an app. It reads the shared cache, runs the job on a thread (the package manager queues
+/// jobs, see `backend::PACKAGE_LOCK`), shows progress, and on success updates the cache, which re-labels every other
+/// button for the same app.
+fn installer(app: &AppInfo, cache: &Cache) -> Installer {
     let btn = gtk4::Button::new();
     btn.add_css_class("card-btn");
     btn.set_valign(gtk4::Align::Center);
     set_btn_label(&btn, cache.is_installed(&app.source, &app.package_name));
 
-    let working = Rc::new(Cell::new(false));
+    let status = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+    status.set_visible(false);
+    let text = gtk4::Label::new(None);
+    text.add_css_class("card-status");
+    text.set_xalign(0.0);
+    text.set_wrap(true);
+    text.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
+    // A long reason must wrap inside the card, not make the card (and so every card in the grid) wider.
+    text.set_width_chars(20);
+    text.set_max_width_chars(34);
+    let bar = gtk4::ProgressBar::new();
+    status.append(&text);
+    status.append(&bar);
+
+    let job = Rc::new(Cell::new(Job::Idle));
     {
-        let (weak, working, app, cache2) = (btn.downgrade(), working.clone(), app.clone(), cache.clone());
+        let (weak, job, app, cache2) = (btn.downgrade(), job.clone(), app.clone(), cache.clone());
         cache.on_change(move || match weak.upgrade() {
             Some(b) => {
-                if !working.get() {
+                if job.get() == Job::Idle {
                     set_btn_label(&b, cache2.is_installed(&app.source, &app.package_name));
                 }
                 true
@@ -545,47 +583,83 @@ fn install_button(app: &AppInfo, cache: &Cache) -> gtk4::Button {
     }
 
     let (app, cache) = (app.clone(), cache.clone());
+    let (status2, text2, bar2) = (status.clone(), text.clone(), bar.clone());
     btn.connect_clicked(move |b| {
-        if working.get() {
-            return;
-        }
-        let was = cache.is_installed(&app.source, &app.package_name);
-        working.set(true);
+        let removing = match job.get() {
+            Job::Working => return,
+            Job::Failed { removing } => removing, // Retry does the same again
+            Job::Idle => cache.is_installed(&app.source, &app.package_name),
+        };
+        job.set(Job::Working);
         b.set_sensitive(false);
-        b.set_label(if was { "Removing…" } else { "Installing…" });
+        b.remove_css_class("error");
+        b.set_label(if removing { "Removing…" } else { "Installing…" });
+        text2.remove_css_class("error");
+        text2.set_text("Starting…");
+        text2.set_tooltip_text(None);
+        bar2.set_visible(true);
+        bar2.set_fraction(0.0);
+        status2.set_visible(true);
 
         let (tx, rx) = std::sync::mpsc::channel();
         let a = app.clone();
-        std::thread::spawn(move || {
-            let res = if was { backend::remove_app(&a.source, &a.package_name) } else { backend::install_app(&a.source, &a.package_name) };
-            let _ = tx.send(res);
-        });
+        std::thread::spawn(move || backend::run_job(&a.source, &a.package_name, removing, &tx));
 
-        let (b, working, app, cache) = (b.clone(), working.clone(), app.clone(), cache.clone());
-        glib::timeout_add_local(std::time::Duration::from_millis(150), move || match rx.try_recv() {
-            Ok(res) => {
-                working.set(false);
-                b.set_sensitive(true);
-                match res {
-                    Ok(()) => cache.set_installed(&app.source, &app.package_name, !was),
-                    Err(why) => {
-                        set_btn_label(&b, was);
-                        let title = if was { format!("Couldn't remove {}", app.name) } else { format!("Couldn't install {}", app.name) };
-                        show_error(b.upcast_ref(), &title, &why);
+        let (b, job, app, cache) = (b.clone(), job.clone(), app.clone(), cache.clone());
+        let (status, text, bar) = (status2.clone(), text2.clone(), bar2.clone());
+        glib::timeout_add_local(std::time::Duration::from_millis(120), move || {
+            loop {
+                match rx.try_recv() {
+                    Ok(backend::Event::Progress(p)) => {
+                        text.set_text(&p.text);
+                        match p.fraction {
+                            Some(f) => {
+                                bar.set_fraction(f);
+                                b.set_label(&format!("{} {:.0}%", if removing { "Removing" } else { "Installing" }, f * 100.0));
+                            }
+                            None => bar.pulse(),
+                        }
+                    }
+                    Ok(backend::Event::Done(Ok(()))) => {
+                        job.set(Job::Idle);
+                        b.set_sensitive(true);
+                        status.set_visible(false);
+                        cache.set_installed(&app.source, &app.package_name, !removing);
+                        return glib::ControlFlow::Break;
+                    }
+                    Ok(backend::Event::Done(Err(why))) => {
+                        job.set(Job::Failed { removing });
+                        b.set_sensitive(true);
+                        b.set_label("Retry");
+                        b.remove_css_class("destructive-action");
+                        b.add_css_class("suggested-action");
+                        bar.set_visible(false);
+                        text.add_css_class("error");
+                        text.set_text(&format!("{} {}", if removing { "Couldn't remove it." } else { "Couldn't install it." }, why));
+                        text.set_tooltip_text(Some(&why));
+                        return glib::ControlFlow::Break;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => return glib::ControlFlow::Continue,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        job.set(Job::Failed { removing });
+                        b.set_sensitive(true);
+                        b.set_label("Retry");
+                        bar.set_visible(false);
+                        text.add_css_class("error");
+                        text.set_text("The installer stopped unexpectedly.");
+                        return glib::ControlFlow::Break;
                     }
                 }
-                glib::ControlFlow::Break
-            }
-            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                working.set(false);
-                b.set_sensitive(true);
-                set_btn_label(&b, was);
-                glib::ControlFlow::Break
             }
         });
     });
-    btn
+    Installer { button: btn, status }
+}
+
+/// Just the button, for places with no room for the progress area (the hero banner): the button itself shows the
+/// percentage and turns into Retry on failure.
+fn install_button(app: &AppInfo, cache: &Cache) -> gtk4::Button {
+    installer(app, cache).button
 }
 
 /// Tells the person why an install or removal didn't happen, instead of the button just quietly going back to how it was.

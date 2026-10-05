@@ -72,16 +72,282 @@ impl InstalledCache {
 /// fail with no message. Waiting here queues it instead.
 pub static PACKAGE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// Runs a package command and turns its failure into a sentence for the user.
-fn run_pkg(mut cmd: Command) -> Result<(), String> {
-    let out = cmd.stdin(Stdio::null()).output().map_err(|e| format!("Couldn't start the installer ({e})"))?;
-    if out.status.success() {
-        return Ok(());
+/// What an install or removal is doing right now, for the progress bar. `fraction` is 0..1 when it can be told, and
+/// `None` when all that is known is "still working" (the bar then pulses).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Progress {
+    pub fraction: Option<f64>,
+    pub text: String,
+}
+
+/// What the install thread tells the window.
+pub enum Event {
+    Progress(Progress),
+    Done(Result<(), String>),
+}
+
+fn mib(bytes: u64) -> String {
+    let m = bytes as f64 / 1_048_576.0;
+    if m >= 1024.0 { format!("{:.1} GiB", m / 1024.0) } else if m >= 10.0 { format!("{m:.0} MiB") } else { format!("{m:.1} MiB") }
+}
+
+/// "0.18 MiB" / "12.5 KiB" / "1.2 GiB" -> bytes.
+fn parse_size(text: &str) -> Option<u64> {
+    let mut it = text.split_whitespace();
+    let value: f64 = it.next()?.replace(',', ".").parse().ok()?;
+    let mult = match it.next()? {
+        "B" => 1.0,
+        "KiB" => 1024.0,
+        "MiB" => 1024.0 * 1024.0,
+        "GiB" => 1024.0 * 1024.0 * 1024.0,
+        _ => return None,
+    };
+    Some((value * mult) as u64)
+}
+
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+enum Stage {
+    #[default]
+    Resolving,
+    Downloading,
+    Verifying,
+    Working, // installing or removing
+    Finishing,
+}
+
+/// Follows pacman's output (it is not on a terminal, so it prints plain lines): how many packages, how big the
+/// download is, which package is downloading, then the checking and installing steps. Downloads are measured in
+/// bytes by watching the package cache (`downloaded`), because pacman prints no percentages to a pipe.
+#[derive(Default, Debug)]
+pub struct PacmanProgress {
+    stage: Stage,
+    removing: bool,
+    total: usize,
+    total_bytes: u64,
+    started: usize,  // packages whose download has begun
+    finished: usize, // packages installed or removed so far
+    pub names: Vec<String>,
+}
+
+impl PacmanProgress {
+    pub fn new(removing: bool) -> Self {
+        Self { removing, ..Self::default() }
     }
-    if matches!(out.status.code(), Some(126) | Some(127)) {
-        return Err("The password prompt was cancelled, so nothing was changed.".into());
+
+    /// Overall 0..1 for the current stage; the stages share the bar: 0-5 resolving, 5-60 download, 60-70 checks,
+    /// 70-97 installing, then done.
+    fn overall(&self, within: f64) -> f64 {
+        let (lo, hi) = match self.stage {
+            Stage::Resolving => (0.0, 0.05),
+            Stage::Downloading => (0.05, 0.60),
+            Stage::Verifying => (0.60, 0.70),
+            Stage::Working => (0.70, 0.97),
+            Stage::Finishing => (0.97, 1.0),
+        };
+        lo + (hi - lo) * within.clamp(0.0, 1.0)
     }
-    Err(explain_failure(&String::from_utf8_lossy(&out.stderr)))
+
+    fn working_text(&self) -> String {
+        let verb = if self.removing { "Removing" } else { "Installing" };
+        if self.total > 1 {
+            format!("{verb} {} of {}", (self.finished + 1).min(self.total), self.total)
+        } else {
+            format!("{verb}…")
+        }
+    }
+
+    /// Feed one output line; returns what to show if it changes anything.
+    pub fn feed(&mut self, line: &str) -> Option<Progress> {
+        let l = line.trim();
+        if let Some(rest) = l.strip_prefix("Total Download Size:") {
+            self.total_bytes = parse_size(rest).unwrap_or(0);
+            return None;
+        }
+        if let Some(rest) = l.strip_prefix("Package (").or_else(|| l.strip_prefix("Packages (")) {
+            self.total = rest.split(')').next().and_then(|n| n.trim().parse().ok()).unwrap_or(0);
+            return None;
+        }
+        if l.starts_with(":: Retrieving packages") {
+            self.stage = Stage::Downloading;
+            return Some(Progress { fraction: Some(self.overall(0.0)), text: "Starting the download…".into() });
+        }
+        if let Some(name) = l.strip_suffix(" downloading...") {
+            let name = name.trim().to_string();
+            self.stage = Stage::Downloading;
+            self.started += 1;
+            self.names.push(name);
+            let within = if self.total > 0 { (self.started - 1) as f64 / self.total as f64 } else { 0.0 };
+            let text = if self.total > 1 { format!("Downloading {} of {}", self.started.min(self.total), self.total) } else { "Downloading…".to_string() };
+            return Some(Progress { fraction: Some(self.overall(within)), text });
+        }
+        if l.starts_with("checking ") || l.starts_with("loading package files") || l.starts_with("resolving dependencies") {
+            if l.starts_with("checking keyring") || l.starts_with("checking package integrity") || l.starts_with("loading package files") {
+                self.stage = Stage::Verifying;
+                return Some(Progress { fraction: Some(self.overall(0.3)), text: "Checking the download…".into() });
+            }
+            if l.starts_with("checking for file conflicts") || l.starts_with("checking available disk space") {
+                self.stage = Stage::Verifying;
+                return Some(Progress { fraction: Some(self.overall(0.9)), text: "Checking for conflicts…".into() });
+            }
+            return None;
+        }
+        if l.starts_with(":: Processing package changes") {
+            self.stage = Stage::Working;
+            return Some(Progress { fraction: Some(self.overall(0.0)), text: self.working_text() });
+        }
+        for verb in ["installing ", "upgrading ", "reinstalling ", "removing "] {
+            if l.starts_with(verb) && l.ends_with("...") {
+                self.stage = Stage::Working;
+                let within = if self.total > 0 { self.finished as f64 / self.total as f64 } else { 0.5 };
+                let p = Progress { fraction: Some(self.overall(within)), text: self.working_text() };
+                self.finished += 1;
+                return Some(p);
+            }
+        }
+        if l.starts_with(":: Running post-transaction hooks") {
+            self.stage = Stage::Finishing;
+            return Some(Progress { fraction: Some(self.overall(0.0)), text: "Finishing up…".into() });
+        }
+        None
+    }
+
+    /// While downloading: progress from how many bytes of the packages are in the cache.
+    pub fn download_progress(&self, bytes_in_cache: u64) -> Option<Progress> {
+        if self.stage != Stage::Downloading {
+            return None;
+        }
+        if self.total_bytes > 0 {
+            let within = bytes_in_cache as f64 / self.total_bytes as f64;
+            let shown = bytes_in_cache.min(self.total_bytes);
+            Some(Progress { fraction: Some(self.overall(within)), text: format!("Downloading {} of {}", mib(shown), mib(self.total_bytes)) })
+        } else {
+            None
+        }
+    }
+}
+
+/// Bytes of the named packages now in pacman's cache: finished files, and the `.part` files of downloads in flight.
+/// Pacman downloads (several at a time) into a `download-XXXXXX` folder inside the cache and moves each file up when
+/// it is complete, so both places are counted.
+fn cache_bytes(names: &[String]) -> u64 {
+    fn sum_dir(dir: &std::path::Path, names: &[String]) -> u64 {
+        let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
+        rd.flatten()
+            .filter(|e| {
+                let f = e.file_name().to_string_lossy().to_string();
+                !f.ends_with(".sig") && names.iter().any(|n| f.starts_with(n.as_str()))
+            })
+            .filter_map(|e| e.metadata().ok())
+            .filter(|m| m.is_file())
+            .map(|m| m.len())
+            .sum()
+    }
+    let root = std::path::Path::new("/var/cache/pacman/pkg");
+    let mut total = sum_dir(root, names);
+    if let Ok(rd) = std::fs::read_dir(root) {
+        for e in rd.flatten() {
+            if e.file_name().to_string_lossy().starts_with("download-") && e.path().is_dir() {
+                total += sum_dir(&e.path(), names);
+            }
+        }
+    }
+    total
+}
+
+/// A percentage and a short description from one line of flatpak's output.
+pub fn parse_flatpak_line(line: &str) -> Option<Progress> {
+    let l = line.trim();
+    let pct = l.split('%').next().filter(|_| l.contains('%')).and_then(|before| {
+        before.rsplit(|c: char| !c.is_ascii_digit()).next().and_then(|d| d.parse::<u32>().ok()).filter(|p| *p <= 100)
+    });
+    let text = ["Installing", "Downloading", "Updating", "Uninstalling", "Fetching"].iter().find(|v| l.contains(*v)).map(|v| format!("{v}…"));
+    match (pct, text) {
+        (None, None) => None,
+        (p, t) => Some(Progress { fraction: p.map(|p| p as f64 / 100.0), text: t.unwrap_or_else(|| "Working…".to_string()) }),
+    }
+}
+
+enum Line {
+    Out(String),
+    Err(String),
+}
+
+/// Starts `cmd`, reads its output as it appears (a line ends at a newline or a carriage return, which is how bars
+/// redraw), passes each stdout line to `on_line` and, every 300 ms of quiet, asks `on_tick` for news. Returns the exit
+/// status and everything that came out on stderr.
+fn run_streaming(
+    mut cmd: Command,
+    mut on_line: impl FnMut(&str) -> Option<Progress>,
+    mut on_tick: impl FnMut() -> Option<Progress>,
+    tx: &std::sync::mpsc::Sender<Event>,
+) -> Result<(std::process::ExitStatus, String), String> {
+    use std::io::Read;
+    use std::sync::mpsc::{channel, RecvTimeoutError};
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Couldn't start the installer ({e})"))?;
+    let (ltx, lrx) = channel::<Line>();
+    let spawn_reader = |mut r: Box<dyn Read + Send>, err: bool| {
+        let ltx = ltx.clone();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            let mut cur = Vec::new();
+            loop {
+                match r.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        for &b in &buf[..n] {
+                            if b == b'\n' || b == b'\r' {
+                                if !cur.is_empty() {
+                                    let s = String::from_utf8_lossy(&cur).to_string();
+                                    let _ = ltx.send(if err { Line::Err(s) } else { Line::Out(s) });
+                                    cur.clear();
+                                }
+                            } else {
+                                cur.push(b);
+                            }
+                        }
+                    }
+                }
+            }
+            if !cur.is_empty() {
+                let s = String::from_utf8_lossy(&cur).to_string();
+                let _ = ltx.send(if err { Line::Err(s) } else { Line::Out(s) });
+            }
+        });
+    };
+    if let Some(o) = child.stdout.take() {
+        spawn_reader(Box::new(o), false);
+    }
+    if let Some(e) = child.stderr.take() {
+        spawn_reader(Box::new(e), true);
+    }
+    drop(ltx);
+    let mut errs = String::new();
+    loop {
+        match lrx.recv_timeout(std::time::Duration::from_millis(300)) {
+            Ok(Line::Out(l)) => {
+                if let Some(p) = on_line(&l) {
+                    let _ = tx.send(Event::Progress(p));
+                }
+            }
+            Ok(Line::Err(l)) => {
+                errs.push_str(&l);
+                errs.push('\n');
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                if let Some(p) = on_tick() {
+                    let _ = tx.send(Event::Progress(p));
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    let st = child.wait().map_err(|e| format!("Couldn't finish the installer ({e})"))?;
+    Ok((st, errs))
 }
 
 /// A readable reason from pacman/flatpak's error output.
@@ -91,7 +357,7 @@ pub fn explain_failure(stderr: &str) -> String {
         "Another program is installing or updating software right now. Try again when it has finished.".into()
     } else if e.contains("target not found") || e.contains("no remote refs found") || e.contains("nothing matches") {
         "This app isn't available from Zohara's software sources right now.".into()
-    } else if e.contains("failed retrieving file") || e.contains("could not resolve host") || e.contains("couldn't resolve") {
+    } else if e.contains("failed retrieving file") || e.contains("could not resolve host") || e.contains("couldn't resolve") || e.contains("network") {
         "Couldn't download it. Check your internet connection and try again.".into()
     } else if e.contains("not enough free disk space") || e.contains("no space left") {
         "There isn't enough free disk space.".into()
@@ -105,43 +371,88 @@ pub fn explain_failure(stderr: &str) -> String {
     }
 }
 
-/// Runs pacman as administrator: non-interactive sudo first (the live ISO),
-/// then pkexec (asks for the password on an installed system).
-fn pacman_admin(args: &[&str]) -> Result<(), String> {
-    let mut sudo = Command::new("sudo");
-    sudo.arg("-n").arg("pacman").args(args);
-    if let Ok(o) = sudo.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status() {
-        if o.success() {
+/// Runs pacman as administrator and reports progress: non-interactive sudo first (the live ISO), then pkexec (asks for
+/// the password on an installed system). A pacman error under sudo is final; only sudo itself refusing falls through to
+/// the password prompt.
+fn pacman_admin(args: &[&str], removing: bool, tx: &std::sync::mpsc::Sender<Event>) -> Result<(), String> {
+    use std::os::unix::fs::MetadataExt;
+    let is_root = std::fs::metadata("/proc/self").map(|m| m.uid() == 0).unwrap_or(false);
+    // Already administrator (a root shell, a container): no helper needed.
+    let runners: &[(&str, bool)] = if is_root { &[("", false)] } else { &[("sudo", true), ("pkexec", false)] };
+    for (i, runner) in runners.iter().enumerate() {
+        // `stdbuf -oL` makes pacman write each line as it goes. Into a pipe it would hold its text back until the very
+        // end, and the progress bar would sit still for the whole download.
+        let mut cmd = if runner.0.is_empty() {
+            Command::new("stdbuf")
+        } else {
+            let mut c = Command::new(runner.0);
+            if runner.1 {
+                c.arg("-n");
+            }
+            c.arg("stdbuf");
+            c
+        };
+        cmd.args(["-oL", "pacman"]).args(args);
+        let mut pp = PacmanProgress::new(removing);
+        let ran = {
+            let pp_line = std::cell::RefCell::new(&mut pp);
+            run_streaming(
+                cmd,
+                |l| pp_line.borrow_mut().feed(l),
+                || {
+                    let b = pp_line.borrow();
+                    let bytes = cache_bytes(&b.names);
+                    b.download_progress(bytes)
+                },
+                tx,
+            )
+        };
+        // sudo not installed: go on to the password prompt instead of giving up.
+        let (st, err) = match (ran, i) {
+            (Err(_), 0) if !is_root => continue,
+            (other, _) => other?,
+        };
+        if st.success() {
             return Ok(());
         }
+        let sudo_refused = i == 0 && err.lines().any(|l| l.starts_with("sudo:"));
+        if sudo_refused {
+            continue;
+        }
+        if i == 1 && matches!(st.code(), Some(126) | Some(127)) {
+            return Err("The password prompt was cancelled, so nothing was changed.".into());
+        }
+        return Err(explain_failure(&err));
     }
-    let mut pk = Command::new("pkexec");
-    pk.arg("pacman").args(args);
-    run_pkg(pk)
+    Err("Couldn't get administrator permission.".into())
 }
 
-pub fn install_app(source: &AppSource, package_name: &str) -> Result<(), String> {
+/// Installs (`remove == false`) or removes an app, sending progress to `tx`, and finishes with `Event::Done`.
+pub fn run_job(source: &AppSource, package_name: &str, remove: bool, tx: &std::sync::mpsc::Sender<Event>) {
     let _guard = PACKAGE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    match source {
-        AppSource::Pacman => pacman_admin(&["-S", "--noconfirm", "--needed", package_name]),
-        AppSource::Flatpak => {
+    let _ = tx.send(Event::Progress(Progress { fraction: None, text: "Starting…".into() }));
+    let res = match (source, remove) {
+        (AppSource::Pacman, false) => pacman_admin(&["-S", "--noconfirm", "--needed", package_name], false, tx),
+        (AppSource::Pacman, true) => pacman_admin(&["-Rs", "--noconfirm", package_name], true, tx),
+        (AppSource::Flatpak, rm) => {
             let mut c = Command::new("flatpak");
-            c.args(["install", "-y", "--noninteractive", "flathub", package_name]);
-            run_pkg(c)
+            if rm {
+                c.args(["uninstall", "-y", "--noninteractive", package_name]);
+            } else {
+                c.args(["install", "-y", "--noninteractive", "flathub", package_name]);
+            }
+            match run_streaming(c, parse_flatpak_line, || None, tx) {
+                Ok((st, _)) if st.success() => Ok(()),
+                Ok((st, err)) if matches!(st.code(), Some(126) | Some(127)) => {
+                    let _ = err;
+                    Err("The password prompt was cancelled, so nothing was changed.".to_string())
+                }
+                Ok((_, err)) => Err(explain_failure(&err)),
+                Err(e) => Err(e),
+            }
         }
-    }
-}
-
-pub fn remove_app(source: &AppSource, package_name: &str) -> Result<(), String> {
-    let _guard = PACKAGE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    match source {
-        AppSource::Pacman => pacman_admin(&["-Rs", "--noconfirm", package_name]),
-        AppSource::Flatpak => {
-            let mut c = Command::new("flatpak");
-            c.args(["uninstall", "-y", "--noninteractive", package_name]);
-            run_pkg(c)
-        }
-    }
+    };
+    let _ = tx.send(Event::Done(res));
 }
 
 /// One line of `pacman -Ss` output pair: (repository, package, description).
@@ -285,6 +596,64 @@ mod tests {
 
     fn app(name: &str, pkg: &str, desc: &str) -> crate::app_info::AppInfo {
         app_from_package("extra", pkg, desc).with_name(name)
+    }
+
+    fn feed_all(pp: &mut PacmanProgress, text: &str) -> Vec<Progress> {
+        text.lines().filter_map(|l| pp.feed(l)).collect()
+    }
+
+    const HTOP_INSTALL: &str = "resolving dependencies...\nlooking for conflicting packages...\n\nPackages (2) a-1  htop-3.5.3-1\n\nTotal Download Size:   4.00 MiB\nTotal Installed Size:  9.00 MiB\n\n:: Proceed with installation? [Y/n] \n:: Retrieving packages...\n a-1-x86_64 downloading...\n htop-3.5.3-1-x86_64 downloading...\nchecking keyring...\nchecking package integrity...\nloading package files...\nchecking for file conflicts...\n:: Processing package changes...\ninstalling a...\ninstalling htop...\n:: Running post-transaction hooks...\n";
+
+    #[test]
+    fn install_progress_goes_up_through_the_stages() {
+        let mut pp = PacmanProgress::new(false);
+        let v = feed_all(&mut pp, HTOP_INSTALL);
+        let fr: Vec<f64> = v.iter().map(|p| p.fraction.unwrap()).collect();
+        assert!(fr.windows(2).all(|w| w[0] <= w[1] + 1e-9), "never goes backwards: {fr:?}");
+        assert!(v.iter().any(|p| p.text == "Downloading 2 of 2"));
+        assert!(v.iter().any(|p| p.text == "Checking the download…"));
+        assert!(v.iter().any(|p| p.text == "Installing 2 of 2"));
+        assert_eq!(v.last().unwrap().text, "Finishing up…");
+        assert!(*fr.last().unwrap() >= 0.97);
+        assert_eq!(pp.names, vec!["a-1-x86_64", "htop-3.5.3-1-x86_64"]);
+    }
+
+    #[test]
+    fn download_bar_follows_bytes_in_the_cache() {
+        let mut pp = PacmanProgress::new(false);
+        feed_all(&mut pp, HTOP_INSTALL.split(":: Retrieving").next().unwrap());
+        assert!(pp.download_progress(100).is_none()); // not downloading yet
+        pp.feed(":: Retrieving packages...");
+        let half = pp.download_progress(2 * 1_048_576).unwrap();
+        assert_eq!(half.text, "Downloading 2.0 MiB of 4.0 MiB");
+        assert!((half.fraction.unwrap() - (0.05 + 0.55 * 0.5)).abs() < 1e-9);
+        let over = pp.download_progress(99 * 1_048_576).unwrap(); // a bigger cache never overshoots
+        assert!(over.fraction.unwrap() <= 0.60 + 1e-9);
+    }
+
+    #[test]
+    fn removal_says_removing() {
+        let mut pp = PacmanProgress::new(true);
+        let v = feed_all(&mut pp, "checking dependencies...\n\nPackage (1)  Old Version\n\n:: Do you want to remove these packages? [Y/n] \n:: Running pre-transaction hooks...\n:: Processing package changes...\nremoving htop...\n:: Running post-transaction hooks...\n");
+        assert!(v.iter().any(|p| p.text == "Removing…"));
+    }
+
+    #[test]
+    fn sizes_parse() {
+        assert_eq!(parse_size("  0.18 MiB"), Some((0.18 * 1_048_576.0) as u64));
+        assert_eq!(parse_size("12 KiB"), Some(12 * 1024));
+        assert_eq!(parse_size("1.5 GiB"), Some((1.5 * 1_073_741_824.0) as u64));
+        assert_eq!(parse_size("lots"), None);
+        assert_eq!(mib(2 * 1_048_576), "2.0 MiB");
+    }
+
+    #[test]
+    fn flatpak_lines_give_a_percentage_when_there_is_one() {
+        let p = parse_flatpak_line("Installing… ████████            45%  3.2 MB/s").unwrap();
+        assert_eq!(p.fraction, Some(0.45));
+        assert_eq!(p.text, "Installing…");
+        assert_eq!(parse_flatpak_line("Looking for matches…"), None);
+        assert_eq!(parse_flatpak_line("Downloading org.gnome.Platform").unwrap().fraction, None);
     }
 
     #[test]
