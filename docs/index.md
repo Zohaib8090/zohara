@@ -26,6 +26,9 @@ Welcome to the Zohara OS documentation. This directory contains the complete ref
    - Current state, what was tested in the VM, what is fixed, and the open items. Read these first
      after `CLAUDE.md`; the newer one updates the older one.
 
+   - Plans: **[Secure Boot (SECURE-BOOT-PLAN.md)](./SECURE-BOOT-PLAN.md)** (not built yet) and package signing
+     (`docs/SIGNING.md` in the `zohara-packages` repo, key made and keyring published, signing switched off).
+
 5. **[Store Packages Guide (zohara_store_packages_guide.md)](./zohara_store_packages_guide.md)**
    - Detailed guide on how to package apps for the Zohara Store.
    - JSON schema and catalog management.
