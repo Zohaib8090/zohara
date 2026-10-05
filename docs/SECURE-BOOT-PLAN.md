@@ -10,6 +10,33 @@ with it on, and some work or school machines cannot switch it off. Every Zohara 
 those machines refuse to start Zohara at all. Supporting Secure Boot widens who can install Zohara and keeps the
 protection Secure Boot gives (nobody can swap the bootloader or kernel for a malicious one unnoticed).
 
+## Owner's decision (2026-10-05): users must not do any key steps
+
+The target is the Ubuntu experience: plug in the USB, boot, install, with no "Enroll key" screen. That is **option B
+below** and it cannot be done by the project alone: the signature that makes Ubuntu seamless is Microsoft's, on a
+shim that has the distribution's key built into it. What that needs, in order (details and fees must be checked
+against the current rules before starting; they change):
+
+1. **An identity Microsoft accepts.** Signing requests go through Microsoft's Partner Center, which verifies the
+   account holder (usually a registered organisation or a verified individual) and needs a code-signing certificate
+   (EV certificates are bought from a certificate authority, around a few hundred dollars a year).
+2. **A shim-review submission.** The community review at github.com/rhboot/shim-review checks that the shim is built
+   reproducibly from source with Zohara's certificate inside, that GRUB and the kernel meet the security rules
+   (current shim, SBAT data, GRUB patched for known holes, kernel lockdown on, no way to load unsigned code), and that
+   the project can ship fixes quickly. Typical time: weeks to months, with back-and-forth.
+3. **Microsoft signs that shim.** After approval; it can take more weeks.
+4. **Everything after shim is Zohara's job** and must be done to the review's standard: signed GRUB, signed kernel,
+   a way to keep both up to date, and no per-user keys. See "What the chain needs" below.
+
+Until then the honest instructions stay "turn Secure Boot off". An optional in-between (option A, users enrol the key
+once) can be offered for people who cannot turn Secure Boot off, but it is not the goal.
+
+**NVIDIA without any prompt** needs a different design than DKMS: Zohara would build its own kernel and the matching
+NVIDIA modules in CI and sign the modules with a key whose certificate is built into that kernel, so the kernel accepts
+them with no enrolment. (Ubuntu itself asks for a one-time password when a user installs a DKMS driver under Secure
+Boot; it avoids prompts only for drivers it has pre-built and signed.) That means Zohara maintaining its own kernel
+build. The cheaper stopgap is the open-source driver when Secure Boot is on.
+
 ## What Secure Boot checks, in one paragraph
 
 The firmware holds a list of trusted keys, normally Microsoft's. It starts only an EFI program signed by one of them.
@@ -37,9 +64,11 @@ Every file in that chain is unsigned.
 | C. Owner enrols keys in the firmware (sbctl) | the user puts Zohara's key in the firmware's `db` | none, but expert-only | a trip into the BIOS key menus |
 | D. Keep "turn Secure Boot off" | status quo | none | a BIOS visit |
 
-Recommendation: **A**, with D documented as the fallback. B can come later if Zohara grows.
+Recommendation (revised after the owner's decision above): the **goal is B**; **D stays the instruction** until B is
+done; **A** is an optional step for people who cannot turn Secure Boot off. All the engineering in this plan is needed
+for B as well, so building it is not wasted while the Microsoft process runs.
 
-## What A needs, piece by piece
+## What the chain needs (for A and for B), piece by piece
 
 ### 1. The Zohara Secure Boot key
 * An RSA-3072 (or 2048) X.509 certificate + private key, **separate from the package-signing key**. Shim reads RSA
@@ -142,6 +171,9 @@ Recommendation: **A**, with D documented as the fallback. B can come later if Zo
 | SB-7 | Optional: unified kernel image so the initramfs is covered too | a changed initramfs is refused |
 
 ## Questions for the owner
+
+0. **Are you willing to start the Microsoft signing process** (identity check, a certificate, a review that takes weeks
+   to months)? Without it Zohara cannot boot with Secure Boot on without a user step.
 
 1. **Where does signing happen?** CI signs everything with an offline key and Zohara ships a signed kernel package
    (more work, safest for users), or each machine signs with its own key (less work, the key lives on the machine)?
