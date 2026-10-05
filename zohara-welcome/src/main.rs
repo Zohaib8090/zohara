@@ -12,13 +12,6 @@ use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 use zohara_welcome::{is_live, is_root};
 
-/// Feature flag: show a small banner noting that some Settings pages aren't
-/// finished yet, so testers don't mistake a dead row for a bug. On by
-/// default; set ZOHARA_WELCOME_DISCLOSURE=0 to turn it off without a rebuild.
-fn show_unfinished_notice() -> bool {
-    std::env::var("ZOHARA_WELCOME_DISCLOSURE").map(|v| v != "0").unwrap_or(true)
-}
-
 /// Remembers that an installed system has already shown the welcome once.
 fn seen_marker() -> std::path::PathBuf {
     let base = std::env::var("XDG_CONFIG_HOME")
@@ -170,14 +163,6 @@ fn build_ui(app: &adw::Application) {
     root.set_margin_end(28);
     root.append(&gtk4::Label::builder().label("Welcome to Zohara").css_classes(vec!["title-1".to_string()]).build());
     root.append(&gtk4::Label::builder().label("What would you like to do?").css_classes(vec!["dim-label".to_string()]).build());
-
-    if show_unfinished_notice() {
-        let banner = adw::Banner::new(
-            "Zohara is still being finished — some Settings pages don't respond yet.",
-        );
-        banner.set_revealed(true);
-        root.append(&banner);
-    }
 
     let status = gtk4::Label::builder().css_classes(vec!["dim-label".to_string(), "caption".to_string()]).wrap(true).build();
     let group = adw::PreferencesGroup::new();

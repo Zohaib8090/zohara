@@ -82,8 +82,7 @@ Before you boot:
 
 ## Status
 
-Zohara OS is still being finished; some Settings pages do not respond yet. Try it in a virtual machine or on a spare
-computer first.
+Zohara OS is a young project. Try it in a virtual machine or on a spare computer first.
 
 ## More
 
