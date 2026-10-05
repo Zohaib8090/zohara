@@ -87,7 +87,7 @@ jobs:
         run: |
           chown -R builder:builder .
           cd zohara-store-rs
-          sudo -u builder env _PKGVER="${{ steps.version.outputs.version }}" makepkg --nocheck --skippgpcheck
+          sudo -u builder env _PKGVER="${{ steps.version.outputs.version }}" makepkg --nocheck --skippgpcheck --nodeps
           PKG_FILE=$(ls *.pkg.tar.zst | head -1)
           echo "package_file=$PKG_FILE" >> "$GITHUB_ENV"
           echo "package_path=zohara-store-rs/$PKG_FILE" >> "$GITHUB_ENV"
