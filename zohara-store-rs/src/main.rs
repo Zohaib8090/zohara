@@ -1,5 +1,6 @@
 pub mod app_info;
 pub mod backend;
+pub mod channel;
 pub mod manifest;
 pub mod ui;
 pub mod updates;

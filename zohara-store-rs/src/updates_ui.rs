@@ -11,6 +11,7 @@ use std::rc::Rc;
 use std::sync::mpsc::{channel, Sender, TryRecvError};
 use std::time::Duration;
 
+use crate::channel;
 use crate::updates::{self, FlatpakInstalled, SnapStatus, Snapshot, Transaction, UpdateSet};
 
 /// Set by a restore, which always needs a restart (unlike an update).
@@ -126,6 +127,16 @@ pub fn build_page() -> gtk4::Widget {
     card.append(&card_in);
     inner.append(&card);
 
+    // Which update channel this computer follows. Wired up below, once the page exists (a change re-checks).
+    let chan_group = adw::PreferencesGroup::new();
+    let chan_row = adw::ComboRow::new();
+    chan_row.set_title("Update channel");
+    chan_row.set_subtitle(channel::CHANNELS[channel::index_of(channel::current()) as usize].2);
+    chan_row.set_model(Some(&gtk4::StringList::new(&channel::CHANNELS.map(|c| c.1))));
+    chan_row.set_selected(channel::index_of(channel::current()));
+    chan_group.add(&chan_row);
+    inner.append(&chan_group);
+
     let groups = gtk4::Box::new(gtk4::Orientation::Vertical, 16);
     inner.append(&groups);
     let history = gtk4::Box::new(gtk4::Orientation::Vertical, 16);
@@ -180,9 +191,88 @@ pub fn build_page() -> gtk4::Widget {
         });
     }
 
+    wire_channel_picker(&page, &chan_row);
+
     check(&page);
     load_history(&page);
     scroll.upcast()
+}
+
+// ── Update channel ─────────────────────────────────────────────────────────
+
+/// Choosing beta or alpha asks first; any switch runs the channel tool in the background and then checks again, so the
+/// list shows what that channel offers. A refused or failed switch puts the picker back to where it was.
+fn wire_channel_picker(page: &Rc<Page>, row: &adw::ComboRow) {
+    let shown = Rc::new(Cell::new(row.selected()));
+    let silent = Rc::new(Cell::new(false)); // true while the picker is being put back, so that does not start a switch
+    let p = page.clone();
+    row.connect_selected_notify(move |r| {
+        if silent.get() {
+            return;
+        }
+        let want = r.selected();
+        if want == shown.get() {
+            return;
+        }
+        let (id, name, about) = channel::CHANNELS[(want as usize).min(channel::CHANNELS.len() - 1)];
+        let revert = {
+            let (r, shown, silent) = (r.clone(), shown.clone(), silent.clone());
+            move || {
+                silent.set(true);
+                r.set_selected(shown.get());
+                silent.set(false);
+            }
+        };
+        let go = {
+            let (r, shown, silent, p) = (r.clone(), shown.clone(), silent.clone(), p.clone());
+            move || {
+                r.set_sensitive(false);
+                r.set_subtitle(&format!("Switching to {name}…"));
+                let (r2, shown2, silent2, p2) = (r.clone(), shown.clone(), silent.clone(), p.clone());
+                background(move || channel::set(id), move |res| {
+                    r2.set_sensitive(true);
+                    match res {
+                        Ok(()) => {
+                            shown2.set(channel::index_of(id));
+                            r2.set_subtitle(about);
+                            check(&p2);
+                        }
+                        Err(why) => {
+                            silent2.set(true);
+                            r2.set_selected(shown2.get());
+                            silent2.set(false);
+                            r2.set_subtitle(channel::CHANNELS[shown2.get() as usize].2);
+                            message(r2.upcast_ref(), "Update channel not changed", &why);
+                        }
+                    }
+                });
+            }
+        };
+        if id == "stable" {
+            go();
+            return;
+        }
+        let d = adw::AlertDialog::new(
+            Some(&format!("Switch to {name}?")),
+            Some(&format!("{about}\n\nYou can go back to Stable at any time. Updates already installed stay installed.")),
+        );
+        d.add_response("cancel", "Cancel");
+        d.add_response("switch", &format!("Switch to {name}"));
+        d.set_response_appearance("switch", adw::ResponseAppearance::Suggested);
+        d.set_default_response(Some("cancel"));
+        d.set_close_response("cancel");
+        let go = Rc::new(RefCell::new(Some(go)));
+        d.connect_response(None, move |_, resp| {
+            if resp == "switch" {
+                if let Some(g) = go.borrow_mut().take() {
+                    g();
+                }
+            } else {
+                revert();
+            }
+        });
+        d.present(Some(r));
+    });
 }
 
 // ── Checking ───────────────────────────────────────────────────────────────
