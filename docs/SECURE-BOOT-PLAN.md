@@ -1,5 +1,10 @@
 # Secure Boot for Zohara OS: plan
 
+> **Status (2026-10-05): deferred. The owner chose to keep telling people to turn Secure Boot off** (README, website,
+> SourceForge page already say so). No Secure Boot work is planned. This file stays as the record of the options and
+> what each needs: the Microsoft-signed shim route, or borrowing another distribution's signed shim, GRUB and kernel
+> (never tested). Revisit when Zohara has real users who cannot turn Secure Boot off.
+
 Written 2026-10-05. Nothing in this plan is built yet. Facts below were read from this repository or checked
 against Arch's package repositories on that day; things that are **unknown** are marked as such.
 
