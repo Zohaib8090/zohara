@@ -39,9 +39,14 @@ RUN echo -e "\n[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist" >> /et
 # Calamares used to be fetched from an EndeavourOS mirror here, but that
 # mirror dropped Calamares between 2026-08-18 and 2026-08-23 (context.md
 # documents the regression). It is now built from AUR source like debtap.
+# Chaotic's package list can be newer than the files its mirrors hold for a while (a 404 on the exact file),
+# so the list is re-read and the download retried before giving up.
 RUN --mount=type=cache,target=/var/cache/pacman/pkg,sharing=locked \
     mkdir -p /opt/localrepo && \
-    pacman -Sw --noconfirm --cachedir /opt/localrepo brave-origin-bin
+    for i in 1 2 3 4 5 6; do \
+        pacman -Sy --noconfirm && pacman -Sw --noconfirm --cachedir /opt/localrepo brave-origin-bin && exit 0; \
+        echo "Chaotic download failed (try $i of 6), waiting before retrying"; sleep $((i * 20)); \
+    done; exit 1
 
 # ── 4. Build debtap + calamares from AUR source ───────────────────────────────
 # Both packages are AUR-only. The AUR PKGBUILDs are pinned to specific

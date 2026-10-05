@@ -194,7 +194,8 @@ upower
 v4l-utils
 bluedevil
 plasma-systemmonitor
-plasma-firewall
+# ufw is the firewall; Zohara Settings (Privacy & security) is its front-end. plasma-firewall (KDE's own front-end) is not
+# installed on purpose: it showed a second, duplicate "Firewall" in the Start menu search.
 ufw
 btop
 grim
