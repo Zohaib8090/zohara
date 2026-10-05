@@ -147,7 +147,14 @@ fn check_pacman_pinned() -> Result<Vec<PkgUpdate>, String> {
             .output()
             .map_err(|_| "Checking for system updates needs fakeroot, which isn't installed".to_string())?;
         if !sync.status.success() {
-            return Err("Couldn't check for system updates. Are you online?".to_string());
+            // Say what pacman said, so "are you online?" is not a guess.
+            let said = String::from_utf8_lossy(&sync.stderr);
+            let last = said.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+            return Err(if last.is_empty() {
+                "Couldn't check for system updates. Are you online?".to_string()
+            } else {
+                format!("Couldn't check for system updates ({}).", last.chars().take(200).collect::<String>())
+            });
         }
         let mut q = Command::new("pacman");
         q.args(["--config", &conf, "--dbpath", &db, "-Qu"]);
