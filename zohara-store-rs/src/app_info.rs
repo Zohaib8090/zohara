@@ -13,6 +13,14 @@ pub struct AppInfo {
     pub rating: f32,  // 0.0 - 5.0
 }
 
+#[cfg(test)]
+impl AppInfo {
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = name.to_string();
+        self
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AppSource {
     Pacman,
