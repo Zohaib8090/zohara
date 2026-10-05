@@ -1,0 +1,15 @@
+# Adds Zohara's package-signing key to pacman's keyring and trusts it, so pacman accepts packages and databases
+# signed by it. "populate" imports the key and sets its trust level; the local signature (lsign) is what makes
+# pacman treat a key from a third-party repository as valid, the same step the Arch wiki gives for unofficial repos.
+# Failing here must not fail the whole install (on a live ISO the pacman keyring may not exist yet), so each step
+# only warns; it runs again on every upgrade of this package.
+post_install() {
+    pacman-key --populate zohara || echo "zohara-keyring: could not add the key (is the pacman keyring set up? run: pacman-key --init)"
+    while IFS=: read -r fpr _; do
+        [ -n "$fpr" ] && { pacman-key --lsign-key "$fpr" >/dev/null 2>&1 || echo "zohara-keyring: could not trust key ${fpr: -16}"; }
+    done < /usr/share/pacman/keyrings/zohara-trusted
+}
+
+post_upgrade() {
+    post_install
+}

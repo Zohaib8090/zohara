@@ -1,0 +1,23 @@
+# Maintainer: Zohara OS Team <https://github.com/Zohaib8090/zohara>
+# Zohara's package-signing public key, in the layout pacman-key expects (like archlinux-keyring).
+# Bump pkgver when the key list changes (a new key, or a revoked one in zohara-revoked).
+pkgname=zohara-keyring
+pkgver=1
+pkgrel=1
+pkgdesc="Zohara OS package signing keyring"
+arch=('any')
+url="https://github.com/Zohaib8090/zohara-packages"
+license=('GPL-3.0-or-later')
+depends=('pacman')
+install=zohara-keyring.install
+source=('zohara.gpg' 'zohara-trusted' 'zohara-revoked')
+sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+pkgver() {
+  # CI passes _PKGVER (so every build is newer than the last); by hand it stays at 1.
+  if [ -n "${_PKGVER:-}" ]; then echo "$_PKGVER"; else echo 1; fi
+}
+
+package() {
+  install -Dm644 zohara.gpg zohara-trusted zohara-revoked -t "$pkgdir/usr/share/pacman/keyrings/"
+}

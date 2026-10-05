@@ -1,0 +1,44 @@
+name: Build & Publish Zohara Keyring
+
+# Builds the zohara-keyring package (Zohara's package-signing public key in the layout pacman-key expects) and
+# keeps it as this run's artifact. It does NOT publish: releasing it is done on purpose, with the publish workflow in
+# Zohaib8090/zohara-packages (source repository Zohaib8090/zohara, this run's id).
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'zohara-keyring/**'
+      - '.github/workflows/build-keyring.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build keyring package
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install build tools
+        run: pacman -Syu --noconfirm --needed base-devel git
+
+      - uses: actions/checkout@v4
+
+      - name: Run makepkg
+        run: |
+          set -euo pipefail
+          useradd -m builder
+          cp -r zohara-keyring /home/builder/build
+          chown -R builder /home/builder/build
+          cd /home/builder/build
+          # Every build is newer than the last, so pacman offers it as an update.
+          su builder -c "_PKGVER=$(date -u +%Y%m%d%H%M) makepkg -f --nodeps"
+          ls -la *.pkg.tar.zst
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp *.pkg.tar.zst "$GITHUB_WORKSPACE/out/"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zohara-keyring-arch
+          path: out/*.pkg.tar.zst
