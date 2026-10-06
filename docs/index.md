@@ -41,6 +41,9 @@ Welcome to the Zohara OS documentation. This directory contains the complete ref
    `../scripts/vm/README.md`
    - How to install and boot the ISO in QEMU and check the installed system.
 
+8. **[Beta checklist (BETA-CHECKLIST.md)](./BETA-CHECKLIST.md)**
+   - What must be proven before Zohara OS is called beta; tick boxes with proof.
+
 Traps that already cost time are in [`../GOTCHA.md`](../GOTCHA.md).
 
 ---
