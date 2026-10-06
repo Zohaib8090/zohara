@@ -208,3 +208,37 @@ terminal whose shell isn't guaranteed to be bash should wrap itself as
 to bash, comments and all. Reproduced by feeding the script to an
 interactive `zsh -f -i` inside a real pseudo-terminal (`script -qfec`);
 piping into non-interactive zsh doesn't reproduce it.
+
+## Packages, signing, the Store and Settings (2026-10-06)
+
+* **A new package never arrives with `pacman -Syu`.** Upgrades only touch installed packages. To ship a brand-new package
+  (like `zohara-keyring`) to existing machines, make an installed package depend on it (Settings and the Store do). Then
+  publish it to **every** channel, or installing from alpha/beta fails on the unresolved dependency. CI containers do not
+  have it either: build with `makepkg --nodeps`.
+* **A signed repository breaks machines that do not have the key yet** ("unknown key", tested). Order: keyring package
+  first, signing secret second, `SigLevel = Required` last. `Optional TrustAll` still checks a signature that is there.
+* **The Store refuses a manifest older than the date the machine is pinned to** ("older than what this computer already
+  has"). The ISO build pinned 2026/09/26 while the signed approval said 09/25, so no Store could update. Keep the signed
+  `approved_date` at or above the ISO's pin. Signing needs the minisign secret (`~/.minisign/zohara.key`); the old one was
+  lost in 2026-10.
+* **`adw::HeaderBar::set_show_title(false)` hides the centre `title_widget` too.** It hid the Store's tabs and Settings'
+  search box for months. Do not call it when a title widget is set.
+* **An `adw::ActionRow` outside a `ListBox` highlights on hover and does nothing when clicked.** Put it in a
+  `PreferencesGroup`, or wrap it with `pages::in_list` (Settings). Rows in a plain `Box` next to expander rows were dead.
+* **pacman writes its output in blocks when piped.** Run it as `stdbuf -oL pacman ...` or a progress bar stays at 0 until
+  the end. Downloads sit in `/var/cache/pacman/pkg/download-XXXXXX/*.part` (several at once), not in the cache folder.
+* **A plain `pacman -Sy` from a normal user always fails** ("you cannot perform this operation unless you are root"). Settings
+  did exactly that for its update check. Only the Store does the checking (signed, pinned, `fakeroot` + private db).
+* **GTK/libadwaita theme**: `@define-color window_fg_color` does not reach libadwaita's own widgets, which use
+  `--window-fg-color` and friends. Override the variables too (`theme.rs`), or text comes out black on a dark window.
+* **Do not run `pkill -f PATTERN` from a command that contains PATTERN**: it kills its own shell (exit 144). Same for a
+  `sleep N; ...` chain: the harness blocks it. Use `until` loops or `gh run watch`.
+* **`git pull --rebase` / `commit` fail with "Author identity unknown"** on this laptop (no global identity). Each repo now
+  has a local name/email; if a rebase stops, `git commit` inside it and `GIT_EDITOR=true git rebase --continue`.
+  `zohara-packages` gets automatic `apps.json` commits, so rebase before pushing.
+* **`cargo test` does not rebuild the app binary.** Run `cargo build` before launching it for a screenshot.
+* **Pushing a build workflow can publish.** `build-store.yml`, `build-snapshots.yml`, `build-voice.yml`,
+  `build-welcome.yml` (zohara) and `zohara-apps` CI still publish to stable on a push. Use `[skip ci]` on commits that
+  touch their paths, or remove the publish steps (done for `zohara-settings`).
+* **The ISO's Dockerfile step that downloads `brave-origin-bin` fails with a Chaotic-AUR 404** when its mirrors lag behind
+  its database. It now retries (6 tries).
