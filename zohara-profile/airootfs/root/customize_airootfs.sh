@@ -222,6 +222,7 @@ systemctl --global enable zohara-store-check-updates.timer || true
 # fills up, a restart is needed after an update, etc. (zohara-settings).
 echo "  -> Enabling Zohara health-check timer..."
 systemctl --global enable zohara-settings-health.timer || true
+systemctl --global enable zohara-settings-update-check.timer || true
 
 # Voice typing (Meta+H) types into the focused app through ydotoold, which
 # runs per user and reaches /dev/uinput via 70-zohara-uinput.rules.
