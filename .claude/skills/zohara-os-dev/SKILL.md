@@ -58,6 +58,12 @@ before doing anything non-trivial: this file is the short version, and the hando
 5. A brand-new package reaches existing machines only if an installed package depends on it, and it must exist in **every**
    channel. A channel is a separate repository; a machine follows one (`zohara-channel set`; the Store's Updates page has a picker).
 
+## Who updates what
+
+**Settings** (`zohara-settings`, `src/sysupdate/`, page `Zohara Update`) updates the operating system: everything from pacman,
+including Zohara's own programs and Arch-installed apps. **The Store** updates Flathub apps only. They are separate programs
+with no shared code (owner's decision, 2026-10-06). Details: `zohara-settings/docs/UPDATES.md`. Promote the two to stable together.
+
 ## Signing and keys (three different things)
 
 * **Package signing** (`zohara-packages/docs/SIGNING.md`): key `A08F8626…C18D`, secret in `~/.zohara-signing/`. Signing is off until the

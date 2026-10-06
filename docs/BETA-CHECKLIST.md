@@ -21,10 +21,10 @@ tester's report). Items marked **(owner)** need the owner, not Claude.
 
 ## 2. Updates (the thing that must never break)
 
-- [ ] A fresh install finds updates on the Store's Updates page ("Everything is up to date" or a list), with no error.
+- [ ] A fresh install finds updates on **Settings > Zohara Update** ("Everything is up to date" or a list), with no error, and the Store's Updates page lists Flathub app updates (the split is in alpha; checked in a VM 2026-10-06, not yet on a fresh install).
 - [ ] One full update cycle on a fresh install: publish a new build to alpha, install it from the Store, reboot, still works.
 - [ ] **Undo the last update** and **restore points** each tested once on a real install after a deliberately bad update.
-- [ ] Switching channel stable, beta, alpha and back works (tested in a VM 2026-10-06) and a machine on alpha receives an alpha build.
+- [ ] Switching channel stable, beta, alpha and back works from **Settings > Zohara Update** (tested in the Store in a VM 2026-10-06; Settings' copy tested stable to alpha) and a machine on alpha receives an alpha build.
 - [ ] An update that fails halfway (network cut) leaves a working system and a clear message with a Retry.
 - [ ] The approved Arch date in the signed manifest is never older than the date the ISO pinned (rule in `zohara-pipeline/README.md`).
 - [ ] Package signing is **on**: `ZOHARA_PKG_SIGNING_KEY` added **(owner)**, machines switched to `SigLevel = Required DatabaseRequired`,
