@@ -19,17 +19,10 @@ on:
       - 'zohara-voice/**'
       - 'zohara-voice-model/**'
   workflow_dispatch:
-    inputs:
-      channel:
-        description: 'Release channel'
-        required: true
-        default: stable
-        type: choice
-        options: [stable, beta, alpha]
 
 jobs:
   build:
-    name: Build + package + publish
+    name: Build + package
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
@@ -76,14 +69,3 @@ jobs:
             zohara-voice/*.pkg.tar.zst
             zohara-voice-model/*.pkg.tar.zst
 
-      - name: Publish to zohara-packages
-        if: github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
-          CHANNEL: ${{ github.event.inputs.channel || 'stable' }}
-        run: |
-          # The model first: the engine depends on it. WAIT=1 holds until
-          # zohara-packages has rebuilt its database, so the two publishes
-          # don't overwrite each other.
-          WAIT=1 bash scripts/publish-package.sh "zohara-voice-model/${{ env.model_file }}" zohara-voice-model "${{ env.model_ver }}" zohara-voice-arch-x86_64
-          bash scripts/publish-package.sh "zohara-voice/${{ env.voice_file }}" zohara-voice "${{ env.voice_ver }}" zohara-voice-arch-x86_64

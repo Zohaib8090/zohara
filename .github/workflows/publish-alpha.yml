@@ -1,0 +1,47 @@
+name: Publish to alpha
+
+# Every finished package build in this repository goes to the ALPHA channel by itself. That is the whole point of
+# alpha: it is the development channel, so whatever is pushed reaches the people who chose to test it.
+# Beta and stable never move from here: they are chosen on purpose on the release admin site
+# (https://zohara-updates-system.onrender.com/). The channel below is fixed to alpha, so this workflow cannot
+# publish anywhere else.
+#
+# The build workflows only build and upload their package as an artifact; this one starts after they finish
+# (zohara-packages only accepts a run that has completed), and asks zohara-packages/publish.yml to publish it.
+# To add another package build here: add its workflow name to the list below (and keep the name in
+# zohara-packages/scripts/verify-source-run.sh in step).
+
+on:
+  workflow_run:
+    workflows:
+      - Build & Publish Zohara Store
+      - Build & Publish Zohara Snapshots
+      - Build & Publish Zohara Voice
+      - Build & Publish Zohara Welcome
+      - Build & Publish Zohara Keyring
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  to-alpha:
+    name: Send the build to alpha
+    # Only a successful build of a push or a manual start, on master.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'master' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask zohara-packages to publish this build to alpha
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "::warning::PACKAGES_DISPATCH_TOKEN is not set; $WORKFLOW #$RUN_ID was not published."; exit 0; }
+          jq -n --arg run "$RUN_ID" '{event_type: "package-published",
+            client_payload: {run_id: $run, source_repo: "Zohaib8090/zohara", channel: "alpha"}}' \
+            | gh api repos/Zohaib8090/zohara-packages/dispatches --method POST --input -
+          echo "::notice::$WORKFLOW #$RUN_ID sent to the alpha channel"

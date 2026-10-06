@@ -4,8 +4,9 @@ name: Build & Publish Zohara Welcome
 # can be updated from Zohara Store instead of only through a new ISO.
 #
 #   pull request        -> tests + build only
-#   push to master      -> tests, build, publish to the stable channel
-#   manual dispatch     -> same, on the chosen channel
+#   push to master      -> tests, build, upload the package as an artifact
+#   manual dispatch     -> same
+# Publishing is done by publish-alpha.yml (alpha) and the release admin site (beta, stable).
 
 on:
   push:
@@ -18,13 +19,6 @@ on:
     paths:
       - 'zohara-welcome/**'
   workflow_dispatch:
-    inputs:
-      channel:
-        description: 'Release channel'
-        required: true
-        default: stable
-        type: choice
-        options: [stable, beta, alpha]
 
 env:
   CARGO_TERM_COLOR: always
@@ -32,7 +26,7 @@ env:
 
 jobs:
   build:
-    name: Test + package + publish
+    name: Test + package
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
@@ -77,17 +71,10 @@ jobs:
           echo "package_file=$PKG_FILE" >> "$GITHUB_ENV"
           echo "package_path=zohara-welcome/$PKG_FILE" >> "$GITHUB_ENV"
 
-      # Uploaded before publishing: zohara-packages downloads it from this run.
+      # zohara-packages downloads the package from this run's artifacts when it is published.
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
           name: zohara-welcome-arch-x86_64
           path: ${{ env.package_path }}
 
-      - name: Publish to zohara-packages
-        if: github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
-          CHANNEL: ${{ github.event.inputs.channel || 'stable' }}
-        run: |
-          bash scripts/publish-package.sh "${{ env.package_path }}" "$PKG" "${{ steps.version.outputs.version }}" zohara-welcome-arch-x86_64

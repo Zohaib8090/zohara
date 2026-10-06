@@ -15,17 +15,10 @@ on:
     paths:
       - 'zohara-snapshots/**'
   workflow_dispatch:
-    inputs:
-      channel:
-        description: 'Release channel'
-        required: true
-        default: stable
-        type: choice
-        options: [stable, beta, alpha]
 
 jobs:
   build:
-    name: Check + package + publish
+    name: Check + package
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
@@ -60,10 +53,3 @@ jobs:
           name: zohara-snapshots-arch-x86_64
           path: zohara-snapshots/*.pkg.tar.zst
 
-      - name: Publish to zohara-packages
-        if: github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
-          CHANNEL: ${{ github.event.inputs.channel || 'stable' }}
-        run: |
-          bash scripts/publish-package.sh "zohara-snapshots/${{ env.package_file }}" zohara-snapshots "${{ env.package_ver }}" zohara-snapshots-arch-x86_64
