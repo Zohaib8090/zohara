@@ -38,7 +38,7 @@ tester's report). Items marked **(owner)** need the owner, not Claude.
 - [ ] Wi-Fi, Bluetooth, sound, display (including 2 monitors), battery and power modes work on the 3 test computers.
 - [ ] Printing and a USB drive work. Suspend and resume work.
 - [ ] The theme follows the system dark and light setting in Settings, the Store and Welcome.
-- [ ] The two packages named `zohara-welcome` (from `zohara-apps` and from `zohara/zohara-welcome`) are merged into one.
+- [x] The two packages named `zohara-welcome` are merged into one (done 2026-10-06: `zohara-apps` no longer ships `zohara-welcome` or `zohara-migrate`; the stale copies were removed from alpha with `remove-package.yml`; each channel has one `zohara-welcome`).
 
 ## 4. The release pipeline
 
