@@ -74,6 +74,8 @@ with no shared code (owner's decision, 2026-10-06). Details: `zohara-settings/do
 * **Secure Boot**: deferred; keep telling users to turn it off (`docs/SECURE-BOOT-PLAN.md`).
 
 ## Traps (all cost real time; more in `GOTCHA.md`)
+* A Settings row appended to a plain `Box` does nothing when clicked; a `ComboRow` selected-item box reports position 0; `&` in a
+  title needs `set_use_markup(false)`. When the owner reports a real-laptop bug: fix, test by clicking in the VM, then promote that build.
 
 * `adw::HeaderBar::set_show_title(false)` hides the title widget (tabs, search). An `ActionRow` outside a `ListBox` never activates.
 * Piped pacman buffers its output: use `stdbuf -oL pacman`; downloads sit in `/var/cache/pacman/pkg/download-*/`.
