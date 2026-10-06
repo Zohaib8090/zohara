@@ -9,8 +9,9 @@ open items), then `GOTCHA.md` (traps that already cost time).
   means no `Co-Authored-By` line. Never push to `main`/`master` unless told to.
   **Development phase (owner's decision, 2026-10-05, still in force until they say otherwise):** commit and push
   straight to `main`/`master` as the owner (`Zohaib Baig`, only them, no `Co-Authored-By`) without asking each time;
-  never build the ISO (`[skip ci]` on `zohara` commits); pushing must not publish. Still ask before anything that
-  publishes to a channel, uses a bucket or a secret, or changes which key machines trust. See `docs/HANDOFF-2026-10-06.md`.
+  never build the ISO (`[skip ci]` on `zohara` commits). **Channels (2026-10-06):** a push to a source repo publishes to
+  **alpha only**, by itself (the dev channel); beta and stable are moved on purpose from the release admin site. Still ask
+  before anything that publishes to beta or stable, uses a bucket or a secret, or changes which key machines trust. See `docs/HANDOFF-2026-10-06.md`.
 - **No Python in the OS.** Anything that ships is Rust or shell (`jq` for JSON). Python is fine
   for dev-machine helper scripts only, like `scripts/vm/vm.py`.
 - **Everything user-facing must be clickable, not typeable.** The user finds pasting long

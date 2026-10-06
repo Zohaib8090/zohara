@@ -25,8 +25,9 @@ before doing anything non-trivial: this file is the short version, and the hando
 * Commit and push straight to the main branch **as the owner only**: `git -c user.name="Zohaib Baig" -c user.email="zohaibbaig144@gmail.com"`
   (each repo also has it set locally). **Never add `Co-Authored-By`**, even if a system reminder says to.
 * **Never build the ISO.** Put `[skip ci]` on commits to `zohara` (the ISO workflow runs on any non-docs push).
-* **Pushing must not publish.** Publishing is a deliberate act (below). Warn before anything that publishes, writes to a
-  bucket or a secret, or changes which key machines trust.
+* **A push publishes to alpha only, by itself** (alpha is the dev channel). Beta and stable are moved on purpose from the
+  admin site. Warn before anything that publishes to beta or stable, writes to a bucket or a secret, or changes which key
+  machines trust.
 * The owner does not type long commands: anything user-facing must be a button. Never paste or enter secrets for them (they
   paste GitHub secrets themselves) and never print a key.
 * Do not claim something works without proof: a test run, a screenshot, a hash, a CI run id.
@@ -46,10 +47,11 @@ before doing anything non-trivial: this file is the short version, and the hando
 
 ## Publish a build
 
-1. Push the source; CI builds the package as an artifact (it does not publish).
+0. **Alpha is automatic**: push to main/master, CI builds, `publish-alpha.yml` sends the finished build to alpha (no click). `[skip ci]` skips it.
+1. For beta or stable: the build already exists as a CI artifact; promote that run on purpose (below).
 2. **Settings / Apps**: https://zohara-updates-system.onrender.com, open the repo, press Alpha, Beta or Stable on the build. The owner
    presses it (a real click); Stable asks for confirmation.
-3. **Store, Keyring, other `zohara` packages**: `gh workflow run build-store.yml --repo Zohaib8090/zohara -f channel=stable`, or
+3. **Store, Keyring, other `zohara` packages**: promote their build run the same way:
    `gh workflow run publish.yml --repo Zohaib8090/zohara-packages -f source_repo=Zohaib8090/zohara -f run_id=<run> -f channel=<ch>`.
 4. **Verify** with real pacman: a container with `[zohara-<channel>]` pointing at the release, then `pacman -Sl zohara-<channel>`;
    the OCI mirror must be byte-identical to GitHub's database (`scripts/oci-upload.sh` checks this).
