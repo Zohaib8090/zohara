@@ -139,11 +139,14 @@ fn check_pacman_pinned() -> Result<Vec<PkgUpdate>, String> {
         };
         std::fs::write(&conf, check_conf).map_err(|e| e.to_string())?;
         // Same trick as checkupdates: a private copy of the databases that
-        // shares the installed-package list.
+        // shares the installed-package list. The sync only downloads into that
+        // private folder, so pacman's download sandbox is switched off: under
+        // fakeroot it can't apply Landlock or switch to the `alpm` user, and
+        // the check failed on real installs ("Landlock ruleset could not be applied").
         std::os::unix::fs::symlink("/var/lib/pacman/local", dir.join("db/local")).map_err(|e| e.to_string())?;
         let (conf, db) = (conf.to_string_lossy().into_owned(), dir.join("db").to_string_lossy().into_owned());
         let sync = Command::new("fakeroot")
-            .args(["--", "pacman", "--config", &conf, "--dbpath", &db, "--logfile", "/dev/null", "-Sy"])
+            .args(["--", "pacman", "--disable-sandbox", "--config", &conf, "--dbpath", &db, "--logfile", "/dev/null", "-Sy"])
             .output()
             .map_err(|_| "Checking for system updates needs fakeroot, which isn't installed".to_string())?;
         if !sync.status.success() {
