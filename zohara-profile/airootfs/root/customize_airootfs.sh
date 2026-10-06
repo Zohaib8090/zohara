@@ -18,7 +18,7 @@ echo "  -> Zohara binaries marked executable."
 # .desktop, icon and update-check units, so later `pacman -S zohara-store`
 # upgrades don't hit "exists in filesystem" conflicts.
 ZOHARA_PKGS=()
-for f in /root/zohara-settings.pkg.tar.zst /root/zohara-store.pkg.tar.zst /root/zohara-welcome.pkg.tar.zst \
+for f in /root/zohara-keyring.pkg.tar.zst /root/zohara-settings.pkg.tar.zst /root/zohara-store.pkg.tar.zst /root/zohara-welcome.pkg.tar.zst \
          /root/zohara-voice-model.pkg.tar.zst /root/zohara-voice.pkg.tar.zst /root/zohara-snapshots.pkg.tar.zst; do
     if [[ -f "$f" ]]; then ZOHARA_PKGS+=("$f"); else echo "  !! $f missing; it will not be installed."; fi
 done

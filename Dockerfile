@@ -147,6 +147,8 @@ RUN echo "zohara-settings @ ${ZOHARA_SETTINGS_SHA}" && \
 COPY --chown=builder:builder zohara-store-rs /tmp/zohara-store-rs
 # zohara-welcome: the welcome app and migration tool (replaced four PyQt5 scripts).
 COPY --chown=builder:builder zohara-welcome /tmp/zohara-welcome-rs
+# zohara-keyring: Zohara's package-signing key. Settings and the Store depend on it, so it must be installed with them.
+COPY --chown=builder:builder zohara-keyring /tmp/zohara-keyring
 # Cache mounts: persist Cargo registry, git checkouts, AND the per-crate
 # `target/` directories across `docker build` runs. Without the target
 # mounts, every change to a single .rs file forces a full cold rebuild of
@@ -170,7 +172,9 @@ RUN --mount=type=cache,target=/home/builder/.cargo/registry,uid=1000,sharing=loc
     mv /tmp/zohara-welcome-rs/zohara-welcome-[0-9]*.pkg.tar.zst /tmp/zohara-welcome.pkg.tar.zst && \
     cd /tmp/zohara-store-rs && /home/builder/.cargo/bin/cargo build --release && \
     _PKGVER="0.1.0.$STAMP" PATH=/home/builder/.cargo/bin:$PATH makepkg --nodeps --nocheck --skippgpcheck && \
-    mv /tmp/zohara-store-rs/zohara-store-[0-9]*.pkg.tar.zst /tmp/zohara-store.pkg.tar.zst
+    mv /tmp/zohara-store-rs/zohara-store-[0-9]*.pkg.tar.zst /tmp/zohara-store.pkg.tar.zst && \
+    cd /tmp/zohara-keyring && _PKGVER="$STAMP" makepkg --nodeps --nocheck --skippgpcheck && \
+    mv /tmp/zohara-keyring/zohara-keyring-[0-9]*.pkg.tar.zst /tmp/zohara-keyring.pkg.tar.zst
 
 # /opt is owned by root, so we cannot create /opt/build while still USER
 # builder. Switch to root just for the install step. The build artifacts
@@ -186,6 +190,7 @@ USER root
 RUN mkdir -p /opt/build && \
     cp /tmp/zohara-settings-rs/target/release/zohara-settings /opt/build/ && \
     cp /tmp/zohara-store.pkg.tar.zst                         /opt/build/ && \
+    cp /tmp/zohara-keyring.pkg.tar.zst                       /opt/build/ && \
     cp /tmp/zohara-settings.pkg.tar.zst                      /opt/build/ && \
     cp /tmp/zohara-welcome.pkg.tar.zst /tmp/zohara-voice.pkg.tar.zst /tmp/zohara-voice-model.pkg.tar.zst /tmp/zohara-snapshots.pkg.tar.zst /opt/build/
 
