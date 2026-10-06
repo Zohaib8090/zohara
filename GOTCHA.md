@@ -242,3 +242,22 @@ piping into non-interactive zsh doesn't reproduce it.
   touch their paths, or remove the publish steps (done for `zohara-settings`).
 * **The ISO's Dockerfile step that downloads `brave-origin-bin` fails with a Chaotic-AUR 404** when its mirrors lag behind
   its database. It now retries (6 tries).
+
+## Settings and the VM (2026-10-06, second half)
+
+* **A row outside a `ListBox` never reacts to clicks.** This silently killed Display's pickers, Sound's pickers, the Wi-Fi and
+  Personalization expanders, Home's buttons. `pages::adopt_orphan_rows` (zohara-settings, run on every page in `build_page`)
+  now moves orphan rows into a list. If a new control "highlights but does nothing", check this first.
+* **`&` in a row title is read as markup** and the whole title vanishes ("Power & battery"): call `set_use_markup(false)`.
+* **A `ComboRow`'s selected-item box reports `position() == 0`**, so looking the app up by position shows the first entry for
+  whatever is selected (made the default-browser row look unchanged after a successful change). Match on the item's own label.
+* **Calamares treats `$name` in a module command as its own variable** and refuses to run it ("Bad variables"): no dollar signs in
+  `shellprocess_*.conf` commands.
+* **`pacman -Sy` under `fakeroot` fails on real installs** ("Landlock ruleset could not be applied", "switching to sandbox user
+  'alpm' failed"): pass `--disable-sandbox` for the private check.
+* **`libinput-tools` is a separate Arch package**; `libinput debug-events` does not exist without it.
+* **The test VM boots the ISO before its disk** (`bootindex=1`): after installing, "restart" shows the live system again. Boot
+  the disk alone (`run-disk.sh`) to test the installed system.
+* **`/tmp` scripts vanish** between sessions/reboots: keep the VM start script inside the VM folder.
+* **A workflow that only builds must not publish**: publishing is `publish-alpha.yml` (workflow_run) so a failed build cannot
+  publish; its channel is fixed to alpha.
