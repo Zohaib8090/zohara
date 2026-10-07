@@ -261,3 +261,25 @@ piping into non-interactive zsh doesn't reproduce it.
 * **`/tmp` scripts vanish** between sessions/reboots: keep the VM start script inside the VM folder.
 * **A workflow that only builds must not publish**: publishing is `publish-alpha.yml` (workflow_run) so a failed build cannot
   publish; its channel is fixed to alpha.
+
+## 2026-10-07
+
+* **`L+` in a tmpfiles rule forces a path back at every boot and after package updates** (Arch's `21-systemd-tmpfiles.hook`). The old
+  `zohara-localtime.conf` (`L+ /etc/localtime ... UTC`) reset every machine's time zone. Use a real symlink made at build time instead.
+* **A running Settings keeps its old code after an update.** Closing the window is not always enough; after "Update all" make sure the old window is
+  gone (`X`, check the taskbar) before relaunching, or you will test the previous build and think a fix failed.
+* **A modal pop-up (Themes, Text input, Add a game...) blocks clicks to the window behind it**, including the sidebar. Close it first.
+* **`vm.py type` cannot type `|` and drops characters on long lines** (a stuck key can fill the terminal). Serve a script with
+  `scripts/vm/srv.py` and fetch it with `curl -so /tmp/f.sh 10.0.2.2:8000/NAME; bash /tmp/f.sh`. Key names are lowercase QMP names (`ret`, `esc`).
+  The QMP socket path must be under 108 bytes: use a short dir like `/tmp/zt`, not the scratchpad.
+* **The Arch archive server resets HTTP/2 streams** ("stream reset by server") during the ISO build and kills it. The profile `pacman.conf` now uses
+  `XferCommand = curl --http1.1 ... --retry`. A new package that Settings depends on (`libinput-tools`) must also be in `packages.x86_64`,
+  or it is fetched late and can fail the build.
+* **GitHub release files are limited to 2 GB** and the ISO is 3.9 GB: the GitHub release `iso-2026.10.07` has only notes and links. Do not name a tag
+  `v*` unless you want it to start an ISO build (`build-iso.yml` runs on `v*` tags).
+* **The OCI CLI session expires**; renew it with the owner's browser sign-in (`oci session authenticate --profile zohara`, region 14 =
+  `ap-mumbai-1`), then use `--profile zohara --auth security_token`. Pick the file to publish by its hash (CI build and local build differ).
+* **A `sed`/python text replace that silently does not match leaves the old text in the file**: after editing, grep for the new text (a stale
+  description string made a good build look like the old one).
+* **`ComboRow`/`DropDown` search needs an expression** (`PropertyExpression` on `StringObject`'s `string`), or typing does nothing.
+* **`gh run download` writes nothing until the whole artifact has arrived** (about 15 minutes for the ISO); the folder looks empty meanwhile.
