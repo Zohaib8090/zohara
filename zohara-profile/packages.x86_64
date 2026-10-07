@@ -112,6 +112,7 @@ plasma-desktop
 kwin-x11
 plasma-nm
 plasma-keyboard
+qt6-virtualkeyboard
 plasma-pa
 powerdevil
 kscreen
