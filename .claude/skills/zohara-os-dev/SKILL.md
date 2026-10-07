@@ -24,7 +24,7 @@ before doing anything non-trivial: this file is the short version, and the hando
 
 * Commit and push straight to the main branch **as the owner only**: `git -c user.name="Zohaib Baig" -c user.email="zohaibbaig144@gmail.com"`
   (each repo also has it set locally). **Never add `Co-Authored-By`**, even if a system reminder says to.
-* **Never build the ISO.** Put `[skip ci]` on commits to `zohara` (the ISO workflow runs on any non-docs push).
+* **Never build the ISO unless the owner asks** (they did on 2026-10-07; see `docs/HANDOFF-2026-10-06.md` "2026-10-07"). Put `[skip ci]` on commits to `zohara` (the ISO workflow runs on any non-docs push, and on `v*` tags).
 * **A push publishes to alpha only, by itself** (alpha is the dev channel). Beta and stable are moved on purpose from the
   admin site. Warn before anything that publishes to beta or stable, writes to a bucket or a secret, or changes which key
   machines trust.
@@ -58,6 +58,18 @@ before doing anything non-trivial: this file is the short version, and the hando
 5. A brand-new package reaches existing machines only if an installed package depends on it, and it must exist in **every**
    channel. A channel is a separate repository; a machine follows one (`zohara-channel set`; the Store's Updates page has a picker).
 
+## ISO, hosting and the website (2026-10-07)
+
+Build locally with `scripts/build-iso-linux.sh` (Docker, 30-60 min) and in CI with `gh workflow run build-iso.yml --repo Zohaib8090/zohara`; both only when asked.
+Boot-test in a VM, and inspect the image with `7z x ISO arch/x86_64/airootfs.sfs` + `unsquashfs`. Host: OCI bucket `zohara-os` (main link; the CLI session
+needs the owner's browser sign-in: `oci session authenticate --profile zohara`, region 14), SourceForge via `scripts/upload-iso.sh ISO --yes` (mirror),
+website `zohara-website/index.html` (link and SHA-256). GitHub releases cannot carry the ISO (2 GB file limit): notes and links only; do not tag `v*`.
+Verify a public copy by downloading and hashing it. Details and the build fixes (curl XferCommand, `libinput-tools` in the package list): the handoff.
+
+## Time zone (2026-10-07)
+The old ISO rule `L+ /etc/localtime ... UTC` reset the zone at every boot and update; `zohara-settings.install` switches it off and Settings has an
+automatic time zone (`--auto-timezone` timer, polkit rule). See `zohara-settings/docs/TIMEZONE.md`.
+
 ## Who updates what
 
 **Settings** (`zohara-settings`, `src/sysupdate/`, page `Zohara Update`) updates the operating system: everything from pacman,
@@ -82,6 +94,7 @@ with no shared code (owner's decision, 2026-10-06). Details: `zohara-settings/do
 * A plain `pacman -Sy` as a normal user always fails; only the Store checks for updates (signed, pinned).
 * libadwaita widgets ignore `@define-color`; override the `--window-fg-color` style variables too.
 * CI `makepkg` needs `--nodeps` when a package depends on one that is only in the Zohara repo.
+* After "Update all" the old Settings window may still be running: close it fully before testing. `vm.py type` cannot type `|`: serve scripts with `scripts/vm/srv.py`.
 * `pkill -f X` inside a command that mentions X kills its own shell. Waiting: use `gh run watch` or `until` loops, not `sleep N;` chains.
 * `zohara-packages` gets automatic `apps.json` commits: `git pull --rebase` before pushing.
 
