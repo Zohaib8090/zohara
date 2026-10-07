@@ -283,3 +283,10 @@ piping into non-interactive zsh doesn't reproduce it.
   description string made a good build look like the old one).
 * **`ComboRow`/`DropDown` search needs an expression** (`PropertyExpression` on `StringObject`'s `string`), or typing does nothing.
 * **`gh run download` writes nothing until the whole artifact has arrived** (about 15 minutes for the ISO); the folder looks empty meanwhile.
+* **Plasma keeps the icons it has loaded**: changing the icon theme (even with `org.kde.KIconLoader.iconChanged` for all six groups) leaves some panel icons
+  (the start button) on the old set until plasmashell restarts (`systemctl --user restart plasma-plasmashell.service`; wait a few seconds first so panel changes are saved).
+* **KWin's virtual keyboard D-Bus interface is `org.kde.kwin.VirtualKeyboard`** (lowercase "kwin"), service `org.kde.KWin`, path `/VirtualKeyboard`.
+  The sign-in screen keyboard is separate: it needs `qt6-virtualkeyboard` and `InputMethod=qtvirtualkeyboard` in SDDM's config.
+* **A theme can leave a second panel behind** after it is removed (Plasma keeps panels in `plasma-org.kde.plasma.desktop-appletsrc`); Reset in Settings > Themes removes extras.
+* **Scanning `~/.local/share/icons` finds app folders too** (distrobox): only treat a folder as a theme if it lists `Directories=` (icons) or has `cursors/` (pointer).
+* **`bash` scripts in the VM folder may lack the executable bit** (`run-visible.sh`): start them with `bash ./run-visible.sh`.
