@@ -7,6 +7,13 @@ set -e
 
 echo "==> Zohara OS: Running post-install customizations..."
 
+# ── /etc/localtime must be a real link ─────────────────────────────────────
+# It used to be fixed at every boot by a tmpfiles rule ("L+ /etc/localtime ... UTC"), which also forced every installed
+# system back to UTC at each boot and after package updates. A real link made here is enough; the installer and
+# Settings > Time & language (automatic time zone) choose the actual zone.
+ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+echo "  -> /etc/localtime is a real link."
+
 # ── Ensure all Zohara binaries are executable ──────────────────────────────
 # Git sometimes drops execute bits; this guarantees they're always set.
 chmod +x /usr/local/bin/zohara-* 2>/dev/null || true
