@@ -70,6 +70,12 @@ Verify a public copy by downloading and hashing it. Details and the build fixes 
 The old ISO rule `L+ /etc/localtime ... UTC` reset the zone at every boot and update; `zohara-settings.install` switches it off and Settings has an
 automatic time zone (`--auto-timezone` timer, polkit rule). See `zohara-settings/docs/TIMEZONE.md`.
 
+## Plasma and VM traps from 2026-10-07
+* Plasma keeps loaded icons until `systemctl --user restart plasma-plasmashell.service` (wait a few seconds so panel edits are saved).
+* KWin's keyboard D-Bus interface is `org.kde.kwin.VirtualKeyboard` (lowercase); the sign-in screen keyboard needs `qt6-virtualkeyboard` + SDDM `InputMethod=qtvirtualkeyboard`.
+* The VM: `bash ~/zohara-vm/run-visible.sh` (not executable); `tester` is admin, `kid` is standard with no password; unlock the lock screen before clicking; fixtures in
+  `scripts/vm/guest/*.sh` served by `scripts/vm/srv.py` (`curl -so /tmp/x.sh 10.0.2.2:8000/NAME; bash /tmp/x.sh`). Always say what is tested and what is not.
+
 ## Who updates what
 
 **Settings** (`zohara-settings`, `src/sysupdate/`, page `Zohara Update`) updates the operating system: everything from pacman,
