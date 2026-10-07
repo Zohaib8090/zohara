@@ -1,0 +1,3 @@
+#!/bin/bash
+{ echo "== localtime"; ls -l /etc/localtime; echo "== timedatectl"; timedatectl show -p Timezone -p NTP -p NTPSynchronized 2>&1; date; echo "== rule file"; cat /etc/tmpfiles.d/zohara-localtime.conf 2>&1; echo "== polkit rule"; ls -l /usr/share/polkit-1/rules.d/50-zohara-timezone.rules 2>&1; echo "== timer"; systemctl --user is-enabled zohara-settings-timezone.timer 2>&1; systemctl --user is-active zohara-settings-timezone.timer 2>&1; systemctl --user list-timers 2>&1 | grep -i zone; echo "== last runs"; journalctl --user -u zohara-settings-timezone.service --no-pager -n 6 2>&1 | tail -6; } > /tmp/tz.txt 2>&1
+curl -s --data-binary @/tmp/tz.txt 10.0.2.2:8000/out/tz.txt
