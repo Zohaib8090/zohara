@@ -56,6 +56,7 @@ xf86-video-intel
 # being pulled in transitively by Plasma.
 xf86-input-libinput
 libinput
+libinput-tools
 # Accelerometer/orientation, for auto-rotate on a convertible touchscreen.
 iio-sensor-proxy
 alsa-utils
