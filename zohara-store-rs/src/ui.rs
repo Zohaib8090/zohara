@@ -267,7 +267,7 @@ fn build_library_page(cache: &Cache, stack: &gtk4::Stack) -> gtk4::Widget {
     title.add_css_class("page-title");
     title.set_xalign(0.0);
     inner.append(&title);
-    let subtitle = gtk4::Label::new(Some("Apps installed with the Store."));
+    let subtitle = gtk4::Label::new(Some("Apps installed on this computer."));
     subtitle.add_css_class("section-sub");
     subtitle.set_xalign(0.0);
     inner.append(&subtitle);
@@ -292,29 +292,29 @@ fn build_library_page(cache: &Cache, stack: &gtk4::Stack) -> gtk4::Widget {
             generation.set(mine);
             let (tx, rx) = std::sync::mpsc::channel();
             std::thread::spawn(move || {
-                let _ = tx.send((crate::library::load_record(), crate::updates::flatpak_installed()));
+                let _ = tx.send((crate::library::load_record(), crate::library::arch_apps(), crate::updates::flatpak_installed()));
             });
             let (cache, content, subtitle, generation) =
                 (cache.clone(), content.clone(), subtitle.clone(), generation.clone());
             glib::timeout_add_local(std::time::Duration::from_millis(100), move || match rx.try_recv() {
-                Ok((recorded, flatpaks)) => {
+                Ok((recorded, arch, flatpaks)) => {
                     if generation.get() != mine {
                         return glib::ControlFlow::Break;
                     }
-                    let apps = crate::library::entries(recorded, &flatpaks, |s, p| cache.is_installed(s, p));
+                    let apps = crate::library::entries(recorded, arch, &flatpaks, |s, p| cache.is_installed(s, p));
                     while let Some(c) = content.first_child() {
                         content.remove(&c);
                     }
                     if apps.is_empty() {
-                        subtitle.set_text("Apps installed with the Store.");
+                        subtitle.set_text("Apps installed on this computer.");
                         let empty = adw::StatusPage::builder()
                             .icon_name("folder-download-symbolic")
                             .title("Your library is empty")
-                            .description("Apps you install from the Store will show up here.")
+                            .description("Apps you install will show up here.")
                             .build();
                         content.append(&empty);
                     } else {
-                        subtitle.set_text(&format!("{} installed with the Store.", if apps.len() == 1 { "1 app".to_string() } else { format!("{} apps", apps.len()) }));
+                        subtitle.set_text(&format!("{} installed on this computer.", if apps.len() == 1 { "1 app".to_string() } else { format!("{} apps", apps.len()) }));
                         content.append(&app_grid(&apps, &cache));
                     }
                     glib::ControlFlow::Break
