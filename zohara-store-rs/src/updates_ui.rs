@@ -68,7 +68,7 @@ fn downloads_group() -> adw::PreferencesGroup {
     let idle = adw::ActionRow::new();
     idle.set_title("Nothing is being installed right now");
     idle.set_subtitle("Apps you install or remove from the Store show up here while they work.");
-    idle.add_prefix(&gtk4::Image::from_icon_name("emblem-ok-symbolic"));
+    idle.add_prefix(&gtk4::Image::from_icon_name("object-select-symbolic"));
     group.add(&idle);
 
     let rows: Rc<RefCell<Vec<DownloadRow>>> = Rc::new(RefCell::new(Vec::new()));

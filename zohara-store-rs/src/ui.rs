@@ -282,7 +282,6 @@ fn build_library_page(cache: &Cache, stack: &gtk4::Stack) -> gtk4::Widget {
     clamp.set_child(Some(&inner));
     scroll.set_child(Some(&clamp));
 
-    let curated = Rc::new(get_curated_apps());
     let generation = Rc::new(Cell::new(0u32));
     let refresh: Rc<dyn Fn()> = {
         let (cache, content, subtitle, generation) = (cache.clone(), content.clone(), subtitle.clone(), generation.clone());
@@ -295,14 +294,14 @@ fn build_library_page(cache: &Cache, stack: &gtk4::Stack) -> gtk4::Widget {
             std::thread::spawn(move || {
                 let _ = tx.send((crate::library::load_record(), crate::updates::flatpak_installed()));
             });
-            let (cache, content, subtitle, generation, curated) =
-                (cache.clone(), content.clone(), subtitle.clone(), generation.clone(), curated.clone());
+            let (cache, content, subtitle, generation) =
+                (cache.clone(), content.clone(), subtitle.clone(), generation.clone());
             glib::timeout_add_local(std::time::Duration::from_millis(100), move || match rx.try_recv() {
                 Ok((recorded, flatpaks)) => {
                     if generation.get() != mine {
                         return glib::ControlFlow::Break;
                     }
-                    let apps = crate::library::entries(recorded, &curated, &flatpaks, |s, p| cache.is_installed(s, p));
+                    let apps = crate::library::entries(recorded, &flatpaks, |s, p| cache.is_installed(s, p));
                     while let Some(c) = content.first_child() {
                         content.remove(&c);
                     }

@@ -1,8 +1,8 @@
 //! The Library tab: the apps installed with the Store.
 //!
 //! The Store keeps a small record of what it installs (`library.json` in the user's state folder), so an app from
-//! any source shows up here, not only the ones in the curated list. Flatpak apps and curated apps that are installed
-//! are included too, because they were installed through the Store before the record existed.
+//! any source shows up here. Flatpak apps that are installed are included too (they are the apps people choose
+//! themselves; the record only began with this version). Packages that merely happen to be on the computer are not.
 
 use std::path::PathBuf;
 
@@ -69,16 +69,15 @@ fn from_flatpak(f: &FlatpakInstalled) -> AppInfo {
     }
 }
 
-/// What the tab lists: the record, the installed curated apps and the installed Flatpak apps, each once, still
-/// installed according to `is_installed`, by name.
+/// What the tab lists: the record and the installed Flatpak apps, each once, still installed according to
+/// `is_installed`, by name.
 pub fn entries(
     recorded: Vec<AppInfo>,
-    curated: &[AppInfo],
     flatpaks: &[FlatpakInstalled],
     is_installed: impl Fn(&AppSource, &str) -> bool,
 ) -> Vec<AppInfo> {
     let mut all: Vec<AppInfo> = Vec::new();
-    let candidates = recorded.into_iter().chain(curated.iter().cloned()).chain(flatpaks.iter().map(from_flatpak));
+    let candidates = recorded.into_iter().chain(flatpaks.iter().map(from_flatpak));
     for app in candidates {
         if is_installed(&app.source, &app.package_name) && !all.iter().any(|a| same(a, &app.source, &app.package_name)) {
             all.push(app);
@@ -110,20 +109,19 @@ mod tests {
     }
 
     #[test]
-    fn lists_recorded_curated_and_flatpak_apps_once_each_sorted_by_name() {
-        let recorded = vec![app("Zeta", AppSource::Pacman, "zeta"), app("Firefox", AppSource::Pacman, "firefox")];
-        let curated = vec![app("Mozilla Firefox", AppSource::Pacman, "firefox"), app("VLC", AppSource::Pacman, "vlc"), app("GIMP", AppSource::Pacman, "gimp")];
-        let flatpaks = vec![fp("org.example.Cool", "Cool App")];
-        let installed = |s: &AppSource, p: &str| matches!((s, p), (AppSource::Pacman, "zeta" | "firefox" | "vlc") | (AppSource::Flatpak, "org.example.Cool"));
-        let names: Vec<String> = entries(recorded, &curated, &flatpaks, installed).into_iter().map(|a| a.name).collect();
-        // Firefox appears once (the recorded entry wins); GIMP is not installed so it is left out.
-        assert_eq!(names, vec!["Cool App", "Firefox", "VLC", "Zeta"]);
+    fn lists_recorded_and_flatpak_apps_once_each_sorted_by_name() {
+        let recorded = vec![app("Zeta", AppSource::Pacman, "zeta"), app("Firefox", AppSource::Pacman, "firefox"), app("Gimp", AppSource::Pacman, "gimp")];
+        let flatpaks = vec![fp("org.example.Cool", "Cool App"), fp("org.example.Cool", "Cool App")];
+        let installed = |s: &AppSource, p: &str| matches!((s, p), (AppSource::Pacman, "zeta" | "firefox") | (AppSource::Flatpak, "org.example.Cool"));
+        let names: Vec<String> = entries(recorded, &flatpaks, installed).into_iter().map(|a| a.name).collect();
+        // Listed once each; Gimp is recorded but no longer installed, so it is left out.
+        assert_eq!(names, vec!["Cool App", "Firefox", "Zeta"]);
     }
 
     #[test]
     fn an_app_removed_elsewhere_drops_out_even_if_recorded() {
         let recorded = vec![app("Gone", AppSource::Pacman, "gone")];
-        assert!(entries(recorded, &[], &[], |_, _| false).is_empty());
+        assert!(entries(recorded, &[], |_, _| false).is_empty());
     }
 
     #[test]
