@@ -246,3 +246,7 @@ inotify-tools
 # Voice typing (Settings > Accessibility > Voice typing, Meta+H)
 wl-clipboard
 ydotool
+# Zohara Link (phone companion): desktop notifications and media keys. The daemon itself (zohara-linkd) is installed from
+# Settings > Zohara Link once it is on the channel; clipboard and pointer tools are the two lines above.
+libnotify
+playerctl
