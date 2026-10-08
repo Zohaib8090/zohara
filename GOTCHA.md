@@ -290,3 +290,21 @@ piping into non-interactive zsh doesn't reproduce it.
 * **A theme can leave a second panel behind** after it is removed (Plasma keeps panels in `plasma-org.kde.plasma.desktop-appletsrc`); Reset in Settings > Themes removes extras.
 * **Scanning `~/.local/share/icons` finds app folders too** (distrobox): only treat a folder as a theme if it lists `Directories=` (icons) or has `cursors/` (pointer).
 * **`bash` scripts in the VM folder may lack the executable bit** (`run-visible.sh`): start them with `bash ./run-visible.sh`.
+
+
+## 2026-10-08 traps
+* `udisksctl power-off` on a USB stick turns it off in software: it does **not** come back until it is physically unplugged and replugged.
+  Do not power off a stick the owner may reuse; unmount only.
+* Ventoy: only `.iso` files are listed. Copy an ISO to a `.iso.part` name first, verify the hash, then rename it. Ventoy "install" erases
+  the stick; "update" keeps files. The 32 MB `VTOYEFI` partition must never be deleted. exFAT cannot hold symlinks or permissions:
+  back up as `tar.zst` archives.
+* `pkexec bash -c ...` starts in `/`: use absolute paths. The password window appears on the owner's screen; they type it.
+* Zorin/Ubuntu mirror: official Zorin ISOs are at `https://mirrors.edge.kernel.org/zorinos-isos/18/` (listed on zorin.com/os/mirrors).
+* `vm.py` has no scroll: use keyboard (`down` repeatedly) to scroll a page; typed text drops characters, so clear each field (`ctrl-a`,
+  `backspace`) and retype one field at a time, then screenshot. `vm.py quit` can leave QEMU running a moment; check `pgrep qemu`.
+* A Flathub browser (Chrome) is `com.google.Chrome` under `/var/lib/flatpak/exports/bin`, not `google-chrome-stable`: any feature that finds
+  "installed browsers" by command name misses it. A Flatpak browser can only write profiles inside `~/.var/app/<id>/`.
+* After a wait loop ends, check which CI run it watched: an earlier docs build can finish first. Verify the newest package on the channel
+  contains the commit before telling the owner to update.
+* `paccache` exits non-zero when there is nothing to remove: never chain cleanup steps with `&&`. Measuring a folder with `du` is not "what
+  can be freed"; use the dry run.
