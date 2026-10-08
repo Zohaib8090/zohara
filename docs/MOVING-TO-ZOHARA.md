@@ -24,8 +24,8 @@ logins. All repos were clean and fully pushed to GitHub at backup time, so GitHu
 
 ## Restoring the work on Zohara
 
-1. Install the tools (pacman): `git github-cli docker docker-buildx rust rustup qemu-full edk2-ovmf libvirt-less is fine,
-   rsync jq minisign python openssh zstd xorriso`. Add yourself to the `docker` group, start docker.
+1. Install the tools (pacman): `git github-cli docker docker-buildx rustup qemu-full edk2-ovmf rsync jq minisign python
+   openssh zstd xorriso`. Add yourself to the `docker` group, start docker.
    (`oci-cli` is not in the Arch repos: `pip install --user oci-cli` in a throwaway venv, dev machine only, never in the OS.)
 2. Copy the stick's `projects/*.tar.zst` somewhere and extract each into `~/Documents/`:
    `tar -I zstd -xf <name>.tar.zst -C ~/Documents`. Or just `git clone` the repos from GitHub (`Zohaib8090/<name>`); use the
