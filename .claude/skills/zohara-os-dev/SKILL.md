@@ -6,7 +6,7 @@ description: "How to work on Zohara OS (the Arch-based KDE distro with Rust/GTK 
 # Zohara OS development
 
 Zohara OS is an Arch Linux system with KDE Plasma, linux-zen, and its own apps written in Rust with GTK4 and libadwaita.
-The newest facts live in `docs/HANDOFF-2026-10-06.md` (and the older handoffs, `GOTCHA.md`) in the `zohara` repo. Read the handoff
+**Start with `docs/MOVING-TO-ZOHARA.md` and `docs/HOW-THE-OWNER-WORKS.md`** (the owner replaced Zorin with Zohara on 2026-10-08; the working agreement is the source of truth for how they like to work). The newest facts live in `docs/HANDOFF-2026-10-06.md` (and the older handoffs, `GOTCHA.md`) in the `zohara` repo. Read the handoff
 before doing anything non-trivial: this file is the short version, and the handoff is the source of truth when they differ.
 
 ## The repos (all under `/home/zohaib/Documents/`)
