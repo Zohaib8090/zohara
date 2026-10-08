@@ -110,6 +110,22 @@ pub fn build() -> gtk4::Widget {
     let apps_btn = nav_pill("Apps", Some(&home_btn));
     let games_btn = nav_pill("Games", Some(&home_btn));
     let updates_btn = nav_pill("Updates", Some(&home_btn));
+    // "Updates (2)" while apps are installing or waiting their turn, so it shows from any page.
+    {
+        let btn = updates_btn.downgrade();
+        let show = move || match btn.upgrade() {
+            Some(b) => {
+                match crate::downloads::active_count() {
+                    0 => b.set_label("Updates"),
+                    n => b.set_label(&format!("Updates ({n})")),
+                }
+                true
+            }
+            None => false,
+        };
+        show();
+        crate::downloads::on_change(show);
+    }
     let nav = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
     nav.set_halign(gtk4::Align::Center);
     for b in [&home_btn, &apps_btn, &games_btn, &updates_btn] {
@@ -569,6 +585,8 @@ fn installer(app: &AppInfo, cache: &Cache) -> Installer {
     status.append(&bar);
 
     let job = Rc::new(Cell::new(Job::Idle));
+    // This app's line on the Updates page ("Downloading" list), if it has one.
+    let tracked: Rc<Cell<Option<u64>>> = Rc::new(Cell::new(None));
     {
         let (weak, job, app, cache2) = (btn.downgrade(), job.clone(), app.clone(), cache.clone());
         cache.on_change(move || match weak.upgrade() {
@@ -591,6 +609,11 @@ fn installer(app: &AppInfo, cache: &Cache) -> Installer {
             Job::Idle => cache.is_installed(&app.source, &app.package_name),
         };
         job.set(Job::Working);
+        if let Some(old) = tracked.take() {
+            crate::downloads::dismiss(old); // Retry: drop the failed line of the last attempt
+        }
+        let dl = crate::downloads::start(&app.name, removing);
+        tracked.set(Some(dl));
         b.set_sensitive(false);
         b.remove_css_class("error");
         b.set_label(if removing { "Removing…" } else { "Installing…" });
@@ -611,6 +634,7 @@ fn installer(app: &AppInfo, cache: &Cache) -> Installer {
             loop {
                 match rx.try_recv() {
                     Ok(backend::Event::Progress(p)) => {
+                        crate::downloads::progress(dl, &p);
                         text.set_text(&p.text);
                         match p.fraction {
                             Some(f) => {
@@ -621,6 +645,7 @@ fn installer(app: &AppInfo, cache: &Cache) -> Installer {
                         }
                     }
                     Ok(backend::Event::Done(Ok(()))) => {
+                        crate::downloads::finish(dl, Ok(()));
                         job.set(Job::Idle);
                         b.set_sensitive(true);
                         status.set_visible(false);
@@ -628,6 +653,7 @@ fn installer(app: &AppInfo, cache: &Cache) -> Installer {
                         return glib::ControlFlow::Break;
                     }
                     Ok(backend::Event::Done(Err(why))) => {
+                        crate::downloads::finish(dl, Err(why.clone()));
                         job.set(Job::Failed { removing });
                         b.set_sensitive(true);
                         b.set_label("Retry");
@@ -641,6 +667,7 @@ fn installer(app: &AppInfo, cache: &Cache) -> Installer {
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => return glib::ControlFlow::Continue,
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        crate::downloads::finish(dl, Err("The installer stopped unexpectedly.".into()));
                         job.set(Job::Failed { removing });
                         b.set_sensitive(true);
                         b.set_label("Retry");

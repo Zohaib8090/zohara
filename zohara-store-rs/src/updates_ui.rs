@@ -47,6 +47,88 @@ fn background<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static, done: i
     });
 }
 
+/// One line of the "Installing and removing" list.
+struct DownloadRow {
+    id: u64,
+    row: adw::ActionRow,
+    icon: gtk4::Image,
+    bar: gtk4::ProgressBar,
+    dismiss: gtk4::Button,
+}
+
+/// The list of apps being installed or removed, hidden while there are none. Rows are updated in place as news
+/// arrives, so the bars move smoothly instead of the list being rebuilt each time.
+fn downloads_group() -> adw::PreferencesGroup {
+    use crate::downloads::{self, State};
+    let group = adw::PreferencesGroup::new();
+    group.set_title("Installing and removing");
+    group.set_description(Some("Apps you started from the Store. They run one after another."));
+    group.set_visible(false);
+
+    let rows: Rc<RefCell<Vec<DownloadRow>>> = Rc::new(RefCell::new(Vec::new()));
+    let weak = group.downgrade();
+    let render = move || {
+        let Some(group) = weak.upgrade() else { return false };
+        let entries = downloads::snapshot();
+        let mut rows = rows.borrow_mut();
+        // Lines for jobs that are gone.
+        rows.retain(|r| {
+            let keep = entries.iter().any(|e| e.id == r.id);
+            if !keep {
+                group.remove(&r.row);
+            }
+            keep
+        });
+        for e in &entries {
+            if !rows.iter().any(|r| r.id == e.id) {
+                let row = adw::ActionRow::new();
+                row.set_subtitle_lines(2);
+                let icon = gtk4::Image::from_icon_name("folder-download-symbolic");
+                row.add_prefix(&icon);
+                let bar = gtk4::ProgressBar::new();
+                bar.set_valign(gtk4::Align::Center);
+                bar.set_size_request(160, -1);
+                row.add_suffix(&bar);
+                let dismiss = gtk4::Button::with_label("Dismiss");
+                dismiss.set_valign(gtk4::Align::Center);
+                dismiss.add_css_class("flat");
+                let id = e.id;
+                dismiss.connect_clicked(move |_| downloads::dismiss(id));
+                row.add_suffix(&dismiss);
+                group.add(&row);
+                rows.push(DownloadRow { id: e.id, row, icon, bar, dismiss });
+            }
+            let r = rows.iter().find(|r| r.id == e.id).expect("row exists");
+            r.row.set_title(&glib::markup_escape_text(&e.title()));
+            let failed = matches!(e.state, State::Failed(_));
+            match &e.state {
+                State::Failed(why) => {
+                    r.row.set_subtitle(&glib::markup_escape_text(&format!("It didn't work. {why}")));
+                    r.row.add_css_class("error");
+                    r.icon.set_icon_name(Some("dialog-error-symbolic"));
+                }
+                _ => {
+                    r.row.set_subtitle(&glib::markup_escape_text(&e.text));
+                    r.row.remove_css_class("error");
+                    r.icon.set_icon_name(Some("folder-download-symbolic"));
+                }
+            }
+            r.bar.set_visible(!failed);
+            r.dismiss.set_visible(failed);
+            match (&e.state, e.fraction) {
+                (State::Waiting, _) => r.bar.set_fraction(0.0),
+                (_, Some(f)) => r.bar.set_fraction(f),
+                (_, None) => r.bar.pulse(),
+            }
+        }
+        group.set_visible(!entries.is_empty());
+        true
+    };
+    render();
+    downloads::on_change(render);
+    group
+}
+
 pub fn build_page() -> gtk4::Widget {
     let scroll = gtk4::ScrolledWindow::new();
     scroll.set_vexpand(true);
@@ -63,6 +145,9 @@ pub fn build_page() -> gtk4::Widget {
     title.add_css_class("page-title");
     title.set_xalign(0.0);
     inner.append(&title);
+
+    // Apps being installed or removed right now (started from any page), however many.
+    inner.append(&downloads_group());
 
     // The operating system is not updated here: say where it is, with a button.
     let sys_group = adw::PreferencesGroup::new();
