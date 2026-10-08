@@ -49,7 +49,7 @@ logins. All repos were clean and fully pushed to GitHub at backup time, so GitHu
   at ISO 2026.10.07. The release number is 1.1.
 * The first thing to do on Zohara is the owner's real-hardware pass: sleep/resume and lid, Wi-Fi/Bluetooth, hibernate (swap
   size), a big update plus "Undo the last update", Windows games, Flatpak Chrome as a web-app browser.
-* Still open from earlier: the sleep logout bug, the dad's-laptop Wi-Fi, package signing rollout (owner pastes the secret),
+* Still open from earlier: the sleep logout bug, package signing rollout (owner pastes the secret) (the dad's-laptop Wi-Fi was fixed, see `HANDOFF-2026-10-06.md` "2026-10-08 (later)"),
   Secure Boot (deferred), secret cleanup (rotate the GitHub App client secret; the old `.pem` copies).
 
 ## If the install goes wrong

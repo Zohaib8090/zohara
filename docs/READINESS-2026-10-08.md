@@ -22,7 +22,7 @@ From `docs/BETA-CHECKLIST.md` (the project's own bar: today it is an **alpha**, 
 
 1. **Suspend and resume**: an open bug on record ("after suspend it logs out and reopens", cause not understood) and the
    Wi-Fi-after-sleep hook is untested on hardware. A laptop that cannot sleep reliably is a daily problem.
-2. **Wi-Fi on a second laptop is unresolved** (driver or wake-up problem, never diagnosed). Wi-Fi on the owner's own laptop
+2. ~~Wi-Fi on a second laptop is unresolved~~ **Fixed (owner reported, 2026-10-08)** on the owner's dad's laptop; the cause was not recorded. It is still only two machines. Wi-Fi on the owner's own laptop
    works, but that is one chip.
 3. **Hibernate**: Settings offers it, but nothing proves the installer creates swap large enough. Test before relying on it.
 4. **Never tested on real hardware**: touch-screen keyboard button, sign-in screen keyboard, theme reset restoring the
