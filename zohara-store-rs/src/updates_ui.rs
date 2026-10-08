@@ -63,7 +63,13 @@ fn downloads_group() -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::new();
     group.set_title("Installing and removing");
     group.set_description(Some("Apps you started from the Store. They run one after another."));
-    group.set_visible(false);
+
+    // Shown while nothing is running, so the section is always there.
+    let idle = adw::ActionRow::new();
+    idle.set_title("Nothing is being installed right now");
+    idle.set_subtitle("Apps you install or remove from the Store show up here while they work.");
+    idle.add_prefix(&gtk4::Image::from_icon_name("emblem-ok-symbolic"));
+    group.add(&idle);
 
     let rows: Rc<RefCell<Vec<DownloadRow>>> = Rc::new(RefCell::new(Vec::new()));
     let weak = group.downgrade();
@@ -121,7 +127,7 @@ fn downloads_group() -> adw::PreferencesGroup {
                 (_, None) => r.bar.pulse(),
             }
         }
-        group.set_visible(!entries.is_empty());
+        idle.set_visible(entries.is_empty());
         true
     };
     render();

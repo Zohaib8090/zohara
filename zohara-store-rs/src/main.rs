@@ -1,6 +1,7 @@
 pub mod app_info;
 pub mod backend;
 pub mod downloads;
+pub mod library;
 pub mod ui;
 pub mod updates;
 pub mod updates_ui;

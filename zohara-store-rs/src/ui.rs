@@ -109,6 +109,7 @@ pub fn build() -> gtk4::Widget {
     home_btn.set_active(true);
     let apps_btn = nav_pill("Apps", Some(&home_btn));
     let games_btn = nav_pill("Games", Some(&home_btn));
+    let library_btn = nav_pill("Library", Some(&home_btn));
     let updates_btn = nav_pill("Updates", Some(&home_btn));
     // "Updates (2)" while apps are installing or waiting their turn, so it shows from any page.
     {
@@ -128,7 +129,7 @@ pub fn build() -> gtk4::Widget {
     }
     let nav = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
     nav.set_halign(gtk4::Align::Center);
-    for b in [&home_btn, &apps_btn, &games_btn, &updates_btn] {
+    for b in [&home_btn, &apps_btn, &games_btn, &library_btn, &updates_btn] {
         nav.append(b);
     }
     header.set_title_widget(Some(&nav));
@@ -180,11 +181,12 @@ pub fn build() -> gtk4::Widget {
     stack.add_named(&build_browse_page(true, &cache), Some("games"));
     let search_page = SearchPage::new();
     stack.add_named(&search_page.widget, Some("search"));
+    stack.add_named(&build_library_page(&cache, &stack), Some("library"));
     stack.add_named(&crate::updates_ui::build_page(), Some("updates"));
 
     // The tab to return to when the search box is emptied.
     let last_tab = Rc::new(RefCell::new(String::from("home")));
-    for (btn, name) in [(&home_btn, "home"), (&apps_btn, "apps"), (&games_btn, "games"), (&updates_btn, "updates")] {
+    for (btn, name) in [(&home_btn, "home"), (&apps_btn, "apps"), (&games_btn, "games"), (&library_btn, "library"), (&updates_btn, "updates")] {
         let (s, last) = (stack.clone(), last_tab.clone());
         btn.connect_toggled(move |b| {
             if b.is_active() {
@@ -251,6 +253,100 @@ pub fn build() -> gtk4::Widget {
 
     tv.set_content(Some(&stack));
     tv.upcast()
+}
+
+/// The Library tab: every app installed with the Store, each with its Remove button. Rebuilt whenever the tab is shown
+/// and whenever something is installed or removed.
+fn build_library_page(cache: &Cache, stack: &gtk4::Stack) -> gtk4::Widget {
+    let inner = gtk4::Box::new(gtk4::Orientation::Vertical, 14);
+    inner.set_margin_top(16);
+    inner.set_margin_bottom(24);
+    inner.set_margin_start(16);
+    inner.set_margin_end(16);
+    let title = gtk4::Label::new(Some("Library"));
+    title.add_css_class("page-title");
+    title.set_xalign(0.0);
+    inner.append(&title);
+    let subtitle = gtk4::Label::new(Some("Apps installed with the Store."));
+    subtitle.add_css_class("section-sub");
+    subtitle.set_xalign(0.0);
+    inner.append(&subtitle);
+    let content = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    inner.append(&content);
+
+    let scroll = gtk4::ScrolledWindow::new();
+    scroll.set_vexpand(true);
+    scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
+    let clamp = adw::Clamp::new();
+    clamp.set_maximum_size(1000);
+    clamp.set_child(Some(&inner));
+    scroll.set_child(Some(&clamp));
+
+    let curated = Rc::new(get_curated_apps());
+    let generation = Rc::new(Cell::new(0u32));
+    let refresh: Rc<dyn Fn()> = {
+        let (cache, content, subtitle, generation) = (cache.clone(), content.clone(), subtitle.clone(), generation.clone());
+        Rc::new(move || {
+            // Reading the Flatpak list takes a moment: do it off the UI thread and ignore answers that were
+            // overtaken by a newer refresh.
+            let mine = generation.get() + 1;
+            generation.set(mine);
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send((crate::library::load_record(), crate::updates::flatpak_installed()));
+            });
+            let (cache, content, subtitle, generation, curated) =
+                (cache.clone(), content.clone(), subtitle.clone(), generation.clone(), curated.clone());
+            glib::timeout_add_local(std::time::Duration::from_millis(100), move || match rx.try_recv() {
+                Ok((recorded, flatpaks)) => {
+                    if generation.get() != mine {
+                        return glib::ControlFlow::Break;
+                    }
+                    let apps = crate::library::entries(recorded, &curated, &flatpaks, |s, p| cache.is_installed(s, p));
+                    while let Some(c) = content.first_child() {
+                        content.remove(&c);
+                    }
+                    if apps.is_empty() {
+                        subtitle.set_text("Apps installed with the Store.");
+                        let empty = adw::StatusPage::builder()
+                            .icon_name("folder-download-symbolic")
+                            .title("Your library is empty")
+                            .description("Apps you install from the Store will show up here.")
+                            .build();
+                        content.append(&empty);
+                    } else {
+                        subtitle.set_text(&format!("{} installed with the Store.", if apps.len() == 1 { "1 app".to_string() } else { format!("{} apps", apps.len()) }));
+                        content.append(&app_grid(&apps, &cache));
+                    }
+                    glib::ControlFlow::Break
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(_) => glib::ControlFlow::Break,
+            });
+        })
+    };
+    // Shown: read it fresh.
+    {
+        let refresh = refresh.clone();
+        stack.connect_visible_child_name_notify(move |s| {
+            if s.visible_child_name().as_deref() == Some("library") {
+                refresh();
+            }
+        });
+    }
+    // Something was installed or removed: rebuild once the change has finished notifying (a listener must not
+    // create new buttons while the cache is still going through its listeners).
+    {
+        let (refresh, stack) = (refresh.clone(), stack.clone());
+        cache.on_change(move || {
+            if stack.visible_child_name().as_deref() == Some("library") {
+                let refresh = refresh.clone();
+                glib::idle_add_local_once(move || refresh());
+            }
+            true
+        });
+    }
+    scroll.upcast()
 }
 
 fn nav_pill(label: &str, group: Option<&gtk4::ToggleButton>) -> gtk4::ToggleButton {
@@ -646,6 +742,11 @@ fn installer(app: &AppInfo, cache: &Cache) -> Installer {
                     }
                     Ok(backend::Event::Done(Ok(()))) => {
                         crate::downloads::finish(dl, Ok(()));
+                        if removing {
+                            crate::library::record_removal(&app.source, &app.package_name);
+                        } else {
+                            crate::library::record_install(&app);
+                        }
                         job.set(Job::Idle);
                         b.set_sensitive(true);
                         status.set_visible(false);
