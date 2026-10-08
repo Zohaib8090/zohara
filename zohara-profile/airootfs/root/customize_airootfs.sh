@@ -140,6 +140,7 @@ fi
 echo "  -> Enabling System Services..."
 systemctl enable bluetooth.service || true
 systemctl enable power-profiles-daemon.service || true
+systemctl enable switcheroo-control.service || true
 systemctl enable NetworkManager.service || true
 # zohara-sync.service (a `pacman -Sy` on every boot) is gone: refreshing the
 # package lists outside a full upgrade turns the next single-app install into

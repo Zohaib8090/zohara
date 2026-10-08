@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=qvidcap
+Exec=true
+NoDisplay=true
+# Hides v4l-utils' test tool from the menu (same desktop-file id as /usr/share/applications/qvidcap.desktop, found first).
+# The package stays: Settings > Cameras needs v4l2-ctl.

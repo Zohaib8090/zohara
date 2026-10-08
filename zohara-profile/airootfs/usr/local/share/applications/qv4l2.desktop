@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=qv4l2
+Exec=true
+NoDisplay=true
+# Hides v4l-utils' test tool from the menu (same desktop-file id as /usr/share/applications/qv4l2.desktop, found first).
+# The package stays: Settings > Cameras needs v4l2-ctl.

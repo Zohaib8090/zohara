@@ -44,6 +44,10 @@ xorg-xinit
 mesa
 vulkan-intel
 vulkan-radeon
+# Hardware video decode/encode (VA-API) on Intel iGPUs and Arc cards; without it video plays on the CPU. AMD gets it from mesa.
+intel-media-driver
+# Dual-GPU laptops (Intel or AMD + NVIDIA): lets Plasma offer "run with the dedicated GPU" (switcherooctl).
+switcheroo-control
 xf86-video-amdgpu
 xf86-video-nouveau
 xf86-video-intel
@@ -180,6 +184,8 @@ ark
 p7zip
 unzip
 okular
+# Screenshots: the Print Screen key and the Screenshot app (KDE's own; grim/slurp cannot capture on KWin).
+spectacle
 kate
 
 # System Utilities, Power & Monitors
@@ -206,7 +212,6 @@ fwupd
 
 # KDE Wallet & Online Services Fixes
 kwallet
-kwalletmanager
 kwallet-pam
 ca-certificates
 attica
