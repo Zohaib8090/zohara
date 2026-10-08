@@ -71,10 +71,11 @@ EOF
 # One version everywhere (os-release, lsb-release, the installer's branding),
 # taken from the day this image was built. These used to disagree: 2026.08
 # here and in the branding, 1.0 in the static os-release/lsb-release files.
-ZOHARA_VERSION="$(date -u +%Y.%m.%d)"
+# Release number people see (About, os-release, the installer). The ISO file name still carries the build date.
+ZOHARA_VERSION="1.1"
 cat > /etc/os-release << EOF
 NAME="Zohara OS"
-PRETTY_NAME="Zohara OS"
+PRETTY_NAME="Zohara OS $ZOHARA_VERSION"
 ID=zohara
 ID_LIKE=arch
 VERSION="$ZOHARA_VERSION"
