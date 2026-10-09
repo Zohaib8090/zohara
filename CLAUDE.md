@@ -1,6 +1,7 @@
 # Zohara OS: instructions for Claude
 
-Read these first, in order: **`docs/MOVING-TO-ZOHARA.md`** (2026-10-08: the owner replaced Zorin with Zohara; what is on the rescue stick, how to restore
+Read these first, in order: **`docs/HANDOFF-2026-10-09.md`** (2026-10-09: the first long session on Zohara itself: channel state, what is verified and what is not,
+open items; feature notes with file maps are in `zohara-settings/docs/FEATURES-2026-10-09.md`), **`docs/MOVING-TO-ZOHARA.md`** (2026-10-08: the owner replaced Zorin with Zohara; what is on the rescue stick, how to restore
 the dev setup), **`docs/HOW-THE-OWNER-WORKS.md`** (the working agreement: read it before doing anything), `docs/READINESS-2026-10-08.md`,
 `docs/HANDOFF-2026-10-06.md` (newest sections at the end), `docs/HANDOFF-2026-10-04.md`, `docs/HANDOFF-2026-09-29.md`, then `GOTCHA.md`
 (traps that already cost time). The project skill `zohara-os-dev` has the short version.

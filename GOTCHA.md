@@ -308,3 +308,39 @@ piping into non-interactive zsh doesn't reproduce it.
   contains the commit before telling the owner to update.
 * `paccache` exits non-zero when there is nothing to remove: never chain cleanup steps with `&&`. Measuring a folder with `du` is not "what
   can be freed"; use the dry run.
+
+
+## 2026-10-09 traps (first long session on Zohara itself)
+* **`pkill -f <pattern>` kills your own shell** when the pattern is also in the command you typed (it happened three times). Keep the PID (`$!`) and
+  `kill` that, or wait for the process to exit.
+* **Rows outside a `gtk4::ListBox` look right and ignore clicks.** `adopt_orphan_rows` fixes a page once, when it is built; rows added later (a mixer
+  that redraws) must go into their own `ListBox`. Check structurally: count `ListBoxRow`s with no `ListBox` ancestor.
+* **A changed Plasma config file is not enough.** Write with `kwriteconfig6 --notify`; the cursor also needs `KGlobalSettings.notifyChange(5, 0)`;
+  `plasma-apply-cursortheme --size N` does nothing when the theme is unchanged. KConfig stores a date as `2027,10,9,3,8,49.962` (local time), not ISO:
+  Plasma silently ignores an ISO `Until`. Verify against the real thing (`busctl ... Inhibited`, `qdbus6 org.kde.KWin /KWin supportInformation`).
+* **`lspci` takes ~2 s on this hybrid laptop** (it wakes the NVIDIA chip). Never call it on the UI thread; vendors are in `/sys/class/drm/card*/device/vendor`.
+* **PipeWire filter chain**: `pactl load-module libpipewire-module-filter-chain` fails; run `pipewire -c /absolute/conf` (relative paths fail) with
+  `protocol-native`, `client-node` and `adapter` loaded. Control values change live with `pw-cli set-param <id> Props '{ params = [ "name" 1.0 ] }'` (decimal
+  point required). `pw-dump` finds the node id.
+* **Spotify opens a new sound stream for every track**: any code that remembers a stream index (a mixer picker) is stale within minutes. Resolve by app
+  name at the moment of the click. The sound server remembers an app's device after `pactl move-sink-input`.
+* **Inside a Flatpak sandbox `/sys/class/net` still lists the host's interfaces** even with the network off; look at `/proc/net/dev`.
+* **`flatpak override --unset-env` blanks a value, it does not remove it**: take your own settings out of `~/.local/share/flatpak/overrides/<id>` by hand.
+  `flatpak info --show-permissions` is the app's own list; the person's changes are only in the override file.
+* **Chrome's process is called `chrome`**, not `google-chrome-stable`: detect an app that is "running" by open files inside its folders as well
+  (`/proc/*/fd`), never by name alone. Same for VLC (its program is not in the `vlc` package).
+* **A package's `/usr/share/<dir>/` list includes folders of other things it uses** (`kglobalaccel`, `gnome-control-center`): only accept names that start
+  with the app's own program/package name. `git`, `ssh`, `fontconfig`, `pipewire`... are never app data.
+* **Tests that set `XDG_*`/`HOME` race with each other** (cargo runs tests in parallel threads). Pass folders as parameters (`native_folders_in`,
+  `move_to_trash_in`, `install_from(.., state_path, ..)`).
+* **`gio::Icon` is not `Send`**: copy plain data into a background thread, never the whole struct that holds an icon.
+* **Single-instance apps in a demo/test loop**: a new run hands off to the previous instance if it is still shutting down and exits at once with no output.
+  Wait until the old process is gone.
+* **`WAV` reading in tests**: cut at a multiple of the frame size (4 bytes for 16-bit stereo) or the level is 10 dB off.
+* **Zohara Update's `zohara-equalizer.service` calls the installed `zohara-settings --eq-activate`**: the flag has to exist in the binary of the same package
+  (an older binary would open a Settings window). They ship together.
+* **KWin has no screencopy protocol: `grim` fails.** Take screenshots from inside a GTK app (`WidgetPaintable` -> `Snapshot` -> `render_texture` ->
+  `save_to_png`; a popover is a separate surface and is not in it). `kioclient` here is `kioclient`, not `kioclient6`.
+* **A `[skip ci]` push to `zohara` also skips the Store build**: start it with `gh workflow run build-store.yml --repo Zohaib8090/zohara --ref master`.
+* **Plasma shows "Launch using Dedicated Graphics Card" only if it saw `switcheroo-control` at start**, and on this desktop it did not appear even
+  after a restart: Settings > Apps has its own choice. `HasDualGpu` on `net.hadess.SwitcherooControl` (system bus) says whether it could.
