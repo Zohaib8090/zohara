@@ -344,3 +344,10 @@ piping into non-interactive zsh doesn't reproduce it.
 * **A `[skip ci]` push to `zohara` also skips the Store build**: start it with `gh workflow run build-store.yml --repo Zohaib8090/zohara --ref master`.
 * **Plasma shows "Launch using Dedicated Graphics Card" only if it saw `switcheroo-control` at start**, and on this desktop it did not appear even
   after a restart: Settings > Apps has its own choice. `HasDualGpu` on `net.hadess.SwitcherooControl` (system bus) says whether it could.
+
+## 2026-10-10: KWin QML effects keep running OLD code until you log out and in
+`unloadEffect`/`loadEffect`/`kpackagetool6 --upgrade` of a QML (declarative) KWin effect do not clear KWin's QML cache, so every
+reload "succeeds" and the old file keeps running (new shortcuts missing, new handlers silent, `console.log` invisible). Cost an hour
+of wrong debugging on the cube. Install under a fresh effect id each time (`zohara-cube/dev-install.sh`) or log out and in.
+Also: a QML `SwipeGestureHandler` is told `cancelled` for every swipe it did not get (an up swipe cancels the left/right handlers),
+so only end a gesture in a handler that started it; and `DBusCall`'s interface property is `dbusInterface`.
