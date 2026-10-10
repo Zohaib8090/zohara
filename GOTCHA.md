@@ -351,3 +351,30 @@ reload "succeeds" and the old file keeps running (new shortcuts missing, new han
 of wrong debugging on the cube. Install under a fresh effect id each time (`zohara-cube/dev-install.sh`) or log out and in.
 Also: a QML `SwipeGestureHandler` is told `cancelled` for every swipe it did not get (an up swipe cancels the left/right handlers),
 so only end a gesture in a handler that started it; and `DBusCall`'s interface property is `dbusInterface`.
+
+## 2026-10-10 traps (the cube, desktops, sound)
+* **KWin QML effects keep OLD code until you log out and in** (see the entry above). `zohara-cube/dev-install.sh` installs under a fresh id each time. A
+  user-dir copy of an effect with the same id as the packaged one **overrides it**: remove dev copies.
+* **A QML function named `escape` (or any global JS name) stops the whole effect loading**, silently. `loadEffect` just returns false.
+* **In a Repeater delegate that is an `Item`, the name `layer` is the item's own `layer` property**, not your `id: layer`. Use another id.
+* **`required property QtObject model` in a delegate makes Repeater drop every delegate** (no error). Use the `model.window` context property KWin's own
+  QML uses.
+* **Qt logs go to the journal unless `QT_FORCE_STDERR_LOGGING=1`.** That is why QML errors never showed. Test QML outside KWin with `qml6` /
+  `qmltestrunner` and stand-in types (`zohara-cube/tests/`); `console.log` inside KWin is never visible, `KWinComponents.DBusCall` with
+  `dbusInterface` (not `interface`) works as a debug channel (call `org.freedesktop.DBus.NameHasOwner`, watch with `dbus-monitor`).
+* **The scratch folder under `/tmp` is cleared between turns.** Keep test harnesses in the repo.
+* **`SwipeGestureHandler`**: KWin also tells every handler that did not get the swipe it was `cancelled` (an up swipe cancels the left/right ones);
+  only end a gesture in a handler that started it.
+* **Plasma writes its config files several seconds late** (`plasmashellrc`, the appletsrc). Read state from the running shell (a scripting query via
+  `gdbus call ... evaluateScript`), never from the file right after a change.
+* **`qdbus6 .../Effects activeEffects` tells when an effect is on screen**; poll it to see show/hide timing.
+* **Plasma 6.7 system tray lists** (`hiddenItems`, `extraItems`) are in the tray applet's own `[General]` group; `SystrayContainmentId` is empty. A
+  script that reports success without checking it changed anything hid the bug for weeks.
+* **`pam_faillock` plus Plasma's lock screen**: automatic failed conversations at wake count as failures and lock the account. The lock screen's own
+  `/etc/pam.d/kde` must not use faillock.
+* **Moving a window's desktops from a test can hit plasmashell** (it was the "active window"). Only ever move windows you chose and are normal app
+  windows (`normalWindow`, not `dock`/`desktopWindow`).
+* **Never `pkill -x`/`pgrep -x name` to clean up a test**: it kills the owner's own windows of that app. Keep the PID (`cmd & P=$!`).
+* **Docker Hub rate limit** fails CI at "Initialize containers"; use `mirror.gcr.io/library/archlinux:latest`. A re-run uses the workflow file of the
+  original run, so push the workflow change and let a new run start.
+* Terminals inside the Claude app have `no_new_privs`: `sudo` fails there. The owner must use Konsole.
