@@ -378,3 +378,9 @@ so only end a gesture in a handler that started it; and `DBusCall`'s interface p
 * **Docker Hub rate limit** fails CI at "Initialize containers"; use `mirror.gcr.io/library/archlinux:latest`. A re-run uses the workflow file of the
   original run, so push the workflow change and let a new run start.
 * Terminals inside the Claude app have `no_new_privs`: `sudo` fails there. The owner must use Konsole.
+
+**Every dependency of Zohara Settings (and the Store) must also be listed in `zohara-profile/packages.x86_64`.** A package that is not in the list is
+pulled late from live mirrors while the image is built, and the live mirrors no longer have the version of the pinned Arch day: 404 and the whole
+25 to 60 minute build fails ("qt6-quick3d ... returned error: 404", then "keyring is not writable"). It happened for `libinput-tools` and again
+on 2026-10-10 for `qt6-quick3d`, `qt6-multimedia`, `qt6-multimedia-ffmpeg` (added to the PKGBUILD for the cube and the live wallpaper).
+After changing `depends` in a PKGBUILD, check each name against `packages.x86_64`.
