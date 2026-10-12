@@ -1,6 +1,6 @@
 # Zohara OS: instructions for Claude
 
-Read these first, in order: **`docs/HANDOFF-2026-10-10.md`** (2026-10-10: the cube, live wallpaper, dynamic desktops, sound balance, lock screen fix; channel state, verified vs not,
+Read these first, in order: **`docs/HANDOFF-2026-10-12.md`** (2026-10-12: Zohara OS 1.1 released: stable Settings, the first 1.1 ISO in the bucket, the website; the owner's decisions on channels, ISO retention and the macOS layout; the live-mode update problem and the ISO pipeline plan; the exact release steps), **`docs/HANDOFF-2026-10-10.md`** (2026-10-10: the cube, live wallpaper, dynamic desktops, sound balance, lock screen fix; channel state, verified vs not,
 open items; notes in `zohara-settings/docs/FEATURES-2026-10-10.md` and `RESEARCH-2026-10-10.md`), **`docs/HANDOFF-2026-10-09.md`** (2026-10-09: the first long session on Zohara itself: channel state, what is verified and what is not,
 open items; feature notes with file maps are in `zohara-settings/docs/FEATURES-2026-10-09.md`), **`docs/MOVING-TO-ZOHARA.md`** (2026-10-08: the owner replaced Zorin with Zohara; what is on the rescue stick, how to restore
 the dev setup), **`docs/HOW-THE-OWNER-WORKS.md`** (the working agreement: read it before doing anything), `docs/READINESS-2026-10-08.md`,
@@ -13,7 +13,7 @@ the dev setup), **`docs/HOW-THE-OWNER-WORKS.md`** (the working agreement: read i
   means no `Co-Authored-By` line. Never push to `main`/`master` unless told to.
   **Development phase (owner's decision, 2026-10-05, still in force until they say otherwise):** commit and push
   straight to `main`/`master` as the owner (`Zohaib Baig`, only them, no `Co-Authored-By`) without asking each time;
-  never build the ISO (`[skip ci]` on `zohara` commits). **Channels (2026-10-06):** a push to a source repo publishes to
+  `[skip ci]` on `zohara` commits unless the owner asks for an ISO. **ISOs are built in CI only, never locally** (2026-10-11 decision), and only when the owner asks; the bucket keeps just the newest two ISOs. **Channels (2026-10-06):** a push to a source repo publishes to
   **alpha only**, by itself (the dev channel); beta and stable are moved on purpose from the release admin site. Still ask
   before anything that publishes to beta or stable, uses a bucket or a secret, or changes which key machines trust. See `docs/HANDOFF-2026-10-06.md`.
 - **No Python in the OS.** Anything that ships is Rust or shell (`jq` for JSON). Python is fine

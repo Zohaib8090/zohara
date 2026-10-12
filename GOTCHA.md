@@ -384,3 +384,34 @@ pulled late from live mirrors while the image is built, and the live mirrors no 
 25 to 60 minute build fails ("qt6-quick3d ... returned error: 404", then "keyring is not writable"). It happened for `libinput-tools` and again
 on 2026-10-10 for `qt6-quick3d`, `qt6-multimedia`, `qt6-multimedia-ffmpeg` (added to the PKGBUILD for the cube and the live wallpaper).
 After changing `depends` in a PKGBUILD, check each name against `packages.x86_64`.
+
+## 2026-10-11 and 12 traps (release of 1.1)
+
+**`gh run download` of the 4 GB ISO artifact can die with "connection timed out" and leaves nothing.** Download the zip with a resumable `curl -C -` loop instead.
+`gh api` follows redirects itself, so it hides the artifact's `Location`; ask the API with `curl -sI -H "Authorization: Bearer $(gh auth token)" https://api.github.com/repos/Zohaib8090/zohara/actions/artifacts/<id>/zip`.
+The signed link is short-lived: ask for a fresh one every round. Expected size = the artifact's `size_in_bytes`.
+
+**A plain `curl URL | sha256sum` of the 4 GB ISO from the Oracle bucket can end early with `OpenSSL SSL_read: unexpected eof` and print a wrong hash.** The upload was fine
+(compare Oracle's `opc-multipart-md5` with the one computed from the file: md5 of each 128 MiB part, md5 of those digests joined, base64, `-<number of parts>`).
+Verify the public link with `curl -C - --retry 30 --retry-all-errors` into a file, then hash the file.
+
+**Oracle CLI on a new machine:** not installed by pacman. `python3 -m venv ~/.local/share/oci-cli-venv && ~/.local/share/oci-cli-venv/bin/pip install oci-cli` (works on Python 3.14 too), link `oci` into `~/.local/bin`.
+An old `~/.oci/config` may point at another machine's home folder (`/home/zohaib/...`); `oci session authenticate` rewrites it. The owner types the password in the browser. The token lasts about an hour: download and check
+the ISO first, log in last. `oci session validate --profile zohara --local` shows the expiry. Use `--no-overwrite` for a new ISO and `--force` only for `SHA256SUMS`.
+
+**The ISO ships Settings built from `zohara-settings` `main`, not the stable package** (`Dockerfile` section 8), stamped with the build time. Its version is newer than stable's, so the Update page of a fresh ISO says "up to date"
+even when stable has newer apps. See `docs/HANDOFF-2026-10-12.md` for the plan.
+
+**Live mode has very little writable space** (archiso's RAM overlay; no `cow_spacesize` is set in the boot entries; the default is probably 256 MB, not measured). On a 3 GB virtual machine updates will fail or vanish.
+Do not raise it blindly: a small RAM machine would run out of memory.
+
+**Plasma launcher from the command line:** `qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu` does nothing here. Use
+`gdbus call --session --dest org.kde.kglobalaccel --object-path /component/plasmashell --method org.kde.kglobalaccel.Component.invokeShortcut "activate application launcher"` (calling it again closes the menu).
+
+**Taking pictures of the owner's desktop captures whatever is on it.** `spectacle -b -n -f` shows every window of the current desktop (this chat, Chrome tabs and bookmarks, the Oracle login link). Look at each file, delete the private ones at once,
+and never take one while the owner is typing. The taskbar lists tasks from every desktop; `showOnlyCurrentDesktop` (icontasks, `[General]`) through `evaluateScript` shows only the current desktop, then set it back to `false`.
+The Settings and Store windows can be captured alone with `spectacle -a` after starting them yourself (`zohara-settings --page "<label>"`; wait about 5 s; the Store needs about 10 s); kill only the PID you started.
+
+**`ydotoold` does not survive a login.** Start your own (`ydotoold --socket-path=<file>` and `YDOTOOL_SOCKET=<file>`) when you need a synthetic mouse wheel, and kill that PID afterwards.
+
+**Meta AI cannot make a video from uploaded screenshots yet** ("the video tool isn't available"). A text prompt works but invents the desktop. Real-screenshot reels are built locally with ffmpeg (`zohara-instagram/make_video*.py`).
