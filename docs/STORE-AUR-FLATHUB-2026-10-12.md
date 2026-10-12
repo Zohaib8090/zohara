@@ -37,7 +37,7 @@ and what was done. Code: `zohara-store-rs/src/aur.rs`, `backend.rs`, `ui.rs`.
 
 ## What was verified
 
-* 38 unit tests (9 for AUR, 2 for Flathub setup and AUR error wording).
+* 36 unit tests run by default plus 3 live ones (9 AUR, 2 for Flathub setup and AUR error wording).
 * Live, against the real servers: AUR search finds `yay`, `pick` keeps the list sane, the PKGBUILD downloads, bad names are
   refused; `ensure_flathub` adds Flathub in an empty throwaway Flatpak setup (the real remotes were not touched) and
   more than 500 apps are listed.
