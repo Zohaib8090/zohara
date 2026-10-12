@@ -24,13 +24,18 @@ pub struct FlatpakUpdate {
 #[derive(Debug, Default, Clone)]
 pub struct UpdateSet {
     pub flatpak: Vec<FlatpakUpdate>,
+    /// Packages built from the AUR that have a newer version there (see `community_updates`).
+    pub aur: Vec<crate::community_updates::AurUpdate>,
+    /// AppImages with a newer release.
+    pub images: Vec<crate::community_updates::ImageUpdate>,
     /// Sources that couldn't be checked (offline, tool missing).
     pub errors: Vec<String>,
 }
 
 impl UpdateSet {
+    /// Everything newer, of every kind.
     pub fn total(&self) -> usize {
-        self.flatpak.len()
+        self.flatpak.len() + self.aur.len() + self.images.len()
     }
 }
 
@@ -70,6 +75,13 @@ pub fn check_all() -> UpdateSet {
         Ok(f) => set.flatpak = f,
         Err(e) => set.errors.push(e),
     }
+    match crate::community_updates::check_aur() {
+        Ok(a) => set.aur = a,
+        Err(e) => set.errors.push(format!("AUR: {e}")),
+    }
+    let (images, errors) = crate::community_updates::check_images(&crate::appimage::Dirs::for_user());
+    set.images = images;
+    set.errors.extend(errors);
     set
 }
 
@@ -215,6 +227,8 @@ fn save_state(s: &StoreState) {
 /// A fingerprint of what's available, so a notification is sent once per set of updates.
 pub fn signature(set: &UpdateSet) -> String {
     let mut parts: Vec<String> = set.flatpak.iter().map(|f| format!("{}@{}", f.app_id, f.branch)).collect();
+    parts.extend(set.aur.iter().map(|a| format!("aur:{}@{}", a.name, a.available)));
+    parts.extend(set.images.iter().map(|i| format!("image:{}@{}", i.slug, i.stamp)));
     parts.sort();
     parts.join(",")
 }
@@ -237,7 +251,17 @@ pub fn notify_pending(set: &UpdateSet) {
     save_state(&st);
 
     let n = set.total();
-    let body = format!("{n} app update{} ready to install.", if n == 1 { "" } else { "s" });
+    let mut kinds = Vec::new();
+    if !set.flatpak.is_empty() {
+        kinds.push(format!("{} from Flathub", set.flatpak.len()));
+    }
+    if !set.aur.is_empty() {
+        kinds.push(format!("{} from the AUR", set.aur.len()));
+    }
+    if !set.images.is_empty() {
+        kinds.push(format!("{} AppImage{}", set.images.len(), if set.images.len() == 1 { "" } else { "s" }));
+    }
+    let body = format!("{n} app update{} ready ({}). Nothing is installed until you press Update.", if n == 1 { "" } else { "s" }, kinds.join(", "));
     let out = Command::new("notify-send")
         .args(["-a", "Zohara Store", "-i", "system-software-update", "--action=open=Open Updates", "--wait", "-t", "30000", "App updates available", &body])
         .output();
@@ -271,6 +295,18 @@ mod tests {
     }
 
     #[test]
+    fn the_notification_signature_changes_when_any_kind_of_update_appears() {
+        let mut set = UpdateSet::default();
+        let base = signature(&set);
+        set.aur.push(crate::community_updates::AurUpdate { name: "yay".into(), installed: "1-1".into(), available: "2-1".into() });
+        let with_aur = signature(&set);
+        assert_ne!(base, with_aur);
+        set.images.push(crate::community_updates::ImageUpdate { slug: "app".into(), name: "App".into(), asset: "App.AppImage".into(), url: "https://github.com/x".into(), stamp: 5, size: 1 });
+        assert_ne!(with_aur, signature(&set));
+        assert_eq!(set.total(), 2);
+    }
+
+    #[test]
     fn names_are_checked() {
         assert!(safe_name("zohara-settings") && safe_name("org.mozilla.firefox") && safe_name("g++"));
         assert!(!safe_name("") && !safe_name("a b") && !safe_name("a;b") && !safe_name("$(x)"));
@@ -284,6 +320,7 @@ mod tests {
                 FlatpakUpdate { app_id: "a.A".into(), name: "A".into(), branch: "stable".into(), origin: "flathub".into() },
             ],
             errors: vec![],
+            ..Default::default()
         };
         assert_eq!(signature(&set), "a.A@stable,b.B@stable");
     }

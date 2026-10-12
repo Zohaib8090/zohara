@@ -1,6 +1,7 @@
 pub mod app_info;
 pub mod appimage;
 pub mod aur;
+pub mod community_updates;
 pub mod backend;
 pub mod downloads;
 pub mod library;

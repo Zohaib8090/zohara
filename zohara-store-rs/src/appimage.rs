@@ -234,8 +234,106 @@ fn read_inside(file: &Path, head: &[u8], tmp: &Path) -> Option<(String, String, 
     Some((name, comment, icon_file, cats))
 }
 
+/// What the Store remembers about where an installed AppImage came from, to tell later whether a newer one exists.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Meta {
+    /// The file name it was installed from.
+    pub source_name: String,
+    /// When that file was made (seconds since 1970): its modified time, or the release time of a downloaded update.
+    pub source_stamp: u64,
+    /// The update information the AppImage carries about itself (`gh-releases-zsync|owner|repo|latest|App-*.zsync`).
+    pub update_info: String,
+}
+
+pub fn meta_text(m: &Meta) -> String {
+    format!("source_name={}\nsource_stamp={}\nupdate_info={}\n", one_line(&m.source_name), m.source_stamp, one_line(&m.update_info))
+}
+
+pub fn parse_meta(text: &str) -> Meta {
+    let mut m = Meta::default();
+    for l in text.lines() {
+        if let Some((k, v)) = l.split_once('=') {
+            match k {
+                "source_name" => m.source_name = v.to_string(),
+                "source_stamp" => m.source_stamp = v.trim().parse().unwrap_or(0),
+                "update_info" => m.update_info = v.to_string(),
+                _ => {}
+            }
+        }
+    }
+    m
+}
+
+pub fn meta_path(slug: &str, dirs: &Dirs) -> PathBuf {
+    dirs.apps.join(format!("{slug}.meta"))
+}
+
+pub fn read_meta(slug: &str, dirs: &Dirs) -> Meta {
+    std::fs::read_to_string(meta_path(slug, dirs)).map(|t| parse_meta(&t)).unwrap_or_default()
+}
+
+/// The bytes of one named section of an ELF file (64-bit, little-endian), at most `cap` of them.
+pub fn elf_section<R: std::io::Read + std::io::Seek>(r: &mut R, name: &str, cap: u64) -> Option<Vec<u8>> {
+    use std::io::SeekFrom;
+    let mut head = [0u8; 64];
+    r.seek(SeekFrom::Start(0)).ok()?;
+    r.read_exact(&mut head).ok()?;
+    if &head[..4] != b"\x7fELF" || head[4] != 2 || head[5] != 1 {
+        return None;
+    }
+    let shoff = u64::from_le_bytes(head[0x28..0x30].try_into().ok()?);
+    let shentsize = u16::from_le_bytes(head[0x3A..0x3C].try_into().ok()?) as u64;
+    let shnum = u16::from_le_bytes(head[0x3C..0x3E].try_into().ok()?) as u64;
+    let shstrndx = u16::from_le_bytes(head[0x3E..0x40].try_into().ok()?) as u64;
+    if shentsize < 0x28 || shnum == 0 || shnum > 4096 || shstrndx >= shnum {
+        return None;
+    }
+    let mut table = vec![0u8; (shentsize * shnum) as usize];
+    r.seek(SeekFrom::Start(shoff)).ok()?;
+    r.read_exact(&mut table).ok()?;
+    let entry = |i: u64| -> Option<(u32, u64, u64)> {
+        let b = table.get((i * shentsize) as usize..((i + 1) * shentsize) as usize)?;
+        Some((u32::from_le_bytes(b[0..4].try_into().ok()?), u64::from_le_bytes(b[0x18..0x20].try_into().ok()?), u64::from_le_bytes(b[0x20..0x28].try_into().ok()?)))
+    };
+    let (_, str_off, str_size) = entry(shstrndx)?;
+    if str_size > 1 << 20 {
+        return None;
+    }
+    let mut strtab = vec![0u8; str_size as usize];
+    r.seek(SeekFrom::Start(str_off)).ok()?;
+    r.read_exact(&mut strtab).ok()?;
+    for i in 0..shnum {
+        let (name_off, off, size) = entry(i)?;
+        let n = strtab.get(name_off as usize..)?;
+        let end = n.iter().position(|&c| c == 0).unwrap_or(n.len());
+        if &n[..end] == name.as_bytes() {
+            let take = size.min(cap) as usize;
+            let mut data = vec![0u8; take];
+            r.seek(SeekFrom::Start(off)).ok()?;
+            r.read_exact(&mut data).ok()?;
+            return Some(data);
+        }
+    }
+    None
+}
+
+/// The update information an AppImage carries (`.upd_info`), if it has any.
+pub fn read_update_info(file: &Path) -> Option<String> {
+    let mut f = std::fs::File::open(file).ok()?;
+    let bytes = elf_section(&mut f, ".upd_info", 1024)?;
+    let end = bytes.iter().position(|&c| c == 0).unwrap_or(bytes.len());
+    let s = String::from_utf8_lossy(&bytes[..end]).trim().to_string();
+    (!s.is_empty()).then_some(s)
+}
+
 /// Installs the AppImage at `path` for this person.
 pub fn install(path: &Path, dirs: &Dirs) -> Result<Installed, String> {
+    install_with(path, dirs, None, None)
+}
+
+/// `install`, optionally keeping an existing id (an update replaces the app it updates) and recording a release time for
+/// a file that was downloaded as an update.
+pub fn install_with(path: &Path, dirs: &Dirs, keep_slug: Option<&str>, stamp: Option<u64>) -> Result<Installed, String> {
     let file_name = path.file_name().and_then(|n| n.to_str()).ok_or("That file has no name.")?.to_string();
     let mut head = vec![0u8; 4096];
     {
@@ -247,14 +345,23 @@ pub fn install(path: &Path, dirs: &Dirs) -> Result<Installed, String> {
     if !is_type2(&head) {
         return Err("This isn't an AppImage the Store can install. Only the current kind (type 2) is supported.".into());
     }
-    let slug = slug(&file_name);
+    let slug = match keep_slug {
+        Some(s) if !s.is_empty() && !s.contains('/') && !s.starts_with('.') => s.to_string(),
+        _ => slug(&file_name),
+    };
     std::fs::create_dir_all(&dirs.apps).map_err(|e| e.to_string())?;
     let dest = dirs.apps.join(format!("{slug}.AppImage"));
-    std::fs::copy(path, &dest).map_err(|e| format!("Couldn't copy the file ({e})."))?;
+    // Copy beside it and rename: replacing an app that is running works (it keeps the old file until it closes).
+    let staging = dirs.apps.join(format!(".{slug}.AppImage.new"));
+    std::fs::copy(path, &staging).map_err(|e| format!("Couldn't copy the file ({e})."))?;
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+        std::fs::set_permissions(&staging, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
     }
+    std::fs::rename(&staging, &dest).map_err(|e| format!("Couldn't put the file in place ({e})."))?;
+    let source_stamp = stamp.unwrap_or_else(|| std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0));
+    let meta = Meta { source_name: file_name.clone(), source_stamp, update_info: read_update_info(&dest).unwrap_or_default() };
+    let _ = std::fs::write(meta_path(&slug, dirs), meta_text(&meta));
 
     let tmp = std::env::temp_dir().join(format!("zohara-appimage-{}-{slug}", std::process::id()));
     let inside = read_inside(&dest, &head, &tmp);
@@ -291,6 +398,7 @@ pub fn uninstall(slug: &str, dirs: &Dirs) -> Result<(), String> {
         let _ = std::fs::remove_file(dirs.icons.join(format!("{slug}.{ext}")));
     }
     let _ = std::fs::remove_file(dirs.launchers.join(format!("zohara-appimage-{slug}.desktop")));
+    let _ = std::fs::remove_file(meta_path(slug, dirs));
     let _ = Command::new("update-desktop-database").arg(&dirs.launchers).stderr(Stdio::null()).status();
     Ok(())
 }

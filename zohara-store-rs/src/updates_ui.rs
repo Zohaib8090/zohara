@@ -286,7 +286,7 @@ fn check(page: &Rc<Page>) {
 fn update_summary(page: &Rc<Page>) {
     let set = page.set.borrow();
     let n_sel = page.sel_flatpak.borrow().len();
-    let total = set.total();
+    let total = set.flatpak.len(); // "Update all" is for Flathub apps; AUR and AppImage updates have their own buttons
     page.update_all.set_label(&format!("Update all ({total})"));
     page.update_all.set_sensitive(total > 0 && !page.busy.get());
     page.update_sel.set_label(&format!("Update selected ({n_sel})"));
@@ -301,12 +301,12 @@ fn render(page: &Rc<Page>) {
     let total = set.total();
     if total == 0 && set.errors.is_empty() {
         page.status_title.set_text("Your apps are up to date");
-        page.status_sub.set_text("Apps from Flathub are on the latest versions.");
+        page.status_sub.set_text("Apps from Flathub, the AUR and AppImages are on the latest versions we can check.");
     } else if total == 0 {
         page.status_title.set_text("Couldn't check for app updates");
     } else {
         page.status_title.set_text(&format!("{total} app update{} available", if total == 1 { "" } else { "s" }));
-        page.status_sub.set_text("Choose what to update, or update everything.");
+        page.status_sub.set_text("Nothing is installed until you press Update. Choose what to update.");
     }
     if !set.errors.is_empty() {
         page.status_sub.set_text(&set.errors.join("\n"));
@@ -334,6 +334,58 @@ fn render(page: &Rc<Page>) {
             });
             row.add_prefix(&check);
             row.set_activatable_widget(Some(&check));
+            g.add(&row);
+        }
+        page.groups.append(&g);
+    }
+
+    // Apps built from the AUR and AppImages: each has its own Update button, because they are not updated together.
+    if !set.aur.is_empty() || !set.images.is_empty() {
+        let g = adw::PreferencesGroup::new();
+        g.set_title("Community apps");
+        g.set_description(Some("Built from the AUR, or single files (AppImages). Nothing is installed until you press Update."));
+        for a in &set.aur {
+            let row = adw::ActionRow::new();
+            row.set_title(&glib::markup_escape_text(&a.name));
+            row.set_subtitle(&glib::markup_escape_text(&format!("AUR · {} → {}", a.installed, a.available)));
+            let btn = gtk4::Button::with_label("Update");
+            btn.set_valign(gtk4::Align::Center);
+            let (p, name) = (page.clone(), a.name.clone());
+            btn.connect_clicked(move |b| {
+                if p.busy.get() {
+                    return;
+                }
+                let info = crate::aur::to_app(&crate::aur::AurPackage { name: name.clone(), description: String::new(), version: String::new(), votes: 0, popularity: 0.0, maintainer: None, out_of_date: false });
+                let (p2, from, name2) = (p.clone(), b.clone().upcast::<gtk4::Widget>(), name.clone());
+                crate::ui::confirm_aur(b.upcast_ref(), &info, move || {
+                    let n = name2.clone();
+                    run_job(&p2, &from, &format!("Updating {n}"), move |tx| crate::community_updates::apply_aur(&n, tx));
+                });
+            });
+            row.add_suffix(&btn);
+            g.add(&row);
+        }
+        for i in &set.images {
+            let row = adw::ActionRow::new();
+            row.set_title(&glib::markup_escape_text(&i.name));
+            let size = if i.size > 0 { format!(" ({:.0} MB)", i.size as f64 / 1_048_576.0) } else { String::new() };
+            row.set_subtitle(&glib::markup_escape_text(&format!("AppImage · a newer file is available: {}{size}", i.asset)));
+            let btn = gtk4::Button::with_label("Update");
+            btn.set_valign(gtk4::Align::Center);
+            let (p, u) = (page.clone(), i.clone());
+            btn.connect_clicked(move |b| {
+                if p.busy.get() {
+                    return;
+                }
+                let u2 = u.clone();
+                run_job(&p, b.upcast_ref(), &format!("Updating {}", u.name), move |tx| {
+                    let say = |l: &str| {
+                        let _ = tx.send(l.to_string());
+                    };
+                    crate::community_updates::apply_image(&u2, &crate::appimage::Dirs::for_user(), &say)
+                });
+            });
+            row.add_suffix(&btn);
             g.add(&row);
         }
         page.groups.append(&g);

@@ -88,3 +88,33 @@ Library group for AUR packages with a real AUR app; Flathub's Install button on 
 An incident worth knowing: during the click test a click from an old screenshot landed on **Discord's Get** button and the
 test copy started `pkexec pacman -S discord`. It only waited for a password; I killed it at once, nothing was installed, no
 pacman lock was left (see GOTCHA).
+
+## Update checks for AUR apps and AppImages (added 2026-10-13)
+
+Owner decision: updates stay **notify only** (the owner presses Update; see memory `update-policy-notify-only`). The Store's
+Updates page and its background check (`zohara-store --check-updates`, the 6-hourly timer) now also look at:
+
+* **Packages built from the AUR** (`pacman -Qm`, Zohara's own `zohara-*` left out): the AUR's `info` answer is compared with
+  the installed version by pacman's own `vercmp`. Update = the same `yay` build as installing, after the same warning.
+* **AppImages installed through the Store**: an AppImage may carry update information (`.upd_info`, read from the ELF section
+  without running the file). For `gh-releases-zsync|owner|repo|tag|pattern` the Store asks GitHub's releases API and calls the
+  release newer when its file was published after the installed one was made (a minute of slack; for an app installed before
+  dates were recorded, when the name differs). The Store records at install time, in `<id>.meta` next to the file, the source
+  file name, its date and the update information. Update = download the new file from github.com and put it in place of the
+  old one (copy beside it, then rename, so a running app keeps working until it closes). Other kinds of update information
+  (plain `zsync|url`) are not checked; an AppImage without any is never reported.
+* The Updates page has a **Community apps** group with one **Update** button per app. "Update all / Update selected" still mean
+  Flathub apps only. The notification says how many of each kind and that nothing installs until Update is pressed.
+* GitHub's API allows 60 unauthenticated requests an hour per address: one request per AppImage with update information every
+  6 hours is far below that; a refusal shows as "Couldn't check X for updates" and does not hide the other results.
+
+Verified: 60 unit tests (version comparison with the real `vercmp`, update-information parsing, file patterns, release times,
+newer-or-not rules, reading `.upd_info` from a synthetic ELF); live: the AUR flags `yay 1.0-1` as behind `13.0.1-1`; with
+Neovim's real AppImage (its `.upd_info` says `gh-releases-zsync|neovim|neovim|latest|nvim-linux-x86_64.appimage.zsync`) a fresh
+install has nothing newer, an install dated 2023 finds v0.12.6, **Update** downloads and replaces it keeping one app, and
+afterwards nothing is newer. In the Store window (isolated data folder): the Updates page showed "1 app update available",
+Neovim under **Community apps** with its size, **Update** opened the progress window ("Downloading…", "Installing the new
+version…", "Done."), and the page then said everything is up to date. Note: appimagetool's own AppImage has an empty
+`.upd_info`, so it is never reported (correct).
+**Not verified:** the notification itself (`notify-send` with the new text); the AUR **Update** button with a real AUR app
+(needs a built AUR package and the password); more than one app in the group.

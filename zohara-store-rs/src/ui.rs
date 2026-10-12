@@ -1091,7 +1091,7 @@ fn installer(app: &AppInfo, cache: &Cache) -> Installer {
 }
 
 /// The warning shown before an AUR package is built. `go` runs when the person agrees.
-fn confirm_aur(from: &gtk4::Widget, app: &AppInfo, go: impl Fn() + Clone + 'static) {
+pub(crate) fn confirm_aur(from: &gtk4::Widget, app: &AppInfo, go: impl Fn() + Clone + 'static) {
     let d = adw::AlertDialog::new(
         Some(&format!("Build {} from the AUR?", app.name)),
         Some(
