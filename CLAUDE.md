@@ -26,6 +26,11 @@ the dev setup), **`docs/HOW-THE-OWNER-WORKS.md`** (the working agreement: read i
 - Docs go in the repo they describe (Settings docs in `zohara-settings`, and so on).
 - Never commit secrets: this repo is public. Keys stay out of git.
 
+## Zohara Link (phone companion)
+
+Its own repo `zohara-link` has its own `CLAUDE.md`, `GOTCHA.md`, `docs/SECURITY.md` and `docs/ANDROID.md`; the state is at the end of `docs/HANDOFF-2026-10-12.md` and the Settings page is in `zohara-settings/docs/ZOHARA-LINK.md`.
+Rules that matter here: the Android signing key and its passwords are secrets (never commit or print them, the owner pastes them into GitHub); the daemon and Settings publish to alpha only; the phone app cannot be compiled in a cloud session (GitHub Actions is the compiler).
+
 ## Where things are
 
 - ISO profile: `zohara-profile/`. CI builds the ISO on every push to master (25-35 min).

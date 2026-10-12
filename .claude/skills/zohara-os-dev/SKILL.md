@@ -109,3 +109,8 @@ with no shared code (owner's decision, 2026-10-06). Details: `zohara-settings/do
 Say what you did and what you verified, plainly; say clearly what you did not test. Prefer a small fix with a test over a
 big rewrite, and fix the cause once rather than patching each symptom. When a result needs the owner (a click, a secret,
 a decision about trust), stop and ask exactly that.
+
+## Zohara Link (phone companion, 2026-10-12)
+Repo `zohara-link` (Rust daemon `zohara-linkd`, Kotlin/Compose Android app); its own `CLAUDE.md` and `GOTCHA.md` hold the rules and traps. The Settings page is `zohara-settings/src/pages/zohara_link.rs`
+(docs: `zohara-settings/docs/ZOHARA-LINK.md`). The daemon and Settings go to alpha by push; the Android app updates itself from the GitHub release `android-latest`, which needs the permanent signing key in GitHub secrets
+(the owner pastes them; never commit or print the key). Android code is compiled by GitHub Actions only. State and open items: end of `docs/HANDOFF-2026-10-12.md`.

@@ -433,3 +433,21 @@ move in small steps and read the real cursor back with a KWin script (`workspace
 (5) the keyboard only reaches a text field after you click into it, (6) a PolicyKit password window (`org.kde.polkit-kde-authentication-agent-1`) or Plasma's "Disks & Devices" popup (plasmashell) can take focus: check the active window before every key or click and cancel the prompt with Escape only
 when its text names your own fake drive. Never type into a window you did not check. A helper that does all this: the checks in `ui.py` of the 2026-10-12 session (active window must be `os.zohara.Settings`).
 A test copy of Settings keeps running if you only kill `dbus-run-session`: kill the `target/debug/zohara-settings` PID too. GTK dialogs: `PreferencesGroup` titles are markup (`&amp;`).
+
+## Zohara Link (2026-10-12; the full list is in `zohara-link/GOTCHA.md`)
+
+**Compile Settings in a cloud container:** the container has libadwaita 1.5, Settings asks for 1.6. In a scratch copy (never the repo) set `features = ["v1_5"]` in `Cargo.toml`; if a file uses a 1.6-only call (`accent_color_rgba` in `equalizer.rs`)
+stub that one line in the copy. Then `cargo test` and a screenshot under Xvfb work (`apt-get install libgtk-4-dev libadwaita-1-dev xvfb imagemagick dbus-x11`, then `dbus-run-session -- target/debug/zohara-settings --page "<label>"` and `import -window root`).
+
+**The Android app cannot be compiled in a cloud session.** GitHub Actions is the compiler: push, wait, read the log with a small `tail_lines` (error lines start with `e: file:///`; the stack traces are hundreds of lines).
+
+**An Android update installs over the old app only if both are signed with the same key** and the new `versionCode` is higher. CI debug builds use a throwaway key, so each one conflicts with the last (uninstall first). The permanent key is in GitHub
+secrets (owner pastes them); never commit it, never print it, keep two copies. See `zohara-link/docs/ANDROID.md`.
+
+**A hardening rule can break the honest case.** The "file bigger than declared" check deleted every file whose size the phone did not report (declared 0). Per-connection state (half-finished transfers) must be removed when the connection ends or it
+fills a table and blocks everyone. Test the awkward honest input and the dropped connection, not only the attacker (`zohara-link/linux-daemon/tests/e2e_files.py`).
+
+**`playerctl` is not on every system; `ydotool` clicks are `0xC0`/`0xC1`; a tool per mouse move lags.** MPRIS over `busctl` is the fallback for media; mouse moves are queued and merged. mDNS announcements must list only real IPv4 networks (Docker/VM
+interfaces and IPv6 link-local addresses made phones pick unreachable ones). `makepkg` in CI needs `--nodeps` when the package lists runtime dependencies the build container does not have.
+
+**Phone notifications that repeat** (a health app's step counter) are ongoing notifications re-posted every few seconds: skip ongoing/progress/media, skip identical re-posts, give the person a per-app switch.
