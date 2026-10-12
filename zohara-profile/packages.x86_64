@@ -61,6 +61,8 @@ xf86-video-intel
 xf86-input-libinput
 libinput
 libinput-tools
+# USB drives, SD cards and external disks in Settings (list, format, rename, check, write an image). Settings depends on it.
+udisks2
 # Accelerometer/orientation, for auto-rotate on a convertible touchscreen.
 iio-sensor-proxy
 alsa-utils

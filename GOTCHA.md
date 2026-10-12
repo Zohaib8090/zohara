@@ -415,3 +415,15 @@ The Settings and Store windows can be captured alone with `spectacle -a` after s
 **`ydotoold` does not survive a login.** Start your own (`ydotoold --socket-path=<file>` and `YDOTOOL_SOCKET=<file>`) when you need a synthetic mouse wheel, and kill that PID afterwards.
 
 **Meta AI cannot make a video from uploaded screenshots yet** ("the video tool isn't available"). A text prompt works but invents the desktop. Real-screenshot reels are built locally with ffmpeg (`zohara-instagram/make_video*.py`).
+
+**`cargo test live_ -- --ignored drives` runs EVERY ignored live test, not only the drive ones** (two filters are OR-ed). On 2026-10-12 that ran the balance, cube, taskbar, effects, desktops, equalizer, wallpaper,
+looks, tray, accessibility, notification and shortcut live tests against the owner's real session; four failed halfway. Everything was checked afterwards and was back as it was, but it was luck.
+Always pass one full module path: `cargo test backend::drives::live:: -- --ignored --test-threads=1`.
+
+**UDisks2 (drives):** formatting, labels, check and mount work for the logged-in user on removable drives without a password, but `Block.OpenDevice` for writing needs the administrator
+(`open-device` = `auth_admin_keep`): pass `auth.no_user_interaction` in tests or a password window opens. An exFAT label is at most 11 characters. `udisksctl loop-delete` may need the administrator for a loop
+device that was partitioned or mounted. A second copy of Settings started from a terminal hands its request to the running one and exits (single instance): to run a test build next to the installed one, start it with
+`dbus-run-session -- target/debug/zohara-settings`.
+
+**Never send fake keys or mouse events to "the active window" without checking whose window it is, right before each step.** On 2026-10-12 the owner switched windows while a test ran and two Tab presses reached the Claude app.
+Check `workspace.activeWindow` with a KWin script (`print` shows in `journalctl --user`) before every input, or better, test where the owner is not working.
