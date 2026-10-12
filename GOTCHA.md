@@ -427,3 +427,9 @@ device that was partitioned or mounted. A second copy of Settings started from a
 
 **Never send fake keys or mouse events to "the active window" without checking whose window it is, right before each step.** On 2026-10-12 the owner switched windows while a test ran and two Tab presses reached the Claude app.
 Check `workspace.activeWindow` with a KWin script (`print` shows in `journalctl --user`) before every input, or better, test where the owner is not working.
+
+**Driving a GUI with ydotool (2026-10-12):** (1) the socket path must be short (a Unix socket path over about 107 characters fails silently: `/tmp/zyd.sock`, not a path in the scratchpad), (2) relative moves are pointer-accelerated, so one big move overshoots:
+move in small steps and read the real cursor back with a KWin script (`workspace.cursorPos`, `print` shows in `journalctl --user`), (3) absolute moves (`-a`) did not work here, (4) negative numbers need `ydotool mousemove -- -5 -5`,
+(5) the keyboard only reaches a text field after you click into it, (6) a PolicyKit password window (`org.kde.polkit-kde-authentication-agent-1`) or Plasma's "Disks & Devices" popup (plasmashell) can take focus: check the active window before every key or click and cancel the prompt with Escape only
+when its text names your own fake drive. Never type into a window you did not check. A helper that does all this: the checks in `ui.py` of the 2026-10-12 session (active window must be `os.zohara.Settings`).
+A test copy of Settings keeps running if you only kill `dbus-run-session`: kill the `target/debug/zohara-settings` PID too. GTK dialogs: `PreferencesGroup` titles are markup (`&amp;`).
