@@ -257,3 +257,5 @@ ydotool
 # Settings > Zohara Link once it is on the channel; clipboard and pointer tools are the two lines above.
 libnotify
 playerctl
+squashfs-tools
+fuse2

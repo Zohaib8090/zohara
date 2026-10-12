@@ -110,14 +110,19 @@ pub fn parse_desktop(text: &str) -> Option<(String, String, String)> {
     name.filter(|n| !n.is_empty()).map(|n| (n, icon, comment))
 }
 
-fn arch_app(pkg: &str, name: String, icon: String, comment: String) -> AppInfo {
+/// `pacman -Qmq` lines: the "foreign" packages, the ones no repository carries (built from the AUR, or by hand).
+pub fn parse_foreign(text: &str) -> std::collections::HashSet<String> {
+    text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect()
+}
+
+fn arch_app(pkg: &str, name: String, icon: String, comment: String, foreign: bool) -> AppInfo {
     AppInfo {
         id: pkg.to_string(),
         name,
-        publisher: "Arch Linux".into(),
+        publisher: if foreign { "AUR (community)".into() } else { "Arch Linux".into() },
         description: comment,
         icon_name: if icon.is_empty() { pkg.to_string() } else { icon },
-        source: AppSource::Pacman,
+        source: if foreign { AppSource::Aur } else { AppSource::Pacman },
         package_name: pkg.to_string(),
         category: AppCategory::Utilities,
         rating: 0.0,
@@ -163,6 +168,7 @@ pub fn arch_apps() -> Vec<AppInfo> {
     if explicit.is_empty() {
         return Vec::new();
     }
+    let foreign = Command::new("pacman").arg("-Qmq").stderr(Stdio::null()).output().map(|o| parse_foreign(&String::from_utf8_lossy(&o.stdout))).unwrap_or_default();
     let Ok(o) = Command::new("pacman").arg("-Ql").args(&explicit).stderr(Stdio::null()).output() else { return Vec::new() };
     let mut by_package: Vec<(String, Vec<String>)> = Vec::new();
     for (pkg, path) in parse_pacman_ql(&String::from_utf8_lossy(&o.stdout)) {
@@ -180,10 +186,29 @@ pub fn arch_apps() -> Vec<AppInfo> {
             .into_iter()
             .find_map(|p| std::fs::read_to_string(p).ok().as_deref().and_then(parse_desktop));
         if let Some((name, icon, comment)) = found {
-            apps.push(arch_app(&pkg, name, icon, comment));
+            let is_foreign = foreign.contains(&pkg);
+            apps.push(arch_app(&pkg, name, icon, comment, is_foreign));
         }
     }
     apps
+}
+
+/// The AppImages installed through the Store.
+pub fn appimage_apps() -> Vec<AppInfo> {
+    crate::appimage::list(&crate::appimage::Dirs::for_user())
+        .into_iter()
+        .map(|a| AppInfo {
+            id: a.slug.clone(),
+            name: a.name,
+            publisher: "AppImage".into(),
+            description: a.comment,
+            icon_name: a.icon,
+            source: AppSource::AppImage,
+            package_name: a.slug,
+            category: AppCategory::Utilities,
+            rating: 0.0,
+        })
+        .collect()
 }
 
 /// What the tab lists: the record, the Arch apps and the installed Flatpak apps, each once (the record wins), still
@@ -235,6 +260,16 @@ mod tests {
         let names: Vec<String> = entries(recorded, arch, &flatpaks, installed).into_iter().map(|a| a.name).collect();
         // Listed once each (the recorded Firefox and Zeta win); Gimp is recorded but no longer installed.
         assert_eq!(names, vec!["Cool App", "Firefox", "Zeta"]);
+    }
+
+    #[test]
+    fn packages_no_repository_carries_are_marked_as_coming_from_the_aur() {
+        let foreign = parse_foreign("yay\nventoy\n\n  spaced  \n");
+        assert!(foreign.contains("yay") && foreign.contains("spaced") && foreign.len() == 3);
+        let a = arch_app("yay", "Yay".into(), String::new(), String::new(), true);
+        assert_eq!((a.source, a.publisher.as_str()), (AppSource::Aur, "AUR (community)"));
+        let b = arch_app("kate", "Kate".into(), String::new(), String::new(), false);
+        assert_eq!(b.source, AppSource::Pacman);
     }
 
     #[test]

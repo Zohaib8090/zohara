@@ -451,3 +451,11 @@ fills a table and blocks everyone. Test the awkward honest input and the dropped
 interfaces and IPv6 link-local addresses made phones pick unreachable ones). `makepkg` in CI needs `--nodeps` when the package lists runtime dependencies the build container does not have.
 
 **Phone notifications that repeat** (a health app's step counter) are ongoing notifications re-posted every few seconds: skip ongoing/progress/media, skip identical re-posts, give the person a per-app switch.
+
+* **Never click a button by coordinates from an old screenshot (2026-10-12).** While testing the Store's Library tab, the
+  window had gone back to the Home page between the screenshot and the click, and the click landed on Discord's **Get**
+  button: the test copy started a real `pkexec pacman -S discord` (it only waited for a password; killed, nothing installed).
+  Take a fresh screenshot, **look at it**, and only then click, in separate steps; for anything that installs or removes,
+  prefer driving the code path from a test (`run_job` on a throwaway target) over a click. A test copy of the Store reads and
+  changes the real system (pacman, Flatpak), unlike Settings with an isolated data folder: after a Store session check
+  `ps -eo pid,args | grep -E 'pkexec|pacman -S'`.

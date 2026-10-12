@@ -27,6 +27,8 @@ pub enum AppSource {
     Flatpak,
     /// Built on this computer from a community build script (the AUR). Installed like a pacman package once built.
     Aur,
+    /// A single-file app kept in the person's own folder (see `appimage.rs`).
+    AppImage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

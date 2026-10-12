@@ -16,6 +16,28 @@ use crate::backend::{self, InstalledCache};
 
 type Cache = Rc<InstalledCache>;
 
+use crate::requests::Request;
+
+thread_local! {
+    /// Set once the window exists; requests that arrive earlier (the first launch is itself a request) wait in `PENDING`.
+    static HANDLER: RefCell<Option<Rc<dyn Fn(Request)>>> = const { RefCell::new(None) };
+    static PENDING: RefCell<Vec<Request>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Something asked the Store to do something: open an app, install a file, show a page.
+pub fn handle_request(r: Request) {
+    match HANDLER.with(|h| h.borrow().clone()) {
+        Some(h) => h(r),
+        None => PENDING.with(|p| p.borrow_mut().push(r)),
+    }
+}
+
+/// The app an `appstream:` id means: an exact package or Flatpak id, the Flatpak one first (ids are not case sensitive).
+fn find_by_id(catalog: &[AppInfo], curated: &[AppInfo], id: &str) -> Option<AppInfo> {
+    let all = || curated.iter().chain(catalog.iter());
+    all().find(|a| a.source == AppSource::Flatpak && a.package_name.eq_ignore_ascii_case(id)).or_else(|| all().find(|a| a.package_name == id)).cloned()
+}
+
 /// Most results shown for one search; more than this is a longer list than anyone reads.
 const SEARCH_LIMIT: usize = 40;
 
@@ -195,14 +217,6 @@ pub fn build() -> gtk4::Widget {
             }
         });
     }
-    // `zohara-store --page updates` (from the update notification) opens the Updates page.
-    let args: Vec<String> = std::env::args().collect();
-    if let Some(i) = args.iter().position(|a| a == "--page") {
-        if args.get(i + 1).map(String::as_str) == Some("updates") {
-            updates_btn.set_active(true);
-        }
-    }
-
     // ── Search: the catalog is read once in the background, then every search is in memory ──
     let catalog: Rc<RefCell<Vec<AppInfo>>> = Rc::new(RefCell::new(Vec::new()));
     let catalog_ready = Rc::new(Cell::new(false));
@@ -307,8 +321,198 @@ pub fn build() -> gtk4::Widget {
         load(5);
     }
 
+    // ── Requests from outside: appstream:// links, .flatpakref and AppImage files, --page ──
+    {
+        let (stack_w, cache, catalog, ready, curated) = (stack.clone(), cache.clone(), catalog.clone(), catalog_ready.clone(), curated.clone());
+        let (entry, toggle, updates_btn) = (search_entry.clone(), search_toggle.clone(), updates_btn.clone());
+        let handler: Rc<dyn Fn(Request)> = Rc::new(move |req: Request| {
+            let from: gtk4::Widget = stack_w.clone().upcast();
+            match req {
+                Request::Page(p) => {
+                    if p == "updates" {
+                        updates_btn.set_active(true);
+                    }
+                }
+                Request::AppStream(id) => open_by_id(from, catalog.clone(), ready.clone(), curated.clone(), cache.clone(), id, entry.clone(), toggle.clone(), 0),
+                Request::File(path) => {
+                    let search: Rc<dyn Fn(String)> = {
+                        let (entry, toggle) = (entry.clone(), toggle.clone());
+                        Rc::new(move |term: String| {
+                            toggle.set_active(true);
+                            entry.set_text(&term);
+                        })
+                    };
+                    handle_file(from, path, catalog.clone(), ready.clone(), curated.clone(), cache.clone(), search, entry.clone(), toggle.clone());
+                }
+            }
+        });
+        HANDLER.with(|h| *h.borrow_mut() = Some(handler.clone()));
+        for r in PENDING.with(|p| std::mem::take(&mut *p.borrow_mut())) {
+            handler(r);
+        }
+    }
+
     tv.set_content(Some(&stack));
     tv.upcast()
+}
+
+/// Opens the page of the app an `appstream:` link names, waiting for the catalog if it is still loading.
+#[allow(clippy::too_many_arguments)]
+fn open_by_id(
+    from: gtk4::Widget,
+    catalog: Rc<RefCell<Vec<AppInfo>>>,
+    ready: Rc<Cell<bool>>,
+    curated: Rc<Vec<AppInfo>>,
+    cache: Cache,
+    id: String,
+    entry: gtk4::SearchEntry,
+    toggle: gtk4::ToggleButton,
+    tries: u32,
+) {
+    if let Some(app) = find_by_id(&catalog.borrow(), &curated, &id) {
+        show_details(&from, &app, &cache);
+        return;
+    }
+    if !ready.get() && tries < 60 {
+        glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || open_by_id(from, catalog, ready, curated, cache, id, entry, toggle, tries + 1));
+        return;
+    }
+    // Not in any source the Store knows: search for it, so the person sees what is close.
+    toggle.set_active(true);
+    entry.set_text(&id);
+}
+
+/// A file handed to the Store: a `.flatpakref` (Flathub's "Install" button), an AppImage (GitHub releases), a `.deb`.
+#[allow(clippy::too_many_arguments)]
+fn handle_file(
+    from: gtk4::Widget,
+    path: std::path::PathBuf,
+    catalog: Rc<RefCell<Vec<AppInfo>>>,
+    ready: Rc<Cell<bool>>,
+    curated: Rc<Vec<AppInfo>>,
+    cache: Cache,
+    search: Rc<dyn Fn(String)>,
+    entry: gtk4::SearchEntry,
+    toggle: gtk4::ToggleButton,
+) {
+    use crate::requests::{self, Kind};
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("that file").to_string();
+    if !path.is_file() {
+        show_error(&from, "Can't open that file", &format!("{file_name} isn't there any more."));
+        return;
+    }
+    match requests::kind_of(&path) {
+        Kind::FlatpakRef => {
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            match requests::parse_flatpakref(&text.chars().take(65536).collect::<String>()) {
+                None => show_error(&from, "Not a Flatpak app file", "That file doesn't describe an app the Store can install."),
+                Some(r) if find_by_id(&catalog.borrow(), &curated, &r.name).is_some() || !ready.get() => {
+                    open_by_id(from, catalog, ready, curated, cache, r.name, entry, toggle, 0)
+                }
+                Some(r) if requests::is_flathub(&r.url) || r.url.is_empty() => {
+                    // Flathub's own file for an app the local list doesn't have yet (a new or beta app): offer it as it is.
+                    let app = AppInfo {
+                        id: r.name.clone(),
+                        name: if r.title.is_empty() { r.name.clone() } else { r.title.clone() },
+                        publisher: "Flathub".into(),
+                        description: String::new(),
+                        icon_name: r.name.clone(),
+                        source: AppSource::Flatpak,
+                        package_name: r.name,
+                        category: AppCategory::Utilities,
+                        rating: 0.0,
+                    };
+                    show_details(&from, &app, &cache);
+                }
+                Some(r) => show_error(
+                    &from,
+                    "That app isn't from Flathub",
+                    &format!("{} comes from another Flatpak source ({}). The Store only installs Flatpak apps from Flathub.", if r.title.is_empty() { &r.name } else { &r.title }, r.url),
+                ),
+            }
+        }
+        Kind::AppImage => confirm_appimage(from, path, cache),
+        Kind::Deb => {
+            let term = requests::deb_search_term(&file_name);
+            let d = adw::AlertDialog::new(
+                Some("Debian packages can't be installed here"),
+                Some(&format!("{file_name} is made for Debian and Ubuntu, so it can't be installed directly on Zohara. The Store can look for the same app on Flathub or the AUR.")),
+            );
+            d.add_responses(&[("close", "Close"), ("search", &format!("Search for “{term}”"))]);
+            d.set_default_response(Some("search"));
+            d.set_close_response("close");
+            d.connect_response(None, move |_, r| {
+                if r == "search" {
+                    search(term.clone());
+                }
+            });
+            d.present(Some(&from));
+        }
+        Kind::Unknown => show_error(&from, "The Store can't install that", &format!("{file_name} isn't a kind of file the Store knows how to install (Flatpak app files and AppImages are).")),
+    }
+}
+
+fn human_size(bytes: u64) -> String {
+    const U: [&str; 4] = ["B", "KB", "MB", "GB"];
+    let (mut v, mut i) = (bytes as f64, 0);
+    while v >= 1024.0 && i < U.len() - 1 {
+        v /= 1024.0;
+        i += 1;
+    }
+    if i == 0 { format!("{bytes} B") } else { format!("{v:.1} {}", U[i]) }
+}
+
+/// Asks before installing an AppImage, then copies it in and adds it to the menu.
+fn confirm_appimage(from: gtk4::Widget, path: std::path::PathBuf, cache: Cache) {
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+    let name = crate::appimage::guess_name(&file_name);
+    let size = std::fs::metadata(&path).map(|m| human_size(m.len())).unwrap_or_default();
+    let d = adw::AlertDialog::new(
+        Some(&format!("Install {name}?")),
+        Some(&format!(
+            "{file_name} ({size}) is an AppImage: a program from the internet that runs with your account's access. Zohara has not checked it. It is copied into your own folder and added to the menu, and no administrator password is needed. Only install it if you trust where it came from."
+        )),
+    );
+    d.add_responses(&[("cancel", "Cancel"), ("install", "Install")]);
+    d.set_response_appearance("install", adw::ResponseAppearance::Suggested);
+    d.set_default_response(Some("cancel"));
+    d.set_close_response("cancel");
+    let from2 = from.clone();
+    d.connect_response(None, move |_, r| {
+        if r != "install" {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let p = path.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::appimage::install(&p, &crate::appimage::Dirs::for_user()));
+        });
+        let (from, cache) = (from2.clone(), cache.clone());
+        glib::timeout_add_local(std::time::Duration::from_millis(150), move || match rx.try_recv() {
+            Ok(Ok(done)) => {
+                cache.set_installed(&AppSource::AppImage, &done.slug, true);
+                let ok = adw::AlertDialog::new(Some(&format!("{} is installed", done.name)), Some("It is in your app menu. To remove it later, use the Library tab."));
+                ok.add_responses(&[("ok", "OK"), ("open", "Open")]);
+                ok.set_default_response(Some("open"));
+                ok.set_close_response("ok");
+                let slug = done.slug.clone();
+                ok.connect_response(None, move |_, r| {
+                    if r == "open" {
+                        let _ = std::process::Command::new("gtk-launch").arg(format!("zohara-appimage-{slug}")).spawn();
+                    }
+                });
+                ok.present(Some(&from));
+                glib::ControlFlow::Break
+            }
+            Ok(Err(e)) => {
+                show_error(&from, "Couldn't install it", &e);
+                glib::ControlFlow::Break
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(_) => glib::ControlFlow::Break,
+        });
+    });
+    d.present(Some(&from));
 }
 
 /// The Library tab: every app installed with the Store, each with its Remove button. Rebuilt whenever the tab is shown
@@ -348,7 +552,9 @@ fn build_library_page(cache: &Cache, stack: &gtk4::Stack) -> gtk4::Widget {
             generation.set(mine);
             let (tx, rx) = std::sync::mpsc::channel();
             std::thread::spawn(move || {
-                let _ = tx.send((crate::library::load_record(), crate::library::arch_apps(), crate::updates::flatpak_installed()));
+                let mut arch = crate::library::arch_apps();
+                arch.extend(crate::library::appimage_apps());
+                let _ = tx.send((crate::library::load_record(), arch, crate::updates::flatpak_installed()));
             });
             let (cache, content, subtitle, generation) =
                 (cache.clone(), content.clone(), subtitle.clone(), generation.clone());
@@ -371,7 +577,31 @@ fn build_library_page(cache: &Cache, stack: &gtk4::Stack) -> gtk4::Widget {
                         content.append(&empty);
                     } else {
                         subtitle.set_text(&format!("{} installed on this computer.", if apps.len() == 1 { "1 app".to_string() } else { format!("{} apps", apps.len()) }));
-                        content.append(&app_grid(&apps, &cache));
+                        // Where each app comes from: the AUR and AppImages are community-made files, so they sit apart.
+                        let (aur, rest): (Vec<AppInfo>, Vec<AppInfo>) = apps.iter().cloned().partition(|a| a.source == AppSource::Aur);
+                        let (images, normal): (Vec<AppInfo>, Vec<AppInfo>) = rest.into_iter().partition(|a| a.source == AppSource::AppImage);
+                        let section = |title: &str, sub: &str, list: &[AppInfo]| {
+                            let h = gtk4::Label::new(Some(title));
+                            h.add_css_class("section-title");
+                            h.set_xalign(0.0);
+                            h.set_margin_top(18);
+                            content.append(&h);
+                            let s = gtk4::Label::new(Some(sub));
+                            s.add_css_class("section-sub");
+                            s.set_xalign(0.0);
+                            s.set_wrap(true);
+                            content.append(&s);
+                            content.append(&app_grid(list, &cache));
+                        };
+                        if !normal.is_empty() {
+                            content.append(&app_grid(&normal, &cache));
+                        }
+                        if !aur.is_empty() {
+                            section("Installed from the AUR", "Built on this computer from community scripts. Nothing updates these automatically.", &aur);
+                        }
+                        if !images.is_empty() {
+                            section("AppImages", "Single-file apps kept in your own folder. To update one, install the newer file.", &images);
+                        }
                     }
                     glib::ControlFlow::Break
                 }
@@ -615,6 +845,7 @@ fn card_meta(app: &AppInfo) -> String {
         AppSource::Pacman => "Arch",
         AppSource::Flatpak => "Flathub",
         AppSource::Aur => "AUR",
+        AppSource::AppImage => "AppImage",
     };
     if app.rating > 0.0 {
         format!("★ {:.1}  ·  {src}", app.rating)
@@ -661,7 +892,7 @@ fn show_details(from: &gtk4::Widget, app: &AppInfo, cache: &Cache) {
 
     let info = adw::PreferencesGroup::new();
     let rows: [(&str, String); 3] = [
-        ("Source", match app.source { AppSource::Pacman => "Arch Linux software sources".into(), AppSource::Flatpak => "Flathub".into(), AppSource::Aur => "AUR: built on your computer from a community script, not reviewed by Zohara".into() }),
+        ("Source", match app.source { AppSource::Pacman => "Arch Linux software sources".into(), AppSource::Flatpak => "Flathub".into(), AppSource::Aur => "AUR: built on your computer from a community script, not reviewed by Zohara".into(), AppSource::AppImage => "AppImage: a single file kept in your own folder, not checked by Zohara".into() }),
         ("Package", app.package_name.clone()),
         ("Category", app.category.label().to_string()),
     ];
@@ -1182,6 +1413,12 @@ fn dev_apps() -> Vec<AppInfo> {
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
 fn create_app_icon(icon_name: &str, app_id: &str, size: i32) -> gtk4::Image {
+    // An AppImage's icon is a picture file, not a name in the icon theme.
+    if icon_name.starts_with('/') && std::path::Path::new(icon_name).is_file() {
+        let img = gtk4::Image::from_file(icon_name);
+        img.set_pixel_size(size);
+        return img;
+    }
     let theme = gtk4::gdk::Display::default().map(|d| gtk4::IconTheme::for_display(&d));
     let candidates = [icon_name, icon_for(app_id), app_id, "application-x-executable", "package-x-generic"];
     let name = theme

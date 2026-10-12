@@ -48,3 +48,43 @@ and what was done. Code: `zohara-store-rs/src/aur.rs`, `backend.rs`, `ui.rs`.
 
 **Not verified:** an actual AUR build and install through the Store (it needs the owner's password, which the owner types:
 pick a small package, press Get, read the script, Build and install); the retry messages with the network off; a live ISO.
+
+## Links and files from outside (added 2026-10-12): Flathub "Install" buttons, GitHub release downloads, AUR list
+
+The owner asked for the browser buttons that "ask to open a helper" (Flathub-style *Install*, and apps offered as downloads on
+GitHub) to open the Store, and for a list of packages from the AUR.
+
+* **One Store window.** The Store now handles its command line (`HANDLES_COMMAND_LINE`), so a second launch hands its
+  arguments to the open window. Code: `requests.rs` (pure parsing, tested), `ui::handle_request`.
+* **`appstream://org.example.App`** (the link behind Flathub / app-store *Install* buttons) opens that app's page in the
+  Store, waiting for the catalog if it is still loading; unknown ids become a search. The desktop entry
+  (`zohara-store.desktop`) now has `Exec=zohara-store %U` and `MimeType=x-scheme-handler/appstream; application/vnd.flatpak.ref;
+  application/vnd.appimage; application/x-iso9660-appimage`. No other program on the ISO or the laptop claimed these
+  (Discover is not installed).
+* **`.flatpakref` files** (Flathub's other install button): the app opens in the Store; a file from a source that is not
+  Flathub is refused with the reason.
+* **AppImages** (what many GitHub releases offer): opening one shows a warning (a program from the internet, not checked by
+  Zohara) with Cancel as the default; Install copies it to `~/.local/share/zohara-store/appimages`, reads its name,
+  description, category and icon from **inside** the file with `unsquashfs` (the file is never run for that; links inside it
+  are followed only if they stay inside it) and adds a launcher `zohara-appimage-<id>.desktop`. Without `unsquashfs` the name
+  comes from the file name and the icon is generic. No administrator password. Remove is in the Library. Only type 2
+  AppImages are supported. The Store package now depends on `squashfs-tools` and `fuse2` (an AppImage needs FUSE 2 to run),
+  and both are in `packages.x86_64`.
+* **`.deb` files** are explained ("made for Debian and Ubuntu") with a button that searches the Store for the same app.
+  Installing them directly is not supported.
+* **Library** now has an **Installed from the AUR** group (packages `pacman -Qm` calls foreign that have a menu launcher;
+  on the owner's laptop there are none, only `zohara-*` without launchers) and an **AppImages** group.
+* **GitHub's "Open with GitHub Desktop"** (`x-github-client://`) was not done: it belongs to GitHub Desktop, not to the Store.
+
+Verified (2026-10-12): 50 unit tests plus live tests: a real 15 MB AppImage (`appimagetool`) gives its real name,
+description and icon without being run; `gio open appstream://com.github.tchx84.Flatseal` started the Store on Flatseal's page
+with a Get button; opening a `.flatpakref` while the Store ran reached the same process (no second one); opening the AppImage
+showed the warning, **Install** created the launcher (real name, description, category `Development`, a 128x128 icon), the
+installed file ran (`--version`), the launcher passed `desktop-file-validate`, and the Library listed it under AppImages.
+**Not verified:** a real browser clicking the buttons (the test used `gio open`, which follows the same default-handler
+settings); Remove of an AppImage by clicking (the code path is unit-tested; the click test was stopped, see below); the new
+Library group for AUR packages with a real AUR app; Flathub's Install button on a real web page; a live ISO.
+
+An incident worth knowing: during the click test a click from an old screenshot landed on **Discord's Get** button and the
+test copy started `pkexec pacman -S discord`. It only waited for a password; I killed it at once, nothing was installed, no
+pacman lock was left (see GOTCHA).

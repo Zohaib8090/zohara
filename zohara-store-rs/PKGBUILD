@@ -7,7 +7,7 @@ pkgdesc="Zohara OS app store: find, install and update apps (GTK4 + libadwaita)"
 arch=('x86_64')
 url="https://github.com/Zohaib8090/zohara"
 license=('GPL-3.0-or-later')
-depends=('gtk4' 'libadwaita' 'glib2' 'polkit' 'curl')
+depends=('gtk4' 'libadwaita' 'glib2' 'polkit' 'curl' 'squashfs-tools' 'fuse2')
 makedepends=('rust' 'cargo' 'pkgconf')
 optdepends=(
   'flatpak: Flatpak app support'

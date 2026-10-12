@@ -1,8 +1,10 @@
 pub mod app_info;
+pub mod appimage;
 pub mod aur;
 pub mod backend;
 pub mod downloads;
 pub mod library;
+pub mod requests;
 pub mod ui;
 pub mod updates;
 pub mod updates_ui;
@@ -22,16 +24,31 @@ fn main() {
         return;
     }
 
+    // One Store window: a second launch (a browser's Install button, "Open with", the update notification) hands its
+    // arguments to the window that is already open instead of opening another.
     let app = adw::Application::builder()
         .application_id("org.zohara.store")
+        .flags(gtk4::gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
 
     app.connect_activate(build_ui);
-    let first: Vec<String> = std::env::args().take(1).collect();
-    app.run_with_args(&first);
+    app.connect_command_line(|app, cmd| {
+        let args: Vec<String> = cmd.arguments().iter().skip(1).map(|a| a.to_string_lossy().into_owned()).collect();
+        app.activate();
+        for r in requests::parse_args(&args) {
+            ui::handle_request(r);
+        }
+        0.into()
+    });
+    app.run();
 }
 
 fn build_ui(app: &adw::Application) {
+    // Already open: just bring it to the front.
+    if let Some(w) = app.active_window() {
+        w.present();
+        return;
+    }
     // Force standard window decorations
     if let Some(settings) = gtk4::Settings::default() {
         settings.set_gtk_decoration_layout(Some("icon:minimize,maximize,close"));

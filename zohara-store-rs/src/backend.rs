@@ -41,21 +41,24 @@ impl InstalledCache {
         match source {
             AppSource::Pacman | AppSource::Aur => self.pacman.borrow().contains(package_name),
             AppSource::Flatpak => self.flatpak.borrow().contains(package_name),
+            AppSource::AppImage => crate::appimage::is_installed(package_name, &crate::appimage::Dirs::for_user()),
         }
     }
 
     /// Records that `package_name` is now installed (or gone) and tells every listening button.
     pub fn set_installed(&self, source: &AppSource, package_name: &str, installed: bool) {
-        let mut set = match source {
-            AppSource::Pacman | AppSource::Aur => self.pacman.borrow_mut(),
-            AppSource::Flatpak => self.flatpak.borrow_mut(),
-        };
-        if installed {
-            set.insert(package_name.to_string());
-        } else {
-            set.remove(package_name);
+        // An AppImage is a file: its state is read from the disk, there is no list to update.
+        if *source != AppSource::AppImage {
+            let mut set = match source {
+                AppSource::Pacman | AppSource::Aur => self.pacman.borrow_mut(),
+                _ => self.flatpak.borrow_mut(),
+            };
+            if installed {
+                set.insert(package_name.to_string());
+            } else {
+                set.remove(package_name);
+            }
         }
-        drop(set);
         // A listener returns false once its widget is gone; those are dropped.
         self.listeners.borrow_mut().retain(|f| f());
     }
@@ -470,6 +473,8 @@ pub fn run_job(source: &AppSource, package_name: &str, remove: bool, tx: &std::s
         (AppSource::Pacman, false) => pacman_admin(&["-S", "--noconfirm", "--needed", package_name], false, tx),
         (AppSource::Pacman | AppSource::Aur, true) => pacman_admin(&["-Rs", "--noconfirm", package_name], true, tx),
         (AppSource::Aur, false) => aur_install(package_name, tx),
+        (AppSource::AppImage, true) => crate::appimage::uninstall(package_name, &crate::appimage::Dirs::for_user()),
+        (AppSource::AppImage, false) => Err("Open the AppImage file with the Store to install it.".to_string()),
         (AppSource::Flatpak, rm) => {
             let mut c = Command::new("flatpak");
             if rm {
