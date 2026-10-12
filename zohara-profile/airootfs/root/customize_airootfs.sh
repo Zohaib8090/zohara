@@ -271,7 +271,7 @@ done
 # A real alias carrying its own NoDisplay=true fixes both: launching the KDE desktop ID still opens
 # the Zohara app, but the alias never shows in the menu and can never be written through.
 write_desktop_alias() {
-    local alias_id="$1" name="$2" exec_cmd="$3" icon="$4"
+    local alias_id="$1" name="$2" exec_cmd="$3" icon="$4" wm_class="${5:-}"
     rm -f "/usr/share/applications/${alias_id}.desktop"
     cat > "/usr/share/applications/${alias_id}.desktop" <<EOF
 [Desktop Entry]
@@ -282,9 +282,12 @@ Icon=${icon}
 Terminal=false
 NoDisplay=true
 EOF
+    # The open window pairs with the pinned launcher by its app id; without this it showed as a second taskbar icon.
+    [[ -n "$wm_class" ]] && echo "StartupWMClass=${wm_class}" >> "/usr/share/applications/${alias_id}.desktop"
+    return 0
 }
-write_desktop_alias org.kde.discover "Software Store" zohara-store    zohara-store
-write_desktop_alias systemsettings   "Settings"       zohara-settings preferences-system
+write_desktop_alias org.kde.discover "Software Store" zohara-store    zohara-store    org.zohara.store
+write_desktop_alias systemsettings   "Settings"       zohara-settings zohara-settings os.zohara.Settings
 echo "  -> KDE desktop-ID aliases point at Zohara apps (hidden from the menu)."
 
 HIDE_APPS=(

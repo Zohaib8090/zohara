@@ -167,6 +167,11 @@ ttf-liberation
 chaotic-keyring
 chaotic-mirrorlist
 qt6-declarative
+# Zohara Settings depends on these (the 3D desktop cube and the live wallpaper's video player). They must be in this list so they
+# come from the pinned Arch day with everything else; left out, the build pulled them late from live mirrors and got 404s.
+qt6-quick3d
+qt6-multimedia
+qt6-multimedia-ffmpeg
 # (python-pyqt5 removed: zohara-welcome and zohara-migrate are Rust/GTK now,
 # and account/update management lives in Zohara Settings.)
 gtk4

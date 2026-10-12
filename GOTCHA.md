@@ -308,3 +308,110 @@ piping into non-interactive zsh doesn't reproduce it.
   contains the commit before telling the owner to update.
 * `paccache` exits non-zero when there is nothing to remove: never chain cleanup steps with `&&`. Measuring a folder with `du` is not "what
   can be freed"; use the dry run.
+
+
+## 2026-10-09 traps (first long session on Zohara itself)
+* **`pkill -f <pattern>` kills your own shell** when the pattern is also in the command you typed (it happened three times). Keep the PID (`$!`) and
+  `kill` that, or wait for the process to exit.
+* **Rows outside a `gtk4::ListBox` look right and ignore clicks.** `adopt_orphan_rows` fixes a page once, when it is built; rows added later (a mixer
+  that redraws) must go into their own `ListBox`. Check structurally: count `ListBoxRow`s with no `ListBox` ancestor.
+* **A changed Plasma config file is not enough.** Write with `kwriteconfig6 --notify`; the cursor also needs `KGlobalSettings.notifyChange(5, 0)`;
+  `plasma-apply-cursortheme --size N` does nothing when the theme is unchanged. KConfig stores a date as `2027,10,9,3,8,49.962` (local time), not ISO:
+  Plasma silently ignores an ISO `Until`. Verify against the real thing (`busctl ... Inhibited`, `qdbus6 org.kde.KWin /KWin supportInformation`).
+* **`lspci` takes ~2 s on this hybrid laptop** (it wakes the NVIDIA chip). Never call it on the UI thread; vendors are in `/sys/class/drm/card*/device/vendor`.
+* **PipeWire filter chain**: `pactl load-module libpipewire-module-filter-chain` fails; run `pipewire -c /absolute/conf` (relative paths fail) with
+  `protocol-native`, `client-node` and `adapter` loaded. Control values change live with `pw-cli set-param <id> Props '{ params = [ "name" 1.0 ] }'` (decimal
+  point required). `pw-dump` finds the node id.
+* **Spotify opens a new sound stream for every track**: any code that remembers a stream index (a mixer picker) is stale within minutes. Resolve by app
+  name at the moment of the click. The sound server remembers an app's device after `pactl move-sink-input`.
+* **Inside a Flatpak sandbox `/sys/class/net` still lists the host's interfaces** even with the network off; look at `/proc/net/dev`.
+* **`flatpak override --unset-env` blanks a value, it does not remove it**: take your own settings out of `~/.local/share/flatpak/overrides/<id>` by hand.
+  `flatpak info --show-permissions` is the app's own list; the person's changes are only in the override file.
+* **Chrome's process is called `chrome`**, not `google-chrome-stable`: detect an app that is "running" by open files inside its folders as well
+  (`/proc/*/fd`), never by name alone. Same for VLC (its program is not in the `vlc` package).
+* **A package's `/usr/share/<dir>/` list includes folders of other things it uses** (`kglobalaccel`, `gnome-control-center`): only accept names that start
+  with the app's own program/package name. `git`, `ssh`, `fontconfig`, `pipewire`... are never app data.
+* **Tests that set `XDG_*`/`HOME` race with each other** (cargo runs tests in parallel threads). Pass folders as parameters (`native_folders_in`,
+  `move_to_trash_in`, `install_from(.., state_path, ..)`).
+* **`gio::Icon` is not `Send`**: copy plain data into a background thread, never the whole struct that holds an icon.
+* **Single-instance apps in a demo/test loop**: a new run hands off to the previous instance if it is still shutting down and exits at once with no output.
+  Wait until the old process is gone.
+* **`WAV` reading in tests**: cut at a multiple of the frame size (4 bytes for 16-bit stereo) or the level is 10 dB off.
+* **Zohara Update's `zohara-equalizer.service` calls the installed `zohara-settings --eq-activate`**: the flag has to exist in the binary of the same package
+  (an older binary would open a Settings window). They ship together.
+* **KWin has no screencopy protocol: `grim` fails.** Take screenshots from inside a GTK app (`WidgetPaintable` -> `Snapshot` -> `render_texture` ->
+  `save_to_png`; a popover is a separate surface and is not in it). `kioclient` here is `kioclient`, not `kioclient6`.
+* **A `[skip ci]` push to `zohara` also skips the Store build**: start it with `gh workflow run build-store.yml --repo Zohaib8090/zohara --ref master`.
+* **Plasma shows "Launch using Dedicated Graphics Card" only if it saw `switcheroo-control` at start**, and on this desktop it did not appear even
+  after a restart: Settings > Apps has its own choice. `HasDualGpu` on `net.hadess.SwitcherooControl` (system bus) says whether it could.
+
+## 2026-10-10: KWin QML effects keep running OLD code until you log out and in
+`unloadEffect`/`loadEffect`/`kpackagetool6 --upgrade` of a QML (declarative) KWin effect do not clear KWin's QML cache, so every
+reload "succeeds" and the old file keeps running (new shortcuts missing, new handlers silent, `console.log` invisible). Cost an hour
+of wrong debugging on the cube. Install under a fresh effect id each time (`zohara-cube/dev-install.sh`) or log out and in.
+Also: a QML `SwipeGestureHandler` is told `cancelled` for every swipe it did not get (an up swipe cancels the left/right handlers),
+so only end a gesture in a handler that started it; and `DBusCall`'s interface property is `dbusInterface`.
+
+## 2026-10-10 traps (the cube, desktops, sound)
+* **KWin QML effects keep OLD code until you log out and in** (see the entry above). `zohara-cube/dev-install.sh` installs under a fresh id each time. A
+  user-dir copy of an effect with the same id as the packaged one **overrides it**: remove dev copies.
+* **A QML function named `escape` (or any global JS name) stops the whole effect loading**, silently. `loadEffect` just returns false.
+* **In a Repeater delegate that is an `Item`, the name `layer` is the item's own `layer` property**, not your `id: layer`. Use another id.
+* **`required property QtObject model` in a delegate makes Repeater drop every delegate** (no error). Use the `model.window` context property KWin's own
+  QML uses.
+* **Qt logs go to the journal unless `QT_FORCE_STDERR_LOGGING=1`.** That is why QML errors never showed. Test QML outside KWin with `qml6` /
+  `qmltestrunner` and stand-in types (`zohara-cube/tests/`); `console.log` inside KWin is never visible, `KWinComponents.DBusCall` with
+  `dbusInterface` (not `interface`) works as a debug channel (call `org.freedesktop.DBus.NameHasOwner`, watch with `dbus-monitor`).
+* **The scratch folder under `/tmp` is cleared between turns.** Keep test harnesses in the repo.
+* **`SwipeGestureHandler`**: KWin also tells every handler that did not get the swipe it was `cancelled` (an up swipe cancels the left/right ones);
+  only end a gesture in a handler that started it.
+* **Plasma writes its config files several seconds late** (`plasmashellrc`, the appletsrc). Read state from the running shell (a scripting query via
+  `gdbus call ... evaluateScript`), never from the file right after a change.
+* **`qdbus6 .../Effects activeEffects` tells when an effect is on screen**; poll it to see show/hide timing.
+* **Plasma 6.7 system tray lists** (`hiddenItems`, `extraItems`) are in the tray applet's own `[General]` group; `SystrayContainmentId` is empty. A
+  script that reports success without checking it changed anything hid the bug for weeks.
+* **`pam_faillock` plus Plasma's lock screen**: automatic failed conversations at wake count as failures and lock the account. The lock screen's own
+  `/etc/pam.d/kde` must not use faillock.
+* **Moving a window's desktops from a test can hit plasmashell** (it was the "active window"). Only ever move windows you chose and are normal app
+  windows (`normalWindow`, not `dock`/`desktopWindow`).
+* **Never `pkill -x`/`pgrep -x name` to clean up a test**: it kills the owner's own windows of that app. Keep the PID (`cmd & P=$!`).
+* **Docker Hub rate limit** fails CI at "Initialize containers"; use `mirror.gcr.io/library/archlinux:latest`. A re-run uses the workflow file of the
+  original run, so push the workflow change and let a new run start.
+* Terminals inside the Claude app have `no_new_privs`: `sudo` fails there. The owner must use Konsole.
+
+**Every dependency of Zohara Settings (and the Store) must also be listed in `zohara-profile/packages.x86_64`.** A package that is not in the list is
+pulled late from live mirrors while the image is built, and the live mirrors no longer have the version of the pinned Arch day: 404 and the whole
+25 to 60 minute build fails ("qt6-quick3d ... returned error: 404", then "keyring is not writable"). It happened for `libinput-tools` and again
+on 2026-10-10 for `qt6-quick3d`, `qt6-multimedia`, `qt6-multimedia-ffmpeg` (added to the PKGBUILD for the cube and the live wallpaper).
+After changing `depends` in a PKGBUILD, check each name against `packages.x86_64`.
+
+## 2026-10-11 and 12 traps (release of 1.1)
+
+**`gh run download` of the 4 GB ISO artifact can die with "connection timed out" and leaves nothing.** Download the zip with a resumable `curl -C -` loop instead.
+`gh api` follows redirects itself, so it hides the artifact's `Location`; ask the API with `curl -sI -H "Authorization: Bearer $(gh auth token)" https://api.github.com/repos/Zohaib8090/zohara/actions/artifacts/<id>/zip`.
+The signed link is short-lived: ask for a fresh one every round. Expected size = the artifact's `size_in_bytes`.
+
+**A plain `curl URL | sha256sum` of the 4 GB ISO from the Oracle bucket can end early with `OpenSSL SSL_read: unexpected eof` and print a wrong hash.** The upload was fine
+(compare Oracle's `opc-multipart-md5` with the one computed from the file: md5 of each 128 MiB part, md5 of those digests joined, base64, `-<number of parts>`).
+Verify the public link with `curl -C - --retry 30 --retry-all-errors` into a file, then hash the file.
+
+**Oracle CLI on a new machine:** not installed by pacman. `python3 -m venv ~/.local/share/oci-cli-venv && ~/.local/share/oci-cli-venv/bin/pip install oci-cli` (works on Python 3.14 too), link `oci` into `~/.local/bin`.
+An old `~/.oci/config` may point at another machine's home folder (`/home/zohaib/...`); `oci session authenticate` rewrites it. The owner types the password in the browser. The token lasts about an hour: download and check
+the ISO first, log in last. `oci session validate --profile zohara --local` shows the expiry. Use `--no-overwrite` for a new ISO and `--force` only for `SHA256SUMS`.
+
+**The ISO ships Settings built from `zohara-settings` `main`, not the stable package** (`Dockerfile` section 8), stamped with the build time. Its version is newer than stable's, so the Update page of a fresh ISO says "up to date"
+even when stable has newer apps. See `docs/HANDOFF-2026-10-12.md` for the plan.
+
+**Live mode has very little writable space** (archiso's RAM overlay; no `cow_spacesize` is set in the boot entries; the default is probably 256 MB, not measured). On a 3 GB virtual machine updates will fail or vanish.
+Do not raise it blindly: a small RAM machine would run out of memory.
+
+**Plasma launcher from the command line:** `qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu` does nothing here. Use
+`gdbus call --session --dest org.kde.kglobalaccel --object-path /component/plasmashell --method org.kde.kglobalaccel.Component.invokeShortcut "activate application launcher"` (calling it again closes the menu).
+
+**Taking pictures of the owner's desktop captures whatever is on it.** `spectacle -b -n -f` shows every window of the current desktop (this chat, Chrome tabs and bookmarks, the Oracle login link). Look at each file, delete the private ones at once,
+and never take one while the owner is typing. The taskbar lists tasks from every desktop; `showOnlyCurrentDesktop` (icontasks, `[General]`) through `evaluateScript` shows only the current desktop, then set it back to `false`.
+The Settings and Store windows can be captured alone with `spectacle -a` after starting them yourself (`zohara-settings --page "<label>"`; wait about 5 s; the Store needs about 10 s); kill only the PID you started.
+
+**`ydotoold` does not survive a login.** Start your own (`ydotoold --socket-path=<file>` and `YDOTOOL_SOCKET=<file>`) when you need a synthetic mouse wheel, and kill that PID afterwards.
+
+**Meta AI cannot make a video from uploaded screenshots yet** ("the video tool isn't available"). A text prompt works but invents the desktop. Real-screenshot reels are built locally with ffmpeg (`zohara-instagram/make_video*.py`).
