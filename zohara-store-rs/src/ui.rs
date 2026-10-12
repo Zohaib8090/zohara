@@ -209,11 +209,17 @@ pub fn build() -> gtk4::Widget {
     let curated = Rc::new(get_curated_apps());
     let search_page = Rc::new(search_page);
 
+    // Names the repositories already carry, so the AUR group only shows what they do not.
+    let known: Rc<RefCell<std::collections::HashSet<String>>> = Rc::new(RefCell::new(Default::default()));
+    let aur_generation = Rc::new(Cell::new(0u64));
+
     let run_search: Rc<dyn Fn()> = {
         let (entry, stack, last, page, cache) = (search_entry.clone(), stack.clone(), last_tab.clone(), search_page.clone(), cache.clone());
         let (catalog, ready, curated) = (catalog.clone(), catalog_ready.clone(), curated.clone());
+        let (known, aur_generation) = (known.clone(), aur_generation.clone());
         Rc::new(move || {
             let query = entry.text().trim().to_string();
+            aur_generation.set(aur_generation.get() + 1);
             if query.is_empty() {
                 stack.set_visible_child_name(&last.borrow());
                 return;
@@ -224,6 +230,39 @@ pub fn build() -> gtk4::Widget {
             let results = backend::search_catalog(&curated, &catalog.borrow(), &query, SEARCH_LIMIT);
             page.show(&query, results, &cache, ready.get());
             stack.set_visible_child_name("search");
+
+            // The AUR is searched on its own server (it is far too big to keep a copy of), a moment after typing stops.
+            if query.chars().count() >= 3 {
+                let my = aur_generation.get();
+                let (page, cache, known, generation) = (page.clone(), cache.clone(), known.clone(), aur_generation.clone());
+                let q = query.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                    if generation.get() != my {
+                        return; // typed something else meanwhile
+                    }
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    let q2 = q.clone();
+                    std::thread::spawn(move || {
+                        let _ = tx.send(crate::aur::search(&q2));
+                    });
+                    glib::timeout_add_local(std::time::Duration::from_millis(150), move || match rx.try_recv() {
+                        Ok(res) => {
+                            if generation.get() == my {
+                                match res {
+                                    Ok(found) => {
+                                        let shown = crate::aur::pick(found, &known.borrow(), 6);
+                                        page.show_aur(shown.iter().map(crate::aur::to_app).collect(), &cache, None);
+                                    }
+                                    Err(e) => page.show_aur(Vec::new(), &cache, Some(e)),
+                                }
+                            }
+                            glib::ControlFlow::Break
+                        }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                        Err(_) => glib::ControlFlow::Break,
+                    });
+                });
+            }
         })
     };
     {
@@ -231,24 +270,41 @@ pub fn build() -> gtk4::Widget {
         search_entry.connect_search_changed(move |_| run());
     }
     {
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = tx.send(backend::load_catalog());
+        // Read the catalog; if a source could not be read (offline), say so and try again a minute later, a few times.
+        let start: Rc<RefCell<Option<Rc<dyn Fn(u32)>>>> = Rc::new(RefCell::new(None));
+        let (catalog, ready, run, known, page, start2) = (catalog.clone(), catalog_ready.clone(), run_search.clone(), known.clone(), search_page.clone(), start.clone());
+        let load: Rc<dyn Fn(u32)> = Rc::new(move |retries_left: u32| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(backend::load_catalog());
+            });
+            let (catalog, ready, run, known, page, start3) = (catalog.clone(), ready.clone(), run.clone(), known.clone(), page.clone(), start2.clone());
+            glib::timeout_add_local(std::time::Duration::from_millis(250), move || match rx.try_recv() {
+                Ok(cat) => {
+                    *known.borrow_mut() = cat.apps.iter().filter(|a| a.source == AppSource::Pacman).map(|a| a.package_name.clone()).collect();
+                    *catalog.borrow_mut() = cat.apps;
+                    ready.set(true);
+                    page.set_warning(&cat.notes.join(" "));
+                    run(); // results typed before the catalog arrived get filled in now
+                    if !cat.notes.is_empty() && retries_left > 0 {
+                        let again = start3.borrow().clone();
+                        glib::timeout_add_local_once(std::time::Duration::from_secs(60), move || {
+                            if let Some(f) = again {
+                                f(retries_left - 1);
+                            }
+                        });
+                    }
+                    glib::ControlFlow::Break
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(_) => {
+                    ready.set(true);
+                    glib::ControlFlow::Break
+                }
+            });
         });
-        let (catalog, ready, run) = (catalog.clone(), catalog_ready.clone(), run_search.clone());
-        glib::timeout_add_local(std::time::Duration::from_millis(250), move || match rx.try_recv() {
-            Ok(all) => {
-                *catalog.borrow_mut() = all;
-                ready.set(true);
-                run(); // results typed before the catalog arrived get filled in now
-                glib::ControlFlow::Break
-            }
-            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
-            Err(_) => {
-                ready.set(true);
-                glib::ControlFlow::Break
-            }
-        });
+        *start.borrow_mut() = Some(load.clone());
+        load(5);
     }
 
     tv.set_content(Some(&stack));
@@ -558,6 +614,7 @@ fn card_meta(app: &AppInfo) -> String {
     let src = match app.source {
         AppSource::Pacman => "Arch",
         AppSource::Flatpak => "Flathub",
+        AppSource::Aur => "AUR",
     };
     if app.rating > 0.0 {
         format!("★ {:.1}  ·  {src}", app.rating)
@@ -604,7 +661,7 @@ fn show_details(from: &gtk4::Widget, app: &AppInfo, cache: &Cache) {
 
     let info = adw::PreferencesGroup::new();
     let rows: [(&str, String); 3] = [
-        ("Source", match app.source { AppSource::Pacman => "Arch Linux software sources".into(), AppSource::Flatpak => "Flathub".into() }),
+        ("Source", match app.source { AppSource::Pacman => "Arch Linux software sources".into(), AppSource::Flatpak => "Flathub".into(), AppSource::Aur => "AUR: built on your computer from a community script, not reviewed by Zohara".into() }),
         ("Package", app.package_name.clone()),
         ("Category", app.category.label().to_string()),
     ];
@@ -695,9 +752,10 @@ fn installer(app: &AppInfo, cache: &Cache) -> Installer {
         });
     }
 
+    let (job_w, cache_w, app_w) = (job.clone(), cache.clone(), app.clone());
     let (app, cache) = (app.clone(), cache.clone());
     let (status2, text2, bar2) = (status.clone(), text.clone(), bar.clone());
-    btn.connect_clicked(move |b| {
+    let run: Rc<dyn Fn(&gtk4::Button)> = Rc::new(move |b: &gtk4::Button| {
         let removing = match job.get() {
             Job::Working => return,
             Job::Failed { removing } => removing, // Retry does the same again
@@ -780,7 +838,110 @@ fn installer(app: &AppInfo, cache: &Cache) -> Installer {
             }
         });
     });
+    // An AUR package is built from someone else's script: ask first, and let the person read the script.
+    btn.connect_clicked(move |b| {
+        let removing = match job_w.get() {
+            Job::Working => return,
+            Job::Failed { removing } => removing,
+            Job::Idle => cache_w.is_installed(&app_w.source, &app_w.package_name),
+        };
+        if app_w.source == AppSource::Aur && !removing {
+            if !crate::aur::have_builder() {
+                show_error(b.upcast_ref(), "Can't build this yet", "Building from the AUR needs the 'yay' program, which isn't installed. Install 'yay' from the Store first.");
+                return;
+            }
+            let (run, b2) = (run.clone(), b.clone());
+            confirm_aur(b.upcast_ref(), &app_w, move || run(&b2));
+        } else {
+            run(b);
+        }
+    });
     Installer { button: btn, status }
+}
+
+/// The warning shown before an AUR package is built. `go` runs when the person agrees.
+fn confirm_aur(from: &gtk4::Widget, app: &AppInfo, go: impl Fn() + Clone + 'static) {
+    let d = adw::AlertDialog::new(
+        Some(&format!("Build {} from the AUR?", app.name)),
+        Some(
+            "This app comes from the Arch User Repository. Community members publish it, and Zohara has not reviewed it. \
+Installing it builds it on your computer by running the author's build script, which can do anything on your account. \
+Only continue if you trust it. You can read the script first.",
+        ),
+    );
+    d.add_responses(&[("cancel", "Cancel"), ("script", "View script"), ("install", "Build and install")]);
+    d.set_response_appearance("install", adw::ResponseAppearance::Destructive);
+    d.set_default_response(Some("cancel"));
+    d.set_close_response("cancel");
+    let (from2, app2) = (from.clone(), app.clone());
+    d.connect_response(None, move |_, r| match r {
+        "install" => go(),
+        "script" => show_script(&from2, &app2, go.clone()),
+        _ => {}
+    });
+    d.present(Some(from));
+}
+
+/// The package's build script (PKGBUILD) in a window, with the same two choices as the warning.
+fn show_script(from: &gtk4::Widget, app: &AppInfo, go: impl Fn() + 'static) {
+    let win = adw::Window::builder().modal(true).default_width(760).default_height(560).title(&format!("Build script for {}", app.package_name)).build();
+    if let Some(parent) = from.root().and_downcast::<gtk4::Window>() {
+        win.set_transient_for(Some(&parent));
+    }
+    let header = adw::HeaderBar::new();
+    let cancel = gtk4::Button::with_label("Cancel");
+    let install = gtk4::Button::with_label("Build and install");
+    install.add_css_class("destructive-action");
+    install.set_sensitive(false);
+    header.pack_start(&cancel);
+    header.pack_end(&install);
+    let text = gtk4::TextView::new();
+    text.set_editable(false);
+    text.set_cursor_visible(false);
+    text.set_monospace(true);
+    text.set_wrap_mode(gtk4::WrapMode::WordChar);
+    text.set_left_margin(12);
+    text.set_right_margin(12);
+    text.set_top_margin(10);
+    text.buffer().set_text("Loading the script…");
+    let scroll = gtk4::ScrolledWindow::new();
+    scroll.set_vexpand(true);
+    scroll.set_child(Some(&text));
+    let view = adw::ToolbarView::new();
+    view.add_top_bar(&header);
+    view.set_content(Some(&scroll));
+    win.set_content(Some(&view));
+    {
+        let win = win.clone();
+        cancel.connect_clicked(move |_| win.close());
+    }
+    {
+        let win = win.clone();
+        install.connect_clicked(move |_| {
+            win.close();
+            go();
+        });
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let name = app.package_name.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(crate::aur::fetch_pkgbuild(&name));
+    });
+    glib::timeout_add_local(std::time::Duration::from_millis(150), move || match rx.try_recv() {
+        Ok(res) => {
+            match res {
+                Ok(script) => {
+                    text.buffer().set_text(&script);
+                    install.set_sensitive(true); // only after the script could be shown
+                }
+                Err(e) => text.buffer().set_text(&format!("The script could not be loaded: {e}\n\nWithout reading it, it is better not to install this.")),
+            }
+            glib::ControlFlow::Break
+        }
+        Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+        Err(_) => glib::ControlFlow::Break,
+    });
+    win.present();
 }
 
 /// Just the button, for places with no room for the progress area (the hero banner): the button itself shows the
@@ -889,7 +1050,9 @@ struct SearchPage {
     widget: gtk4::Widget,
     title: gtk4::Label,
     note: gtk4::Label,
+    warning: gtk4::Label,
     results: gtk4::Box,
+    aur: gtk4::Box,
     empty: adw::StatusPage,
 }
 
@@ -914,7 +1077,16 @@ impl SearchPage {
         let note = gtk4::Label::new(None);
         note.add_css_class("section-sub");
         note.set_xalign(0.0);
+        let warning = gtk4::Label::new(None);
+        warning.add_css_class("section-sub");
+        warning.add_css_class("error");
+        warning.set_xalign(0.0);
+        warning.set_wrap(true);
+        warning.set_visible(false);
         let results = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        let aur = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+        aur.set_margin_top(18);
+        aur.set_visible(false);
         let empty = adw::StatusPage::new();
         empty.set_icon_name(Some("edit-find-symbolic"));
         empty.set_title("No apps found");
@@ -923,14 +1095,51 @@ impl SearchPage {
 
         page.append(&title);
         page.append(&note);
+        page.append(&warning);
         page.append(&results);
+        page.append(&aur);
         page.append(&empty);
         clamp.set_child(Some(&page));
         scroll.set_child(Some(&clamp));
-        SearchPage { widget: scroll.upcast(), title, note, results, empty }
+        SearchPage { widget: scroll.upcast(), title, note, warning, results, aur, empty }
+    }
+
+    /// A line about a source that could not be read (Flathub offline, for example); empty hides it.
+    fn set_warning(&self, text: &str) {
+        self.warning.set_text(text);
+        self.warning.set_visible(!text.is_empty());
+    }
+
+    /// The "Community (AUR)" group under the results: build-it-yourself packages the repositories do not carry.
+    fn show_aur(&self, apps: Vec<AppInfo>, cache: &Cache, problem: Option<String>) {
+        while let Some(c) = self.aur.first_child() {
+            self.aur.remove(&c);
+        }
+        if apps.is_empty() && problem.is_none() {
+            self.aur.set_visible(false);
+            return;
+        }
+        let h = gtk4::Label::new(Some("Community (AUR)"));
+        h.add_css_class("section-title");
+        h.set_xalign(0.0);
+        self.aur.append(&h);
+        let sub = gtk4::Label::new(Some(&match &problem {
+            Some(p) => p.clone(),
+            None => "Built on your computer from scripts that community members publish. Zohara has not reviewed them, so you are asked before each one is installed.".to_string(),
+        }));
+        sub.add_css_class("section-sub");
+        sub.set_xalign(0.0);
+        sub.set_wrap(true);
+        self.aur.append(&sub);
+        if !apps.is_empty() {
+            self.aur.append(&app_grid(&apps, cache));
+            self.empty.set_visible(false);
+        }
+        self.aur.set_visible(true);
     }
 
     fn show(&self, query: &str, results: Vec<AppInfo>, cache: &Cache, catalog_ready: bool) {
+        self.aur.set_visible(false);
         self.title.set_text(&format!("Results for “{query}”"));
         while let Some(c) = self.results.first_child() {
             self.results.remove(&c);

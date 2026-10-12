@@ -25,6 +25,8 @@ impl AppInfo {
 pub enum AppSource {
     Pacman,
     Flatpak,
+    /// Built on this computer from a community build script (the AUR). Installed like a pacman package once built.
+    Aur,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

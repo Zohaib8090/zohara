@@ -39,7 +39,7 @@ impl InstalledCache {
 
     pub fn is_installed(&self, source: &AppSource, package_name: &str) -> bool {
         match source {
-            AppSource::Pacman => self.pacman.borrow().contains(package_name),
+            AppSource::Pacman | AppSource::Aur => self.pacman.borrow().contains(package_name),
             AppSource::Flatpak => self.flatpak.borrow().contains(package_name),
         }
     }
@@ -47,7 +47,7 @@ impl InstalledCache {
     /// Records that `package_name` is now installed (or gone) and tells every listening button.
     pub fn set_installed(&self, source: &AppSource, package_name: &str, installed: bool) {
         let mut set = match source {
-            AppSource::Pacman => self.pacman.borrow_mut(),
+            AppSource::Pacman | AppSource::Aur => self.pacman.borrow_mut(),
             AppSource::Flatpak => self.flatpak.borrow_mut(),
         };
         if installed {
@@ -427,13 +427,49 @@ fn pacman_admin(args: &[&str], removing: bool, tx: &std::sync::mpsc::Sender<Even
     Err("Couldn't get administrator permission.".into())
 }
 
+/// Builds and installs a package from the AUR with `yay` (see `aur::install_command`). The build runs as the person; the
+/// administrator password is asked for through `pkexec` only for installing what was built.
+fn aur_install(package_name: &str, tx: &std::sync::mpsc::Sender<Event>) -> Result<(), String> {
+    if !crate::aur::have_builder() {
+        return Err("Building from the AUR needs the 'yay' program, which isn't installed. Install 'yay' from the Store first.".into());
+    }
+    let cmd = crate::aur::install_command(package_name).ok_or_else(|| "That is not a valid package name.".to_string())?;
+    let text = |l: &str| {
+        let t = l.trim().trim_start_matches("==>").trim_start_matches("->").trim_start_matches(':').trim();
+        (!t.is_empty()).then(|| Progress { fraction: None, text: t.chars().take(90).collect() })
+    };
+    match run_streaming(cmd, text, || None, tx) {
+        Ok((st, _)) if st.success() => Ok(()),
+        Ok((st, _)) if matches!(st.code(), Some(126) | Some(127)) => Err("The password prompt was cancelled, so nothing was changed.".to_string()),
+        Ok((_, err)) => Err(aur_failure(&err)),
+        Err(e) => Err(e),
+    }
+}
+
+/// A plain-words reason for a failed AUR build.
+pub fn aur_failure(stderr: &str) -> String {
+    let e = stderr.to_lowercase();
+    if e.contains("could not resolve host") || e.contains("couldn't resolve") || e.contains("failed to connect") || e.contains("network") {
+        "Couldn't download it. Check your internet connection and try again.".into()
+    } else if e.contains("target not found") || e.contains("package not found") || e.contains("no aur package found") {
+        "This package isn't on the AUR any more, or one of the things it needs can't be found.".into()
+    } else if e.contains("error making") || e.contains("a failure occurred in build") || e.contains("failed to build") {
+        "The build failed. The author's script may be out of date for this system.".into()
+    } else if e.contains("pgp") || e.contains("unknown public key") || e.contains("validity check") || e.contains("integrity") {
+        "The download didn't pass its integrity check, so it wasn't installed.".into()
+    } else {
+        explain_failure(stderr)
+    }
+}
+
 /// Installs (`remove == false`) or removes an app, sending progress to `tx`, and finishes with `Event::Done`.
 pub fn run_job(source: &AppSource, package_name: &str, remove: bool, tx: &std::sync::mpsc::Sender<Event>) {
     let _guard = PACKAGE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let _ = tx.send(Event::Progress(Progress { fraction: None, text: "Starting…".into() }));
     let res = match (source, remove) {
         (AppSource::Pacman, false) => pacman_admin(&["-S", "--noconfirm", "--needed", package_name], false, tx),
-        (AppSource::Pacman, true) => pacman_admin(&["-Rs", "--noconfirm", package_name], true, tx),
+        (AppSource::Pacman | AppSource::Aur, true) => pacman_admin(&["-Rs", "--noconfirm", package_name], true, tx),
+        (AppSource::Aur, false) => aur_install(package_name, tx),
         (AppSource::Flatpak, rm) => {
             let mut c = Command::new("flatpak");
             if rm {
@@ -486,7 +522,7 @@ fn pretty_name(package: &str) -> String {
 
 /// Libraries, language bindings, fonts and similar are packages, not apps; they stay out of the results unless the
 /// name is typed in full.
-fn looks_like_library(name: &str) -> bool {
+pub(crate) fn looks_like_library(name: &str) -> bool {
     const PREFIXES: [&str; 14] = [
         "lib", "lib32-", "python-", "perl-", "ruby-", "haskell-", "ttf-", "otf-", "xorg-", "qt5-", "qt6-", "gst-", "php-", "nodejs-",
     ];
@@ -508,20 +544,61 @@ fn app_from_package(repo: &str, name: &str, desc: &str) -> crate::app_info::AppI
     }
 }
 
+/// The names in `flatpak remotes --columns=name`.
+pub fn has_remote(remotes_output: &str, name: &str) -> bool {
+    remotes_output.lines().any(|l| l.trim() == name)
+}
+
+/// Makes sure Flathub is set up. The installer adds it once, but quietly gives up when the computer is offline during
+/// the install, and then the Store would show no Flathub apps at all. Adding it for this person needs no password.
+pub fn ensure_flathub() -> Result<(), String> {
+    let Ok(o) = Command::new("flatpak").args(["remotes", "--columns=name"]).stderr(Stdio::null()).output() else {
+        return Err("Flatpak isn't installed, so Flathub apps aren't available.".into());
+    };
+    if has_remote(&String::from_utf8_lossy(&o.stdout), "flathub") {
+        return Ok(());
+    }
+    let added = Command::new("flatpak")
+        .args(["remote-add", "--user", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"])
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if added {
+        Ok(())
+    } else {
+        Err("Flathub isn't set up yet and the Store couldn't add it. Check your internet connection.".into())
+    }
+}
+
+/// The catalog plus anything the person should be told about it (a source that could not be read).
+pub struct Catalog {
+    pub apps: Vec<crate::app_info::AppInfo>,
+    pub notes: Vec<String>,
+}
+
 /// Everything installable, read once in the background so that typing in the search box never starts a program:
-/// every package pacman knows plus (when Flathub is set up) every Flathub app, from the local catalog copy.
-pub fn load_catalog() -> Vec<crate::app_info::AppInfo> {
+/// every package pacman knows plus every Flathub app, from the local catalog copy (Flathub is set up first if needed).
+pub fn load_catalog() -> Catalog {
+    let mut notes = Vec::new();
+    let flathub = ensure_flathub();
+    if let Err(e) = &flathub {
+        notes.push(e.clone());
+    }
     let mut all = Vec::new();
     if let Ok(o) = Command::new("pacman").args(["-Ss", ""]).stderr(Stdio::null()).output() {
         for (repo, name, desc) in parse_pacman_ss(&String::from_utf8_lossy(&o.stdout)) {
             all.push(app_from_package(&repo, &name, &desc));
         }
     }
-    if let Ok(o) = Command::new("flatpak")
-        .args(["remote-ls", "--app", "--columns=application,name,description", "flathub"])
-        .stderr(Stdio::null())
-        .output()
-    {
+    let flathub_apps_before = all.len();
+    if let (Ok(()), Ok(o)) = (
+        &flathub,
+        Command::new("flatpak")
+            .args(["remote-ls", "--app", "--columns=application,name,description", "flathub"])
+            .stderr(Stdio::null())
+            .output(),
+    ) {
         for line in String::from_utf8_lossy(&o.stdout).lines() {
             let mut f = line.split('\t');
             let (Some(id), Some(name)) = (f.next(), f.next()) else { continue };
@@ -537,8 +614,11 @@ pub fn load_catalog() -> Vec<crate::app_info::AppInfo> {
                 rating: 0.0,
             });
         }
+        if all.len() == flathub_apps_before {
+            notes.push("Flathub's app list couldn't be read. Check your internet connection; the Store tries again in a minute.".into());
+        }
     }
-    all
+    Catalog { apps: all, notes }
 }
 
 /// Searches the curated list first, then the catalog, entirely in memory. Names that start with the query rank above
@@ -717,5 +797,41 @@ mod tests {
     fn unknown_failure_keeps_the_last_line() {
         assert_eq!(explain_failure("warning: x\nerror: something odd\n\n"), "It didn't finish (error: something odd).");
         assert_eq!(explain_failure(""), "It didn't finish (unknown error).");
+    }
+
+    #[test]
+    fn flathub_is_found_among_the_remotes_by_exact_name() {
+        assert!(has_remote("flathub\n", "flathub"));
+        assert!(has_remote("fedora\nflathub\n", "flathub"));
+        assert!(!has_remote("flathub-beta\n", "flathub"));
+        assert!(!has_remote("", "flathub"));
+    }
+
+    #[test]
+    fn aur_failures_are_explained_in_plain_words() {
+        assert!(aur_failure("curl: (6) Could not resolve host").contains("internet"));
+        assert!(aur_failure("==> ERROR: A failure occurred in build().").contains("build failed"));
+        assert!(aur_failure("error: target not found: foo").contains("isn't on the AUR"));
+    }
+
+    /// Uses an empty, throwaway Flatpak setup and the internet: `cargo test backend::tests::live_ -- --ignored`.
+    #[test]
+    #[ignore]
+    fn live_flathub_is_added_when_it_is_missing_and_its_apps_are_listed() {
+        let dir = std::env::temp_dir().join(format!("zohara-fp-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::env::set_var("FLATPAK_USER_DIR", dir.join("user"));
+        std::env::set_var("FLATPAK_SYSTEM_DIR", dir.join("system"));
+        std::env::set_var("FLATPAK_CONFIG_DIR", dir.join("config"));
+        let before = Command::new("flatpak").args(["remotes", "--columns=name"]).output().unwrap();
+        assert!(!has_remote(&String::from_utf8_lossy(&before.stdout), "flathub"), "the test setup must start without Flathub");
+        ensure_flathub().expect("Flathub should be added");
+        let after = Command::new("flatpak").args(["remotes", "--columns=name"]).output().unwrap();
+        assert!(has_remote(&String::from_utf8_lossy(&after.stdout), "flathub"));
+        let apps = Command::new("flatpak").args(["remote-ls", "--app", "--columns=application", "flathub"]).output().unwrap();
+        assert!(String::from_utf8_lossy(&apps.stdout).lines().count() > 500, "Flathub should list many apps");
+        // Asking again changes nothing.
+        ensure_flathub().expect("second call");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

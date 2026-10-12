@@ -44,7 +44,7 @@ Zohara Store supports 5 distinct package installation strategies to ensure users
 - **Execution:** `flatpak install -y flathub <package>`
 - **Verification:** `flatpak info <package>`
 
-### 3. `aur` (Arch User Repository via `yay`)
+### 3. `aur` (Arch User Repository via `yay`) — implemented 2026-10-12
 - **Use Case:** Software built from AUR scripts or pre-built AUR binaries.
 - **Execution:** `yay -S --noconfirm <package>`
 - **Verification:** `pacman -Q <package>`
