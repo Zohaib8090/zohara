@@ -7,4 +7,4 @@ Terminal=false
 Type=Application
 Categories=System;Settings;
 StartupNotify=true
-MimeType=x-scheme-handler/appstream;application/vnd.flatpak.ref;application/vnd.appimage;application/x-iso9660-appimage;
+MimeType=x-scheme-handler/appstream;application/vnd.flatpak.ref;application/vnd.flatpak;application/vnd.appimage;application/x-iso9660-appimage;

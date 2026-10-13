@@ -576,6 +576,17 @@ pub fn ensure_flathub() -> Result<(), String> {
     }
 }
 
+/// Installs a `.flatpak` bundle for this person only (no administrator password). Any runtime it needs comes from Flathub,
+/// which is added for this person first if missing. Output lines go to `tx`.
+pub fn flatpak_install_bundle(path: &std::path::Path, tx: &std::sync::mpsc::Sender<String>) -> Result<(), String> {
+    let path = path.canonicalize().map_err(|_| "The file isn't there any more.".to_string())?;
+    let _ = tx.send("Making sure Flathub is available for the parts it needs…".into());
+    let _ = ensure_flathub();
+    let mut c = Command::new("flatpak");
+    c.args(["install", "--user", "-y", "--noninteractive", "--bundle"]).arg(&path);
+    crate::updates::run_logged(c, tx)
+}
+
 /// The catalog plus anything the person should be told about it (a source that could not be read).
 pub struct Catalog {
     pub apps: Vec<crate::app_info::AppInfo>,

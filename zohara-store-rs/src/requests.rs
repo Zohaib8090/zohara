@@ -77,6 +77,8 @@ pub fn parse_args(args: &[String]) -> Vec<Request> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Kind {
     FlatpakRef,
+    /// A single-file Flatpak (`.flatpak`): the app itself is inside, not a pointer to Flathub.
+    FlatpakBundle,
     AppImage,
     Deb,
     Unknown,
@@ -86,6 +88,8 @@ pub fn kind_of(path: &Path) -> Kind {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
     if name.ends_with(".flatpakref") {
         Kind::FlatpakRef
+    } else if name.ends_with(".flatpak") {
+        Kind::FlatpakBundle
     } else if name.ends_with(".appimage") {
         Kind::AppImage
     } else if name.ends_with(".deb") {
@@ -93,6 +97,55 @@ pub fn kind_of(path: &Path) -> Kind {
     } else {
         Kind::Unknown
     }
+}
+
+/// What a `.flatpak` bundle says about itself, read from its first bytes without running or installing anything.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BundleInfo {
+    /// `org.example.App`
+    pub id: String,
+    /// `x86_64`, `aarch64`, ...
+    pub arch: String,
+    pub branch: String,
+    /// False for a runtime (a shared library set), which is not something to open.
+    pub is_app: bool,
+}
+
+/// A bundle keeps its ref (`app/org.example.App/x86_64/stable`) as plain text near the start, among binary data.
+pub fn parse_bundle_head(head: &[u8]) -> Option<BundleInfo> {
+    fn part(b: &[u8]) -> (&[u8], &[u8]) {
+        let n = b.iter().take_while(|c| c.is_ascii_alphanumeric() || matches!(**c, b'.' | b'_' | b'-')).count();
+        (&b[..n], &b[n..])
+    }
+    for (prefix, is_app) in [(&b"app/"[..], true), (&b"runtime/"[..], false)] {
+        let mut from = 0;
+        while let Some(pos) = head[from..].windows(prefix.len()).position(|w| w == prefix) {
+            let start = from + pos + prefix.len();
+            from = start;
+            // The ref must stand alone: not the tail of a longer word such as `webapp/`.
+            let at = start - prefix.len();
+            if at > 0 && (head[at - 1].is_ascii_alphanumeric() || matches!(head[at - 1], b'.' | b'_' | b'-' | b'/')) {
+                continue;
+            }
+            let (id, rest) = part(&head[start..]);
+            let Some(rest) = rest.strip_prefix(b"/") else { continue };
+            let (arch, rest) = part(rest);
+            let Some(rest) = rest.strip_prefix(b"/") else { continue };
+            let (branch, _) = part(rest);
+            let id = std::str::from_utf8(id).ok()?;
+            let (arch, branch) = (std::str::from_utf8(arch).ok()?, std::str::from_utf8(branch).ok()?);
+            let dots = id.matches('.').count();
+            if dots >= 1 && id.len() <= 200 && !arch.is_empty() && !branch.is_empty() && !id.starts_with('.') && !id.ends_with('.') {
+                return Some(BundleInfo { id: id.to_string(), arch: arch.to_string(), branch: branch.to_string(), is_app });
+            }
+        }
+    }
+    None
+}
+
+/// `dev.artcraft.PhotoCraft` -> `PhotoCraft`.
+pub fn bundle_title(id: &str) -> String {
+    id.rsplit('.').next().unwrap_or(id).to_string()
 }
 
 /// What a `.flatpakref` file says about the app.
@@ -186,6 +239,8 @@ mod tests {
         assert_eq!(kind_of(Path::new("/x/A.FlatpakRef")), Kind::FlatpakRef);
         assert_eq!(kind_of(Path::new("/x/a.appimage")), Kind::AppImage);
         assert_eq!(kind_of(Path::new("/x/a_1_amd64.deb")), Kind::Deb);
+        assert_eq!(kind_of(Path::new("/x/photocraft-0.8.2-linux-x86_64.flatpak")), Kind::FlatpakBundle);
+        assert_eq!(kind_of(Path::new("/x/a.flatpakref")), Kind::FlatpakRef);
         assert_eq!(kind_of(Path::new("/x/a.sh")), Kind::Unknown);
     }
 
@@ -205,5 +260,25 @@ mod tests {
     fn a_debian_file_name_gives_a_search_word() {
         assert_eq!(deb_search_term("cool-app_1.2.3_amd64.deb"), "cool-app");
         assert_eq!(deb_search_term("plain.deb"), "plain");
+    }
+
+    #[test]
+    fn a_bundle_is_recognised_by_the_ref_it_carries() {
+        let mut head = b"\x00\x01binary\x00junk icon-64\x89PNG".to_vec();
+        head.extend_from_slice(b"\x00app/dev.artcraft.PhotoCraft/x86_64/stable\x00[Application]\nname=dev.artcraft.PhotoCraft\n");
+        let b = parse_bundle_head(&head).unwrap();
+        assert_eq!((b.id.as_str(), b.arch.as_str(), b.branch.as_str(), b.is_app), ("dev.artcraft.PhotoCraft", "x86_64", "stable", true));
+        assert_eq!(bundle_title(&b.id), "PhotoCraft");
+        let rt = parse_bundle_head(b"\0runtime/org.x.Platform/aarch64/24.08\0").unwrap();
+        assert!(!rt.is_app && rt.arch == "aarch64");
+    }
+
+    #[test]
+    fn things_that_only_look_a_little_like_a_bundle_are_refused() {
+        assert_eq!(parse_bundle_head(b"just a text file"), None);
+        assert_eq!(parse_bundle_head(b"\0webapp/org.x.App/x86_64/stable\0"), None, "tail of a longer word");
+        assert_eq!(parse_bundle_head(b"\0app/nodots/x86_64/stable\0"), None, "not a reverse-DNS id");
+        assert_eq!(parse_bundle_head(b"\0app/org.x.App/x86_64\0"), None, "no branch");
+        assert_eq!(parse_bundle_head(b"\0app/org.x.App/x86_64/\0"), None, "empty branch");
     }
 }

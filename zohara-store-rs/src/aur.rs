@@ -111,9 +111,71 @@ fn curl(url: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&o.stdout).to_string())
 }
 
-/// Searches names and descriptions on the AUR.
+/// The words in what was typed: `Photo-Craft` and `photo craft` are both `["photo", "craft"]`.
+pub fn words_of(term: &str) -> Vec<String> {
+    term.split(|c: char| c.is_whitespace() || matches!(c, '-' | '_')).filter(|w| !w.is_empty()).map(|w| w.to_lowercase()).collect()
+}
+
+/// The AUR matches the text exactly as one piece, so "photo craft" finds nothing although the package is `photocraft`.
+/// For several words these are also asked: the words run together, joined by a dash, and each longer word alone.
+pub fn search_terms(term: &str) -> Vec<String> {
+    let words = words_of(term);
+    let mut out = vec![term.trim().to_string()];
+    if words.len() > 1 {
+        for t in [words.concat(), words.join("-")].into_iter().chain(words.iter().filter(|w| w.chars().count() >= 3).cloned()) {
+            if !out.contains(&t) {
+                out.push(t);
+            }
+        }
+    }
+    out
+}
+
+/// Whether a package fits every word typed (in its name or description), or has the words run together in its name.
+pub fn covers(p: &AurPackage, term: &str) -> bool {
+    let words = words_of(term);
+    let name = p.name.to_lowercase();
+    let hay = format!("{name} {}", p.description.to_lowercase());
+    words.iter().all(|w| hay.contains(w.as_str())) || name.contains(&words.concat())
+}
+
+/// Searches names and descriptions on the AUR. Several words are also tried run together and one by one, and what comes
+/// back must fit all of them.
 pub fn search(term: &str) -> Result<Vec<AurPackage>, String> {
-    parse_search(&curl(&format!("https://aur.archlinux.org/rpc/v5/search/{}?by=name-desc", encode_term(term)))?)
+    let terms = search_terms(term);
+    let multi = terms.len() > 1;
+    let mut all: Vec<AurPackage> = Vec::new();
+    let mut first_err = None;
+    let mut any_ok = false;
+    let handles: Vec<_> = terms
+        .iter()
+        .map(|t| {
+            let url = format!("https://aur.archlinux.org/rpc/v5/search/{}?by=name-desc", encode_term(t));
+            std::thread::spawn(move || curl(&url).and_then(|b| parse_search(&b)))
+        })
+        .collect();
+    for h in handles {
+        match h.join().unwrap_or_else(|_| Err("The search stopped unexpectedly.".to_string())) {
+            Ok(found) => {
+                any_ok = true;
+                for p in found {
+                    if !all.iter().any(|q| q.name == p.name) {
+                        all.push(p);
+                    }
+                }
+            }
+            Err(e) => {
+                first_err.get_or_insert(e);
+            }
+        }
+    }
+    if !any_ok {
+        return Err(first_err.unwrap_or_default());
+    }
+    if multi {
+        all.retain(|p| covers(p, term));
+    }
+    Ok(all)
 }
 
 /// The build script of a package, for the "View script" button.
@@ -194,6 +256,34 @@ mod tests {
         }
         assert!(install_command("-S").is_none());
         assert!(install_command("a b").is_none());
+    }
+
+    #[test]
+    fn several_words_are_also_searched_run_together_and_one_by_one() {
+        assert_eq!(search_terms("photocraft"), vec!["photocraft"]);
+        assert_eq!(search_terms("  Photo Craft "), vec!["Photo Craft", "photocraft", "photo-craft", "photo", "craft"]);
+        assert_eq!(search_terms("photo-craft"), vec!["photo-craft", "photocraft", "photo", "craft"]);
+        assert_eq!(search_terms("a bc"), vec!["a bc", "abc", "a-bc"], "very short words are not searched alone");
+    }
+
+    #[test]
+    fn what_comes_back_fits_every_word_typed() {
+        let mk = |n: &str, d: &str| AurPackage { name: n.into(), description: d.into(), version: String::new(), votes: 0, popularity: 0.0, maintainer: Some("m".into()), out_of_date: false };
+        assert!(covers(&mk("photocraft", "image editor"), "Photo Craft"));
+        assert!(covers(&mk("photo-craft-bin", "x"), "photo craft"));
+        assert!(covers(&mk("gimp-plugin", "Craft your photo edits"), "photo craft"));
+        assert!(!covers(&mk("photocollage", "make collages"), "photo craft"));
+        assert!(!covers(&mk("craftos", "an os"), "photo craft"));
+    }
+
+    #[test]
+    #[ignore = "needs the internet"]
+    fn live_a_name_typed_with_a_space_or_dash_is_still_found() {
+        for typed in ["photocraft", "Photo Craft", "photo craft", "photo-craft"] {
+            let found = search(typed).unwrap();
+            assert!(found.iter().any(|p| p.name == "photocraft"), "{typed:?} did not find photocraft");
+        }
+        assert!(search("zzzzqqq nothing").unwrap().is_empty());
     }
 
     #[test]

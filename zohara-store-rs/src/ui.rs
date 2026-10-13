@@ -432,6 +432,7 @@ fn handle_file(
             }
         }
         Kind::AppImage => confirm_appimage(from, path, cache),
+        Kind::FlatpakBundle => confirm_bundle(from, path, cache),
         Kind::Deb => {
             let term = requests::deb_search_term(&file_name);
             let d = adw::AlertDialog::new(
@@ -460,6 +461,152 @@ fn human_size(bytes: u64) -> String {
         i += 1;
     }
     if i == 0 { format!("{bytes} B") } else { format!("{v:.1} {}", U[i]) }
+}
+
+/// Asks before installing a `.flatpak` file (an app in a single file, e.g. from a GitHub release), then installs it for
+/// this person only, showing what Flatpak says while it works.
+fn confirm_bundle(from: gtk4::Widget, path: std::path::PathBuf, cache: Cache) {
+    use std::io::Read;
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+    let mut head = Vec::new();
+    let _ = std::fs::File::open(&path).and_then(|f| f.take(1 << 20).read_to_end(&mut head));
+    let Some(info) = crate::requests::parse_bundle_head(&head) else {
+        show_error(&from, "Not a Flatpak app file", &format!("{file_name} doesn't look like a Flatpak app. It may be damaged or only partly downloaded."));
+        return;
+    };
+    if !info.is_app {
+        show_error(&from, "That isn't an app", &format!("{file_name} holds a Flatpak runtime (shared parts apps use), not an app you can open."));
+        return;
+    }
+    let mine = std::process::Command::new("flatpak").arg("--default-arch").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    if !mine.is_empty() && mine != info.arch {
+        show_error(&from, "Made for another kind of computer", &format!("{file_name} is built for {}, but this computer is {mine}. Look for the {mine} download.", info.arch));
+        return;
+    }
+    let name = crate::requests::bundle_title(&info.id);
+    let size = std::fs::metadata(&path).map(|m| human_size(m.len())).unwrap_or_default();
+    let d = adw::AlertDialog::new(
+        Some(&format!("Install {name}?")),
+        Some(&format!(
+            "{file_name} ({size}) is a Flatpak app from the internet. Zohara has not checked it. It runs inside Flatpak's sandbox, but it can ask for access to your files, so only install it if you trust where it came from. It is installed for your account only, no administrator password is needed, and parts it needs may be downloaded from Flathub."
+        )),
+    );
+    d.add_responses(&[("cancel", "Cancel"), ("install", "Install")]);
+    d.set_response_appearance("install", adw::ResponseAppearance::Suggested);
+    d.set_default_response(Some("cancel"));
+    d.set_close_response("cancel");
+    let from2 = from.clone();
+    d.connect_response(None, move |_, r| {
+        if r != "install" {
+            return;
+        }
+        let (from, cache, id, name, p) = (from2.clone(), cache.clone(), info.id.clone(), name.clone(), path.clone());
+        run_with_log(&from, &format!("Installing {name}"), move |tx| backend::flatpak_install_bundle(&p, tx), move |ok| {
+            if ok {
+                cache.set_installed(&AppSource::Flatpak, &id, true);
+            }
+            ok.then(|| id.clone())
+        });
+    });
+    d.present(Some(&from));
+}
+
+/// A small window that shows a job's output while it runs. When it succeeds, `after(true)` may return an app id, which
+/// adds an Open button.
+fn run_with_log(
+    parent: &gtk4::Widget,
+    title: &str,
+    work: impl FnOnce(&std::sync::mpsc::Sender<String>) -> Result<(), String> + Send + 'static,
+    after: impl Fn(bool) -> Option<String> + 'static,
+) {
+    let dialog = adw::Dialog::new();
+    dialog.set_title(title);
+    dialog.set_content_width(620);
+    dialog.set_can_close(false);
+    let body = gtk4::Box::new(gtk4::Orientation::Vertical, 10);
+    body.set_margin_top(14);
+    body.set_margin_bottom(16);
+    body.set_margin_start(16);
+    body.set_margin_end(16);
+    let head = gtk4::Box::new(gtk4::Orientation::Horizontal, 10);
+    let spinner = gtk4::Spinner::new();
+    spinner.start();
+    head.append(&spinner);
+    let status = gtk4::Label::new(Some("Working… this can take a few minutes."));
+    status.set_xalign(0.0);
+    status.set_wrap(true);
+    status.set_hexpand(true);
+    head.append(&status);
+    body.append(&head);
+    let log = gtk4::TextBuffer::new(None);
+    let view = gtk4::TextView::with_buffer(&log);
+    view.set_editable(false);
+    view.set_monospace(true);
+    view.set_cursor_visible(false);
+    let sc = gtk4::ScrolledWindow::new();
+    sc.set_min_content_height(220);
+    sc.set_child(Some(&view));
+    body.append(&sc);
+    let actions = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    actions.set_halign(gtk4::Align::End);
+    let open = gtk4::Button::with_label("Open");
+    open.add_css_class("suggested-action");
+    open.set_visible(false);
+    let close = gtk4::Button::with_label("Close");
+    close.set_sensitive(false);
+    actions.append(&open);
+    actions.append(&close);
+    body.append(&actions);
+    dialog.set_child(Some(&body));
+    {
+        let d = dialog.clone();
+        close.connect_clicked(move |_| {
+            d.set_can_close(true);
+            d.close();
+        });
+    }
+    dialog.present(Some(parent));
+
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    std::thread::spawn(move || {
+        let r = work(&tx);
+        let _ = done_tx.send(r);
+    });
+    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+        while let Ok(line) = rx.try_recv() {
+            let mut end = log.end_iter();
+            log.insert(&mut end, &format!("{line}\n"));
+            let mark = log.create_mark(None, &log.end_iter(), false);
+            view.scroll_to_mark(&mark, 0.0, false, 0.0, 0.0);
+            log.delete_mark(&mark);
+        }
+        match done_rx.try_recv() {
+            Ok(result) => {
+                spinner.stop();
+                spinner.set_visible(false);
+                close.set_sensitive(true);
+                match &result {
+                    Ok(()) => {
+                        status.set_text("Done. It is in your app menu. To remove it later, use the Library tab.");
+                        if let Some(id) = after(true) {
+                            open.set_visible(true);
+                            open.connect_clicked(move |_| {
+                                let _ = std::process::Command::new("flatpak").args(["run", &id]).spawn();
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        let _ = after(false);
+                        status.set_text(e);
+                    }
+                }
+                glib::ControlFlow::Break
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(_) => glib::ControlFlow::Break,
+        }
+    });
 }
 
 /// Asks before installing an AppImage, then copies it in and adds it to the menu.
