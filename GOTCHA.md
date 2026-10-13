@@ -466,3 +466,14 @@ interfaces and IPv6 link-local addresses made phones pick unreachable ones). `ma
   database still listed the old one, so no machine would have seen it. Publish one package, wait for it to finish, then the
   next (or re-run the one that was lost). Always check the result: download `zohara-<channel>.db`, `bsdtar -tf` it and look for
   both versions.
+
+* **Testing a Settings or Store window safely (2026-10-13).** Run the test copy with `XDG_DATA_HOME` and `XDG_CONFIG_HOME` in a
+  temp folder and its own `dbus-launch` bus: Settings' own files, the graphics choice, the web apps, **and Flatpak's user
+  folder** (`flatpak override --user`, `flatpak --user`) all follow `XDG_DATA_HOME`, so nothing real changes (a system-wide
+  Flatpak like Steam can still be read). The Store is different: it talks to the real pacman and Flatpak.
+* **Cleaning up test processes:** a test copy leaves `xdg-desktop-portal-kde` and `ksecretd` on its private bus, carrying the test
+  environment. Find them by `XDG_DATA_HOME=<temp>` in `/proc/<pid>/environ` with a script that skips its own shell (a plain
+  `pgrep -f`/`pkill -f` on the temp path kills the shell that runs it, exit 144). A command that starts a GUI app with `gio open`
+  keeps the tool's output open: redirect its output to a file and run it in the background.
+* **A pid namespace dies with its first process.** A sandbox started with `bwrap --unshare-pid` ends when the first process in it
+  exits, even if the app started a background process of its own (Kate does). See `FEATURES-2026-10-13.md`.
