@@ -118,3 +118,36 @@ version…", "Done."), and the page then said everything is up to date. Note: ap
 `.upd_info`, so it is never reported (correct).
 **Not verified:** the notification itself (`notify-send` with the new text); the AUR **Update** button with a real AUR app
 (needs a built AUR package and the password); more than one app in the group.
+
+## Later on 2026-10-13: `.flatpak` files and AUR search with spaces
+
+Store `0.1.0.202610130708` (stable and alpha).
+
+### `.flatpak` files (single-file Flatpak apps)
+
+Many projects put a `.flatpak` bundle on their GitHub releases page next to the AppImage (PhotoCraft does). Double-clicking one, or `zohara-store file.flatpak`, now opens the Store.
+
+- `src/requests.rs`: `Kind::FlatpakBundle` for `*.flatpak` (a `.flatpakref` is a different, small file that points at Flathub). `parse_bundle_head` reads the first 1 MiB and finds the plain-text ref (`app/ai.storyteller.photocraft/x86_64/stable`); the file starts with the bytes `flatpak\0`. A bundle is refused when no ref is found (damaged or half-downloaded file), when it is a `runtime/` (not an app), or when its CPU does not match `flatpak --default-arch`. `bundle_title` shows the last part of the id with a capital letter.
+- `src/ui.rs`: `confirm_bundle` asks first (file name, size, "not checked by Zohara", runs in Flatpak's sandbox but can ask for file access, installed for this account only, no password). `run_with_log` is a small window with a spinner and the live Flatpak output, then "Done" and an Open button (`flatpak run <id>`).
+- `src/backend.rs`: `flatpak_install_bundle` runs `flatpak install --user -y --noninteractive --bundle <file>` after `ensure_flathub()`, so any runtime it needs comes from Flathub. It is installed for the person only, never system wide.
+- `data/zohara-store.desktop`: `application/vnd.flatpak` added to `MimeType`. It reaches a machine with the new package; `xdg-mime query default application/vnd.flatpak` was empty before.
+
+**Tested:** unit tests (62 then 64 pass); PhotoCraft 0.8.2 `photocraft-0.8.2-linux-x86_64.flatpak` (57 MB, SHA-256 matched the release's `SHA256SUMS.txt`) opened in the Store window: question dialog, Install, progress window, "Done"; Flatpak listed `ai.storyteller.photocraft 0.8.2`; the Library listed it with Remove; `flatpak run ... --version` printed `photocraft 0.8.2`. It was run in a throwaway Flatpak data folder (`XDG_DATA_HOME=/tmp/zfp-data`: the Flatpak user installation follows it), and removed afterwards. The owner also tried `.flatpak` files himself on 2026-10-13.
+
+**Known small things:** the Library labels a bundle app's source "Flathub"; the progress window has no percentage (Flatpak prints none for a bundle); an aarch64 or runtime bundle is refused only per unit tests.
+
+### Why the Store did not find PhotoCraft
+
+The AUR matches the typed text as one piece, so "photo craft", "Photo Craft" and "photo-craft" found nothing while "photocraft" did (the package is `photocraft`). "photograph" is a different word and still finds nothing (the description says "Photoshop").
+
+`src/aur.rs`: `search_terms` also asks for the words run together, joined with a dash and each word of three letters or more alone, all at the same time (one thread each, about 5 s in all); `covers` keeps only packages that fit every word typed (name or description) or have the words run together in the name; single-word searches are unchanged. Tests: unit tests plus the ignored live test `live_a_name_typed_with_a_space_or_dash_is_still_found`. Seen in the Store window: "photo craft" shows Photocraft and Lightcraft under Community (AUR).
+
+### How a job shows progress
+
+- Flatpak from Flathub: button "Installing… 37%", progress bar and a line in the Updates page's download list (the percentage comes from Flatpak's own output, `parse_flatpak_line`).
+- AUR: same widgets, but the bar pulses (a build has no known end) and the text is the current build step. Needs the password first. **Not tested with a real install.**
+- `.flatpak` file: the log window above. AppImage: copied in a second or two, a dialog afterwards.
+
+### Test method notes
+
+Typing into the Store needs the magnifier icon clicked first (the search box is hidden until then). The input guard refuses to type when another window has focus; wait or refocus rather than forcing it.

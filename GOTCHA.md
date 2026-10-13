@@ -477,3 +477,8 @@ interfaces and IPv6 link-local addresses made phones pick unreachable ones). `ma
   keeps the tool's output open: redirect its output to a file and run it in the background.
 * **A pid namespace dies with its first process.** A sandbox started with `bwrap --unshare-pid` ends when the first process in it
   exits, even if the app started a background process of its own (Kate does). See `FEATURES-2026-10-13.md`.
+
+## Store: the search box and the AUR (2026-10-13)
+- The Store's search entry is hidden until the magnifier icon is clicked; typing into the window before that does nothing.
+- The AUR RPC matches the whole typed text as one substring: "photo craft" finds nothing for `photocraft`. Search the words joined as well (`aur::search_terms`).
+- A `.flatpak` bundle starts with `flatpak\0` and keeps its ref as plain text near the start. Test installs with `XDG_DATA_HOME=<throwaway>` so the real Flatpak user installation is untouched.
