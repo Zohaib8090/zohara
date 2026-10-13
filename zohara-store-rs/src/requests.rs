@@ -145,7 +145,9 @@ pub fn parse_bundle_head(head: &[u8]) -> Option<BundleInfo> {
 
 /// `dev.artcraft.PhotoCraft` -> `PhotoCraft`.
 pub fn bundle_title(id: &str) -> String {
-    id.rsplit('.').next().unwrap_or(id).to_string()
+    let last = id.rsplit('.').next().unwrap_or(id);
+    let mut c = last.chars();
+    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
 }
 
 /// What a `.flatpakref` file says about the app.
@@ -269,6 +271,7 @@ mod tests {
         let b = parse_bundle_head(&head).unwrap();
         assert_eq!((b.id.as_str(), b.arch.as_str(), b.branch.as_str(), b.is_app), ("dev.artcraft.PhotoCraft", "x86_64", "stable", true));
         assert_eq!(bundle_title(&b.id), "PhotoCraft");
+        assert_eq!(bundle_title("ai.storyteller.photocraft"), "Photocraft");
         let rt = parse_bundle_head(b"\0runtime/org.x.Platform/aarch64/24.08\0").unwrap();
         assert!(!rt.is_app && rt.arch == "aarch64");
     }
