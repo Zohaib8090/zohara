@@ -482,3 +482,7 @@ interfaces and IPv6 link-local addresses made phones pick unreachable ones). `ma
 - The Store's search entry is hidden until the magnifier icon is clicked; typing into the window before that does nothing.
 - The AUR RPC matches the whole typed text as one substring: "photo craft" finds nothing for `photocraft`. Search the words joined as well (`aur::search_terms`).
 - A `.flatpak` bundle starts with `flatpak\0` and keeps its ref as plain text near the start. Test installs with `XDG_DATA_HOME=<throwaway>` so the real Flatpak user installation is untouched.
+
+## Never `swapoff -a` in a privileged container (2026-10-13)
+Swap belongs to the host kernel. A test harness in `docker run --privileged` that ran `swapoff -a` switched off the owner's real swap partition. Turn off only the file you made. It was put back with `swapon /dev/nvme0n1p3` (also from a privileged container, since sudo needs a password); until the next restart `/proc/swaps` shows the device as `/nvme0n1p3`.
+Also: loop devices need `mknod /dev/loop-control c 10 237` and `mknod /dev/loopN b 7 N` inside the container; a swap file on Btrfs inside `@` blocks snapshots of `@` ("Text file busy").
