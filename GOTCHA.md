@@ -459,3 +459,10 @@ interfaces and IPv6 link-local addresses made phones pick unreachable ones). `ma
   prefer driving the code path from a test (`run_job` on a throwaway target) over a click. A test copy of the Store reads and
   changes the real system (pacman, Flatpak), unlike Settings with an isolated data folder: after a Store session check
   `ps -eo pid,args | grep -E 'pkexec|pacman -S'`.
+
+* **Never start two publishes to the same channel at the same time (2026-10-13).** `publish.yml` downloads the channel's package
+  database, adds its package and uploads it again. Two runs started together (Settings and Store to stable) both began from
+  the old database and the later upload overwrote the other's entry: the new Settings file was on the release but the
+  database still listed the old one, so no machine would have seen it. Publish one package, wait for it to finish, then the
+  next (or re-run the one that was lost). Always check the result: download `zohara-<channel>.db`, `bsdtar -tf` it and look for
+  both versions.
