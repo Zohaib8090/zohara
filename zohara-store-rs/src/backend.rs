@@ -340,6 +340,12 @@ fn run_streaming(
             Ok(Line::Err(l)) => {
                 errs.push_str(&l);
                 errs.push('\n');
+                // A long build prints a lot; only the end of it says why it failed.
+                if errs.len() > 400_000 {
+                    let cut = errs.len() - 200_000;
+                    let cut = (cut..errs.len()).find(|i| errs.is_char_boundary(*i)).unwrap_or(errs.len());
+                    errs.drain(..cut);
+                }
             }
             Err(RecvTimeoutError::Timeout) => {
                 if let Some(p) = on_tick() {
@@ -444,6 +450,7 @@ fn aur_install(package_name: &str, tx: &std::sync::mpsc::Sender<Event>) -> Resul
     match run_streaming(cmd, text, || None, tx) {
         Ok((st, _)) if st.success() => Ok(()),
         Ok((st, _)) if matches!(st.code(), Some(126) | Some(127)) => Err("The password prompt was cancelled, so nothing was changed.".to_string()),
+        Ok((_, err)) if crate::buildbudget::looks_out_of_memory(&err) => Err(crate::buildbudget::too_big(&crate::buildbudget::current())),
         Ok((_, err)) => Err(aur_failure(&err)),
         Err(e) => Err(e),
     }

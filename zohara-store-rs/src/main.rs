@@ -3,6 +3,7 @@ pub mod appimage;
 pub mod aur;
 pub mod community_updates;
 pub mod backend;
+pub mod buildbudget;
 pub mod downloads;
 pub mod library;
 pub mod requests;

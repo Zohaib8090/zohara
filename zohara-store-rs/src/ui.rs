@@ -1247,6 +1247,15 @@ Installing it builds it on your computer by running the author's build script, w
 Only continue if you trust it. You can read the script first.",
         ),
     );
+    if !app.package_name.ends_with("-bin") {
+        // A package without -bin is compiled here, which can take a long time and a lot of memory.
+        let note = format!(
+            "This one is compiled on your computer, which can take many minutes. {}",
+            crate::buildbudget::describe(&crate::buildbudget::current())
+        );
+        let body = d.body();
+        d.set_body(&format!("{body}\n\n{note}"));
+    }
     d.add_responses(&[("cancel", "Cancel"), ("script", "View script"), ("install", "Build and install")]);
     d.set_response_appearance("install", adw::ResponseAppearance::Destructive);
     d.set_default_response(Some("cancel"));

@@ -195,6 +195,17 @@ pub fn have_builder() -> bool {
 /// asks for the administrator password itself, through `pkexec`, only for the steps that need it. No questions are asked
 /// in the terminal: the Store already showed the warning and the script.
 pub fn install_command(name: &str) -> Option<Command> {
+    install_command_with(name, &crate::buildbudget::current(), crate::buildbudget::scopes_work())
+}
+
+/// The install command run inside the build budget (see `buildbudget`): its own limited group, low priority, matching
+/// job counts.
+pub fn install_command_with(name: &str, plan: &crate::buildbudget::Plan, scope: bool) -> Option<Command> {
+    plain_install_command(name).map(|c| crate::buildbudget::wrap(c, plan, scope))
+}
+
+/// `yay` alone, before the budget is applied.
+fn plain_install_command(name: &str) -> Option<Command> {
     if !valid_name(name) {
         return None;
     }
@@ -288,9 +299,14 @@ mod tests {
 
     #[test]
     fn the_install_command_builds_as_the_person_and_asks_for_the_password_only_through_pkexec() {
-        let c = install_command("some-app").unwrap();
+        let plan = crate::buildbudget::plan(16 * 1024 * 1024, 14 * 1024 * 1024, 0, 12);
+        let c = plain_install_command("some-app").unwrap();
         let args: Vec<String> = c.get_args().map(|a| a.to_string_lossy().to_string()).collect();
         assert_eq!(c.get_program(), "yay");
+        let wrapped = install_command_with("some-app", &plan, true).unwrap();
+        assert_eq!(wrapped.get_program(), "systemd-run");
+        assert_eq!(wrapped.get_args().last().map(|a| a.to_string_lossy().to_string()).as_deref(), Some("some-app"));
+        assert!(install_command_with("-S", &plan, true).is_none());
         assert!(args.windows(2).any(|w| w == ["--sudo", "pkexec"]));
         assert!(args.contains(&"--noconfirm".to_string()));
         // The name comes last, after `--`, so it can never be read as an option.
