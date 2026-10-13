@@ -224,6 +224,20 @@ fn save_state(s: &StoreState) {
     }
 }
 
+/// Whether updates are paused: Settings (Zohara Update > Pause updates) writes `paused_until`, a Unix time in seconds, to
+/// `~/.config/zohara/update-pause.json`. Pure: `json` is the file's text.
+pub fn paused_from(json: &str, now: i64) -> bool {
+    serde_json::from_str::<serde_json::Value>(json).ok().and_then(|v| v.get("paused_until")?.as_i64()).is_some_and(|until| until > now)
+}
+
+/// The background check stays quiet while the person has paused updates in Settings. Updating by hand still works.
+pub fn paused_now() -> bool {
+    let base = std::env::var("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())).join(".config"));
+    let text = std::fs::read_to_string(base.join("zohara").join("update-pause.json")).unwrap_or_default();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    paused_from(&text, now)
+}
+
 /// A fingerprint of what's available, so a notification is sent once per set of updates.
 pub fn signature(set: &UpdateSet) -> String {
     let mut parts: Vec<String> = set.flatpak.iter().map(|f| format!("{}@{}", f.app_id, f.branch)).collect();
@@ -276,6 +290,17 @@ pub fn notify_pending(set: &UpdateSet) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_pause_set_in_settings_is_honoured_until_it_ends() {
+        let file = r#"{ "paused_until": 2000 }"#;
+        assert!(paused_from(file, 1999));
+        assert!(!paused_from(file, 2000), "the day it ends, updates are back");
+        assert!(!paused_from(r#"{ "paused_until": null }"#, 5), "Don't pause");
+        assert!(!paused_from("", 5));
+        assert!(!paused_from("not json", 5));
+        assert!(!paused_from("{}", 5));
+    }
+
     use super::*;
 
     #[test]

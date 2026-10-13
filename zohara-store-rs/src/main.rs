@@ -21,8 +21,11 @@ fn main() {
     // "notify even when the Store isn't open" real, rather than only
     // checking when someone happens to launch the app.
     if std::env::args().any(|a| a == "--check-updates") {
-        let found = updates::check_all();
-        updates::notify_pending(&found);
+        // Quiet while updates are paused in Settings (the same file Settings' own background check reads).
+        if !updates::paused_now() {
+            let found = updates::check_all();
+            updates::notify_pending(&found);
+        }
         return;
     }
 
