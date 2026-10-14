@@ -230,7 +230,9 @@ cups-filters
 cups-pk-helper
 nss-mdns
 
-# Gaming (Settings > Gaming). 64-bit only: multilib is not enabled.
+# Gaming (Settings > Gaming). The 32-bit [multilib] repository is on (see customize_airootfs.sh), but Steam, Lutris and
+# the 32-bit graphics libraries are not preinstalled: Settings > Gaming > Windows games installs them in one click
+# (they depend on the graphics chip), and installs Proton-GE and ProtonUp-Qt.
 gamemode
 mangohud
 

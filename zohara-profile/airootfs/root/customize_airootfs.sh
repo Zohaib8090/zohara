@@ -392,6 +392,18 @@ else
     echo "  !! chaotic-mirrorlist missing; Chaotic-AUR not registered."
 fi
 
+# ── 32-bit libraries (multilib) on the installed system ────────────────────
+# Steam, Proton and many Windows games need Arch's [multilib] repository. Settings > Gaming > Windows games installs
+# Steam and the 32-bit graphics libraries from it in one click, so the repository has to be on after install.
+if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
+    if grep -q '^#\[multilib\]' /etc/pacman.conf; then
+        sed -i '/^#\[multilib\]/{s/^#//;n;s/^#//}' /etc/pacman.conf
+    else
+        printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
+    fi
+    echo "  -> multilib registered."
+fi
+
 # ── Pin the official mirrors to the approved date ───────────────────────────
 # build-iso.sh writes the date this ISO was built against (the signed
 # manifest's approved_date). Writing it in the same format Zohara Store uses
