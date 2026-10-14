@@ -486,3 +486,18 @@ interfaces and IPv6 link-local addresses made phones pick unreachable ones). `ma
 ## Never `swapoff -a` in a privileged container (2026-10-13)
 Swap belongs to the host kernel. A test harness in `docker run --privileged` that ran `swapoff -a` switched off the owner's real swap partition. Turn off only the file you made. It was put back with `swapon /dev/nvme0n1p3` (also from a privileged container, since sudo needs a password); until the next restart `/proc/swaps` shows the device as `/nvme0n1p3`.
 Also: loop devices need `mknod /dev/loop-control c 10 237` and `mknod /dev/loopN b 7 N` inside the container; a swap file on Btrfs inside `@` blocks snapshots of `@` ("Text file busy").
+
+## Windows games (2026-10-14)
+* **Lutris pulls in the `lsb-release` package, which owns `/etc/lsb-release`; Zohara ships that file itself (branding), so pacman stops
+  with "exists in filesystem".** The Settings setup script moves Zohara's file aside, installs with `--overwrite /etc/lsb-release` and puts
+  it back. Any other ISO-shipped file that a dependency also owns fails the same way.
+* **Proton-GE archive top folder is `GE-ProtonN-N-x86_64`**, not the tag; its `compatibilitytool.vdf` internal name is the same.
+  Unpack to a `.part` folder and rename. A copy in the Flatpak Steam folder does not mean the native Steam has it (check every folder).
+* **Never wake the NVIDIA chip to read it.** `lspci`, `nvidia-smi` and most `/sys` files wake a sleeping hybrid-laptop dGPU (battery,
+  multi-second freeze). Read `power/runtime_status` first (`backend/gpu_live.rs`).
+* **Processes inherit their parent's open GPU files** (Electron helpers, `node`): drop a process whose parent is also in the list.
+* `winetricks` shows "You are using a 64-bit WINEPREFIX" on `~/.wine`: harmless.
+* The double-click handler's `Exec=` is the binary that was running when the switch was turned on; a test build in `/tmp` goes
+  stale. Check `~/.local/share/applications/zohara-windows.desktop` before believing a double-click test.
+* A game launched by Proton runs for minutes after the launcher returns; check the **game's** environment in `/proc/<pid>/environ` and
+  `/proc/<pid>/maps` (GE-Proton, dxvk, libMangoHud, libgamemode) to prove what applied, not just the launch line in the log.
