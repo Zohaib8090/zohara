@@ -88,6 +88,13 @@ calamares
 
 # App Compatibility Layer
 wine
+# What a Windows program needs the first time it runs (Settings > Gaming > Windows programs): Wine's own .NET and web view (without them Wine
+# stops to download them when a Windows folder is made), winetricks for runtimes and fonts, cabextract which winetricks needs. Proton-GE itself
+# (about 560 MB) is downloaded on first use. These are also hard dependencies of zohara-settings, so installed systems get them on update.
+winetricks
+wine-mono
+wine-gecko
+cabextract
 waydroid
 distrobox
 podman
