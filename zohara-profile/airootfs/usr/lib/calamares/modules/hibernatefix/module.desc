@@ -1,0 +1,5 @@
+---
+type:       "job"
+name:       "hibernatefix"
+interface:  "python"
+script:     "main.py"

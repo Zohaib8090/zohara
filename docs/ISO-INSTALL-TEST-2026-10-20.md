@@ -69,3 +69,10 @@ Header bytes: systemd default mode writes flags 0x5 (platform + CRC), `Hibernate
 2. **"Swap (no Hibernate)" still offers Hibernate** everywhere (same `resume=` and hook). Either do not set `resume=` for that choice, or hide the button.
 3. **Settings' hibernate check adds up all swap** (`backend/hibernate.rs`, `swap_kib` sums every line of `/proc/swaps`, zram and swap file included): the laptop shows 33 GiB although the resume partition is only 8.8 GiB. It should count only the swap `resume=` points at, and never zram.
 4. With zram now default at priority 100, hibernation could pick zram as the target (not proven: zram on or off, the systemd path failed in the same way).
+
+## Fixes for problems 2 and 3 (2026-10-20, after the test above)
+* **3 (Settings)**: `zohara-settings/src/backend/hibernate.rs` now counts only the swap that `resume=` names and never zram; 9 unit tests; on the owner's laptop it now answers "cannot hibernate" (resume partition 8.8 GiB < RAM 15.3 GiB), the old check said yes.
+* **2 (installer)**: new Calamares job `hibernatefix` (`zohara-profile/airootfs/usr/lib/calamares/modules/hibernatefix/`, listed after `grubcfg` and before `bootloader` in `settings.conf`). Calamares keeps the choice in global storage as `partitionChoices.swap`
+  (`none`, `small`, `suspend`, `reuse`, `file`). For `none` and `small` it removes `resume=` from `/etc/default/grub` and writes `/etc/systemd/sleep.conf.d/10-zohara-no-hibernate.conf` (`AllowHibernation=no`, also suspend-then-hibernate and hybrid) so the sign-in screen and power menu do not show Hibernate;
+  "Swap (with Hibernate)" is left alone. It never stops an install (errors are logged and skipped). Checked with a fake `libcalamares` and temporary roots for every choice; **not yet run in a real install** (needs a new ISO).
+
