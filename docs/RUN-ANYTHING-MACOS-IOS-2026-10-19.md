@@ -14,6 +14,7 @@ Zohara Link) and the Windows notes in `zohara-settings/docs/WINDOWS-GAMES.md`.
 | Android apps (`.apk`) | yes | Waydroid (installed on the owner's laptop for tests) | not wired to double-click; not checked |
 | **macOS apps (`.app`, `.dmg`)** | **partly, to be built** | Darling (macOS translation layer) + a checker + double-click handler | this plan |
 | **iOS apps (`.ipa`)** | **no** | no open UIKit/Metal; apps are encrypted | explain and point to an alternative |
+| Programs in archives (`.tar.gz`, `.tar.xz`, `.tar.bz2`, `.tar.zst`) | yes, for ready-to-run apps | Settings > Apps > Apps from archives, and right-click > Zohara > Install as an app; source code is pointed to the Store | built 2026-10-20 (section 8) |
 | Kernel-level anti-cheat games | no | needs the real Windows kernel | explain |
 
 "Anything" cannot be literal. The goal for the rest is a clear, plain reason and the best alternative, never a silent failure.
@@ -75,6 +76,13 @@ The Hermes Windows installer failed with `install.ps1 -Manifest produced no pars
 * Practical answer for Hermes: it has a Linux build, `hermes desktop`.
 
 Possible fix (not built): a "PowerShell" entry in Windows parts that installs `powershell_core` + `powershell`, and Windows launches inside a pseudo-terminal with the invariant-globalization variable set.
+
+## 8. Apps from archives (`.tar.gz` and friends), built 2026-10-20
+
+The owner asked how an OS installs an app that comes as a `.tar.gz`. Short answer given: an archive is not an installer. Three cases: a ready-to-run app (extract and
+start it, plus a launcher), source code (must be built, and a hand-built program is invisible to pacman), and an Arch package or recipe (pacman and the AUR).
+Zohara now looks inside the archive, says which of these it is, installs ready-to-run apps into their own folder with a Start menu entry and a Remove button, and points
+source code to the Store. Details, safety rules and what was and was not tested: `zohara-settings/docs/ARCHIVE-APPS.md` (settings commit on alpha).
 
 ## 7. Open questions for the owner
 
