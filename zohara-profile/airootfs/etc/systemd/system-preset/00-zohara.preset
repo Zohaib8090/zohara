@@ -1,0 +1,9 @@
+# Zohara uses NetworkManager. Arch's own 90-systemd.preset says "enable systemd-networkd.service", so without this file anything that
+# applies presets (a package install in the new system, "systemctl preset-all") turns networkd back on and the two fight over the same
+# Wi-Fi card (two addresses, lag). Files here win over 90-systemd.preset.
+disable systemd-networkd.service
+disable systemd-networkd.socket
+disable systemd-networkd-wait-online.service
+disable systemd-networkd-varlink.socket
+disable systemd-networkd-resolve-hook.socket
+disable systemd-networkd-varlink-metrics.socket

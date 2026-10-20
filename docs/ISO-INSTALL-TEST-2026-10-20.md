@@ -23,6 +23,14 @@ Boot -> "Welcome to Zohara" (Install / Save a problem report / Migrate / Try) ->
 6. `hostname` is not installed (minor).
 7. The installer and `os-release` still say "Zohara OS 1.1".
 
+## Fixes made the same day (in the next ISO; to be verified by installing it)
+1. **networkd**: cause found: the image did not have it enabled, but Arch's `90-systemd.preset` says `enable systemd-networkd.service`, so a package install or preset run in the new system turned it back on (and four socket units start it on demand).
+   Now `etc/systemd/system-preset/00-zohara.preset` disables it and its sockets, and `customize_airootfs.sh` masks the service and the four sockets.
+2. **zram on by default**: `zram-generator` added to `packages.x86_64` and `etc/systemd/zram-generator.conf.d/zohara.conf` (the same file Settings' switch writes, so the switch shows on).
+3. **computer name**: `etc/calamares/modules/users.conf` (copy of the packaged default) with `hostname.template: "zohara"` instead of the packaged `derp-${cpu}`.
+4. **dates and numbers**: new Calamares step `shellprocess@localefix` after `localecfg` removes the `LC_*` lines from `/etc/locale.conf`, so formats follow the language.
+Not fixed: the installer window height (5), `hostname` command (6), the "1.1" labels (7). Existing installed machines are not changed by the ISO; the owner's laptop was fixed by hand (`fix-network.sh`).
+
 ## Checked and fine
 Installed packages are the current alpha (`zohara-settings` / `zohara-store` / `zohara-welcome` `0.1.0.202610200745-1`); `wine 11.18`, `wine-mono`, `wine-gecko`, `winetricks`, `cabextract` present; no failed system or user services;
 the right-click menu entry from `zohara-archive.desktop` is installed.

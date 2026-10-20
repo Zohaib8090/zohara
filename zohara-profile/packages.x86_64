@@ -268,3 +268,4 @@ libnotify
 playerctl
 squashfs-tools
 fuse2
+zram-generator

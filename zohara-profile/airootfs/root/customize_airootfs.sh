@@ -196,6 +196,11 @@ for _nd in /etc/systemd/system/multi-user.target.wants/systemd-networkd.service 
 done
 unset _nd
 systemctl disable systemd-networkd.service systemd-networkd-wait-online.service || true
+# A plain `disable` does not stick: four socket units (netlink, varlink, resolve-hook, varlink-metrics) start networkd again on demand, and
+# Arch's 90-systemd.preset enables it. A mask cannot be undone by either. (Found 2026-10-20: the installed system had networkd enabled and
+# running beside NetworkManager although this image did not.) The preset file in /etc/systemd/system-preset/ is the second layer.
+systemctl mask systemd-networkd.service systemd-networkd.socket systemd-networkd-varlink.socket \
+    systemd-networkd-resolve-hook.socket systemd-networkd-varlink-metrics.socket || true
 
 # ── /etc/resolv.conf ────────────────────────────────────────────────────────
 # Deliberately NOT touched here. `arch-chroot` (which mkarchiso uses to run this script) bind-mounts
