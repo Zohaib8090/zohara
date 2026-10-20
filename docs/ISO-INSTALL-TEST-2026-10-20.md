@@ -46,3 +46,26 @@ the right-click menu entry from `zohara-archive.desktop` is installed.
 * **Apps from archives**: right-click an archive in Dolphin > Zohara > "Install as an app" installed the app (notification "Hello is installed"); the same on a source-code archive gave the plain refusal;
   Settings > Apps > "Install from an archive…" opened the file chooser, then the "Install Hello?" box (name, size, explanation), installed a second copy, listed both, "Remove" asked for confirmation and removed it; the app is found in the Start menu search.
   Not tested: launching the installed app from the menu (it has no window), real large archives.
+
+## Swap and hibernation test (same day, fixed ISO, VM 3.8 GB RAM)
+
+**What the two installer choices do.** Partition step swap choices: "No swap", "Swap (no Hibernate)" (default, `small`), "Swap (with Hibernate)" (`suspend`).
+Both installed systems have the **same hibernate setup**: `resume=UUID=<swap>` on the kernel line, the `resume` hook in `mkinitcpio.conf` (`... plymouth resume filesystems ...`, initramfs rebuilt after), `logind CanHibernate = yes`, a Hibernate button on the sign-in screen.
+The only difference is the swap size: **5.95 GiB** (no Hibernate, about 1.5 x RAM) versus **8.37 GiB** (with Hibernate) on this 3.8 GB VM; the root partition shrinks from 53.55 to 51.12 GiB. With zram on (new default) the VM shows 7.85 / 10.5 GiB of swap in total.
+So "no hibernate" is only a smaller swap partition, and the Hibernate button is still offered.
+
+**Hibernate in the VM (nothing on the owner's laptop was hibernated).**
+| Way | Result |
+|---|---|
+| `systemctl hibernate` (what the Hibernate button runs), 5 tries (default mode, `HibernateMode=shutdown`, zram on and off, fresh install of either swap choice) | image written to the swap partition (header `S1SUSPEND`, kernel log "Image saving done", "Power down"), but at boot: `Unable to resume from device ... (259:3)`, `PM: Image not found (code -22)`; **cold boot, session lost** |
+| direct kernel path `echo shutdown > /sys/power/disk; echo disk > /sys/power/state`, 5 tries | 4 of 5 resumed with the whole session back (`PM: Image signature found, resuming`, `Image successfully loaded`); the one failure was the first direct try |
+Header bytes: systemd default mode writes flags 0x5 (platform + CRC), `HibernateMode=shutdown` and the direct path write 0x4; both resumed or failed independently of that, so the flag is not the cause. The kernel command line (serial console, `quiet splash`) did not decide it either.
+**Cause not found.** It may be specific to QEMU (NVMe emulation, ACPI) or real; it needs a test on real hardware before anyone relies on Hibernate. A failed hibernate here looks like a normal boot (cold boot, login screen), so unsaved work would be lost.
+
+**Owner's laptop (read only, 2026-10-20):** `resume=UUID=` points at the 8.8 GiB swap partition; RAM 15.3 GiB; also zram 7.7 GiB (priority 100) and a 16 GiB swap file (priority 10); `CanHibernate = yes`. systemd chooses the hibernation target by swap priority, but the initramfs here is the udev kind: its `resume` hook reads only `resume=` from the kernel line, so an image written to the swap file or zram would not be found at boot.
+
+## Problems to look at (not fixed)
+1. **Hibernate button may lose the session** (above). Needs a real-hardware test; options: point systemd and the kernel at the same device (`resume=` partition, and exclude zram/swap file), or hide Hibernate until a test passes.
+2. **"Swap (no Hibernate)" still offers Hibernate** everywhere (same `resume=` and hook). Either do not set `resume=` for that choice, or hide the button.
+3. **Settings' hibernate check adds up all swap** (`backend/hibernate.rs`, `swap_kib` sums every line of `/proc/swaps`, zram and swap file included): the laptop shows 33 GiB although the resume partition is only 8.8 GiB. It should count only the swap `resume=` points at, and never zram.
+4. With zram now default at priority 100, hibernation could pick zram as the target (not proven: zram on or off, the systemd path failed in the same way).
