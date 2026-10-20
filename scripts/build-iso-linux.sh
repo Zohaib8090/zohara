@@ -58,7 +58,7 @@ echo "  Arch snapshot: $APPROVED_DATE"
 echo "  zohara-settings: $SETTINGS_SHA"
 
 log "Building the builder image (cached layers are reused)"
-DOCKER_BUILDKIT=1 docker build \
+DOCKER_BUILDKIT=1 docker build --network=host \
     --build-arg "APPROVED_DATE=$APPROVED_DATE" \
     --build-arg "ZOHARA_SETTINGS_SHA=$SETTINGS_SHA" \
     -t zohara-builder:latest .

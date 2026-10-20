@@ -58,7 +58,7 @@ if [[ "${SYNC_MODE}" == "1" ]]; then
     echo ""
 
     set +e
-    docker run --rm \
+    docker run --rm --network=host \
       --name "${CONTAINER_NAME}" \
       --privileged \
       --entrypoint bash \
@@ -125,7 +125,7 @@ echo "[+] Logs: docker logs -f ${CONTAINER_NAME}"
 echo "[+] Or:    tail -f $LOG_FILE"
 echo ""
 
-docker run -d \
+docker run -d --network=host \
   --name "${CONTAINER_NAME}" \
   --restart unless-stopped \
   --privileged \
