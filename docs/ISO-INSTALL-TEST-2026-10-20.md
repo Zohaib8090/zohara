@@ -29,6 +29,10 @@ Boot -> "Welcome to Zohara" (Install / Save a problem report / Migrate / Try) ->
 2. **zram on by default**: `zram-generator` added to `packages.x86_64` and `etc/systemd/zram-generator.conf.d/zohara.conf` (the same file Settings' switch writes, so the switch shows on).
 3. **computer name**: `etc/calamares/modules/users.conf` (copy of the packaged default) with `hostname.template: "zohara"` instead of the packaged `derp-${cpu}`.
 4. **dates and numbers**: new Calamares step `shellprocess@localefix` after `localecfg` removes the `LC_*` lines from `/etc/locale.conf`, so formats follow the language.
+**Verified 2026-10-20 on a fresh install of the fixed ISO** (CI run `39401706577`, commit `586c0b7`, file `zohara-os-2026.10.20-x86_64.iso`, SHA-256 `686e3499c1f98a2c5c5d17b24ebeaef2c0aeed1850fb2285c4758eedd6479dcc`, kept in `~/Documents/zohara-iso-fixed/`):
+`systemd-networkd` and its socket are **masked** and inactive, NetworkManager active, one IPv4 address; `zram0` (1.9 G, zstd, priority 100) is active in front of the disk swap;
+`/etc/hostname` is `zohara` (the Users step suggested `zohara` as soon as a name was typed); `/etc/locale.conf` holds only `LANG=en_US.UTF-8` and the clock shows 10/20/26 (US format).
+Not clicked: Settings' zram switch showing "on" (it reads the live swap list, so it should). The installer's Summary page still *previews* "numbers and dates: Urdu"; the new step removes it afterwards.
 Not fixed: the installer window height (5), `hostname` command (6), the "1.1" labels (7). Existing installed machines are not changed by the ISO; the owner's laptop was fixed by hand (`fix-network.sh`).
 
 ## Checked and fine
