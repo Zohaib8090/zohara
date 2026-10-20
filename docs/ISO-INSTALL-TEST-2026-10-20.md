@@ -76,3 +76,21 @@ Header bytes: systemd default mode writes flags 0x5 (platform + CRC), `Hibernate
   (`none`, `small`, `suspend`, `reuse`, `file`). For `none` and `small` it removes `resume=` from `/etc/default/grub` and writes `/etc/systemd/sleep.conf.d/10-zohara-no-hibernate.conf` (`AllowHibernation=no`, also suspend-then-hibernate and hybrid) so the sign-in screen and power menu do not show Hibernate;
   "Swap (with Hibernate)" is left alone. It never stops an install (errors are logged and skipped). Checked with a fake `libcalamares` and temporary roots for every choice; **not yet run in a real install** (needs a new ISO).
 
+
+## `hibernatefix` verified in real installs (2026-10-20, evening)
+ISO built **locally** (`scripts/build-iso-linux.sh`, commit `92ecf18` + settings `0.1.0.202610201640-1`), `out/zohara-os-x86_64.iso`, SHA-256 `cd846cf460bcf1e0961ca8c7f760a895d8b20cdd394f7728f0c078406f1f90ee`. The cloud build `39429469057` of the same code (`~/Documents/zohara-iso-hib/`, SHA `123f20a7...ff767`) finished too but was not installed. Two fresh installs in the VM, 60 GB disk each:
+
+| Check | "Swap (no Hibernate)" (5.95 GiB) | "Swap (with Hibernate)" (8.37 GiB) |
+|---|---|---|
+| `resume=` on kernel line (`/proc/cmdline`) | **absent** | present (`resume=UUID=...`) |
+| `resume=` in `/etc/default/grub` | 0 | 1 |
+| `/etc/systemd/sleep.conf.d/10-zohara-no-hibernate.conf` | present (`AllowHibernation=no`, suspend-then-hibernate, hybrid) | absent |
+| logind `CanHibernate` | `no` | `yes` |
+| Hibernate on the sign-in screen | greyed out | (not looked at, `CanHibernate` is yes) |
+| zram + swap partition | zram 1.9 GiB (prio 100) + partition | same |
+| hostname, locale, networkd | `zohara`, `LANG=en_US.UTF-8` only, networkd masked, NetworkManager active | same |
+
+Not checked: the installer's own log line `hibernatefix:` (the log file was not readable by the test user); Settings' Power page on both installs; the sign-in screen of the "with Hibernate" install. Hibernate itself still lost the session in the VM earlier (see above): "with Hibernate" offers a button that is **not proven to work**.
+
+## Local ISO build fixed (2026-10-20)
+Two local builds failed at `rustup` (`Connection timed out` to `static.rust-lang.org`): Docker's default bridge network could not reach it while the laptop and `--network host` could (1 s). `scripts/build-iso-linux.sh` and `scripts/rebuild_fast.sh` now use `--network=host` (commit `7ffa360`). The build then finished in about 50 minutes.
