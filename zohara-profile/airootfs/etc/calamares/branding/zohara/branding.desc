@@ -21,11 +21,12 @@ strings:
     donateUrl:           https://github.com/Zohaib8090/zohara
 
 style:
-   sidebarBackground:    "#1e1e2e"
-   sidebarText:          "#cdd6f4"
-   sidebarTextSelect:    "#89b4fa"
-   sidebarTextHighlight: "#f38ba8"
-
+   # A light installer: white side panel, dark step names, the current step in Zohara's blue.
+   # (The key names are case-sensitive: lowercase or older names are ignored and the panel falls back to black with dark text.)
+   SidebarBackground:        "#f4f5f7"
+   SidebarText:              "#1e1e2e"
+   SidebarTextCurrent:       "#ffffff"
+   SidebarBackgroundCurrent: "#2f7de1"
 images:
     productLogo:         "logo.png"
     productIcon:         "logo.png"
