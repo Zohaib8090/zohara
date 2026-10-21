@@ -90,6 +90,18 @@ RUN cp /tmp/debtap/*.pkg.tar.zst /opt/localrepo/ 2>/dev/null || \
 RUN cp /tmp/calamares/*.pkg.tar.zst /opt/localrepo/ 2>/dev/null || \
     echo "WARN: calamares build produced no .pkg.tar.zst"
 
+# Zohara's own pinned copies of the Fluent and Nordzy themes (zohara-themes): taken from the alpha channel and put in the local
+# repo, so the ISO no longer depends on the Chaotic-AUR "-git" builds. The file names are read from the channel's database.
+RUN set -e; base=https://github.com/Zohaib8090/zohara-packages/releases/download/channel-alpha; \
+    for i in 1 2 3 4 5 6; do curl -fsSL --max-time 120 "$base/zohara-alpha.db" -o /tmp/alpha.db && break || { echo "alpha db try $i failed"; sleep $((i*10)); }; done; \
+    mkdir -p /tmp/alphadb && tar -xf /tmp/alpha.db -C /tmp/alphadb; \
+    for p in zohara-fluent-icon-theme zohara-fluent-cursor-theme zohara-fluent-gtk-theme zohara-nordzy-icon-theme; do \
+      f=$(sed -n '/%FILENAME%/{n;p}' /tmp/alphadb/$p-[0-9]*/desc); \
+      [ -n "$f" ] || { echo "ERROR: $p is not in the alpha channel"; exit 1; }; \
+      for i in 1 2 3 4 5 6; do curl -fsSL --max-time 600 "$base/$f" -o "/opt/localrepo/$f" && break || { echo "$f try $i failed"; sleep $((i*20)); }; done; \
+      [ -s "/opt/localrepo/$f" ] || exit 1; \
+    done
+
 # ── 5. Build the local pacman repo database ───────────────────────────────────
 RUN repo-add /opt/localrepo/localrepo.db.tar.gz /opt/localrepo/*.pkg.tar.zst && \
     ln -sf localrepo.db.tar.gz /opt/localrepo/localrepo.db && \

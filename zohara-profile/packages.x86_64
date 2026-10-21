@@ -154,10 +154,10 @@ breeze-gtk
 latte-dock-ng
 kdialog
 zenity
-fluent-cursor-theme-git
-fluent-gtk-theme-git
-fluent-icon-theme-git
-nordzy-icon-theme-git
+zohara-fluent-cursor-theme
+zohara-fluent-gtk-theme
+zohara-fluent-icon-theme
+zohara-nordzy-icon-theme
 webkit2gtk-4.1
 flatseal
 xdg-desktop-portal-kde
