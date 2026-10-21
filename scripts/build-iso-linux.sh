@@ -52,6 +52,12 @@ log "Resolving inputs the same way CI does"
 APPROVED_DATE=$(curl -fsSL https://raw.githubusercontent.com/Zohaib8090/zohara-pipeline/main/manifest.json \
     | sed -n 's/.*"approved_date": *"\([0-9/]*\)".*/\1/p')
 [ -n "$APPROVED_DATE" ] || die "could not read approved_date from zohara-pipeline"
+# Test builds: ZOHARA_ARCH_DATE=2026/10/20 pins the image to another Arch day without touching the signed list.
+# Such an image is for testing only; machines do not take a day from here, only from the signed approval.
+if [[ "${ZOHARA_ARCH_DATE:-}" =~ ^[0-9]{4}/[0-9]{2}/[0-9]{2}$ ]]; then
+    echo "  (test build: using ZOHARA_ARCH_DATE=$ZOHARA_ARCH_DATE instead of the approved $APPROVED_DATE)"
+    APPROVED_DATE="$ZOHARA_ARCH_DATE"
+fi
 SETTINGS_SHA=$(git ls-remote https://github.com/Zohaib8090/zohara-settings.git main | cut -f1)
 [ -n "$SETTINGS_SHA" ] || die "could not resolve zohara-settings main"
 echo "  Arch snapshot: $APPROVED_DATE"
