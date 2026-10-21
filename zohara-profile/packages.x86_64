@@ -51,8 +51,8 @@ switcheroo-control
 xf86-video-amdgpu
 xf86-video-nouveau
 xf86-video-intel
-# Touch/touchpad/mouse input for the X11 session. kwin-x11 above means X11
-# is an offered login session, not just Wayland -- and unlike Wayland
+# Touch/touchpad/mouse input for X11 desktops (Cinnamon or Xfce, added from Settings > Display > X11 support;
+# Plasma 6.8 has no X11 session of its own). Unlike Wayland
 # (where KWin talks to libinput directly), X11 needs this driver or input
 # doesn't work at all there: no mouse, no keyboard, no touch. It's an
 # *optional* dependency of xorg-server, so pacman never pulls it in on its
@@ -122,7 +122,8 @@ mkinitcpio-archiso
 mkinitcpio-nfs-utils
 nbd
 plasma-desktop
-kwin-x11
+# (kwin-x11 and plasma-x11-session were here. Arch dropped them with Plasma 6.8, which has no X11 session; an X11 desktop is added
+# on request from Settings > Display > X11 support: Cinnamon or Xfce.)
 plasma-nm
 plasma-keyboard
 qt6-virtualkeyboard
