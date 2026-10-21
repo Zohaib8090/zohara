@@ -33,3 +33,16 @@ Cube effect, live wallpaper, dynamic desktops, the `zohara` window decoration an
 2. Test the not-tested list above on a 10/14 image, especially the KWin effects and `latte-dock-ng`.
 3. Check the CI container's Arch date.
 4. Then the owner approves `2026/10/14`.
+
+## Update past 10/14 and keep X11: the hold test (2026-10-21)
+Goal: keep updating the rest of the system while Plasma stays at 6.7.5 (so the X11 session stays). From the updated 10/14 VM, the date was moved to **2026/10/20** and the update run with `pacman -Syu --ignore <the 39 Plasma packages>`. Settings' updater already does exactly this for `held_packages` in the signed manifest (`src/sysupdate/updates.rs`: `--ignore a,b,c`), so no code change is needed.
+
+**The 39 packages (every installed package that becomes 6.8.0 after 10/14):**
+`aurorae breeze breeze-cursors breeze-gtk kactivitymanagerd kde-cli-tools kdecoration kdeplasma-addons kglobalacceld kmenuedit knighttime kpipewire kscreen kscreenlocker ksystemstats kwallet-pam kwayland kwin layer-shell-qt libkscreen libksysguard libplasma milou ocean-sound-theme plasma-activities plasma-activities-stats plasma-desktop plasma-integration plasma-keyboard plasma-nm plasma-pa plasma-systemmonitor plasma-workspace plasma5support polkit-kde-agent powerdevil qqc2-breeze-style systemsettings xdg-desktop-portal-kde`
+(`kwin-x11` and `plasma-x11-session` are not in Arch after 10/14, so they simply stay.) The other **92** installed packages changed between 10/14 and 10/20 normally: kernel, Qt patch, mesa, curl, polkit 128, systemd 262.1, NetworkManager, flatpak, libreoffice, ...
+
+**Result: it works.** pacman resolved all dependencies with the 39 held (70 packages to upgrade, no conflict). The first run failed only on a slow archive download ("Operation too slow"); the second finished with exit 0. After a reboot: `linux-zen` **7.2.11**, `qt6-base` 6.12.0-3, `curl` 8.23, `polkit` 128, `mesa` 26.2.5; `kwin`, `kwin-x11`, `plasma-workspace` still **6.7.5-3**; `pacman -Dk` clean; the sign-in screen remembered "Plasma (X11)"; signed in with **session x11**, Plasma 6.7.5; no failed units; no journal errors but the VM's TDX line; `CanHibernate` yes.
+
+**How long this can last (not tested, judged from the facts):** Plasma 6.7 is held while Qt stays on 6.12.x (a patch update like 6.12.0-2 -> -3 was fine). It will break when Arch moves Qt to the next minor (6.13) or KDE Frameworks change in a way Plasma 6.7 cannot use, so the hold needs re-testing at each approved date, and it ends at the latest in early 2027 when upstream stops 6.7. Security fixes for the held Plasma packages themselves stop at 6.7.5-3. Newly added Arch packages that need Plasma 6.8 would stop the update (pacman says so, nothing is half-installed).
+
+**Crash found and fixed on the way:** `zohara-settings` aborted once in the VM. Cause: my test script ran `zohara-settings --version 2>&1 | head -1`; when `head` closed the pipe, the logger's `eprint!` panicked, and the panic hook logged again (double panic = abort). Fixed in `backend/diag.rs` (`964c0e7`: ignore a closed stderr); on alpha. Not an update problem. Note `--version` opens the GUI.
