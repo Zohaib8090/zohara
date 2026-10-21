@@ -46,3 +46,29 @@ Goal: keep updating the rest of the system while Plasma stays at 6.7.5 (so the X
 **How long this can last (not tested, judged from the facts):** Plasma 6.7 is held while Qt stays on 6.12.x (a patch update like 6.12.0-2 -> -3 was fine). It will break when Arch moves Qt to the next minor (6.13) or KDE Frameworks change in a way Plasma 6.7 cannot use, so the hold needs re-testing at each approved date, and it ends at the latest in early 2027 when upstream stops 6.7. Security fixes for the held Plasma packages themselves stop at 6.7.5-3. Newly added Arch packages that need Plasma 6.8 would stop the update (pacman says so, nothing is half-installed).
 
 **Crash found and fixed on the way:** `zohara-settings` aborted once in the VM. Cause: my test script ran `zohara-settings --version 2>&1 | head -1`; when `head` closed the pipe, the logger's `eprint!` panicked, and the panic hook logged again (double panic = abort). Fixed in `backend/diag.rs` (`964c0e7`: ignore a closed stderr); on alpha. Not an update problem. Note `--version` opens the GUI.
+
+## Moving to Plasma 6.8 and the X11 support button (2026-10-21, owner's plan)
+Owner's decision: move to the newer Plasma, and give X11 through Settings: a button that says Plasma 6.8 has no X11 session natively and, on "yes", adds another desktop (Cinnamon or Xfce).
+
+**Built (alpha, `zohara-settings` `e871787`):** Display > **X11 support** (`backend/x11_support.rs`, `pages/x11_support.rs`, 5 unit tests): reads the Plasma version; on 6.7 offers Plasma's own X11 session first (`plasma-x11-session`), on 6.8+ says it is gone and offers **Cinnamon** or **Xfce** in a dialog with the explanation; one password prompt (`pkexec`, fixed package names, refresh only on a pinned mirror), checks the login entry exists afterwards, then says "sign out and choose it on the sign-in screen". The updater (`sysupdate/updates.rs`) now **removes `plasma-x11-session` and `kwin-x11` first** when `kwin-x11` is installed and the new day's repositories no longer carry it (test: the script's order). `zohara` `882951a`: `kwin-x11` removed from the ISO list.
+
+**Tested in the VM (copy of the 10/14+held machine, then the update to the 10/20 repositories):**
+| Step | Result |
+|---|---|
+| Update without removing `kwin-x11` (dry run) | resolved fine, but the real path removes the X11 pieces first (as the updater now does) |
+| `pacman -Rns plasma-x11-session kwin-x11`, then `-Syu` to 10/20 | exit 0 (Plasma 6.8.0, Qt 6.12.0-3, kernel 7.2.11); no database errors |
+| Sign-in screen on 6.8 | works; **no** "Desktop Session" menu while only Plasma is installed |
+| Plasma 6.8.0 Wayland session | starts; panel, Settings (Display page, all rows), pages render; wallpaper reset to 6.8's default |
+| Settings > Display > **X11 support** | shows "Plasma 6.8 has no X11 session..." + **Add an X11 desktop...**; dialog text as intended (Cinnamon / Xfce / Cancel); password prompt; ~5 min install; "Cinnamon is added" and the row lists "Ready on the sign-in screen: Cinnamon" |
+| Sign-in screen after | **Desktop Session menu** appears: Cinnamon, Cinnamon (Software Rendering), Cinnamon on Wayland (Experimental), Plasma (Wayland) |
+| Sign in with Cinnamon (Software Rendering) | **desktop up** (panel, menu with the same apps, log out dialog); clean log out back to the greeter; back into Plasma 6.8 fine |
+| Our KWin pieces on 6.8 | `zoharacube` effect **loads** (`loadEffect` true, no KWin error); a second virtual desktop can be created; night light reports available; KWin stays alive |
+
+**Not tested / found:**
+* The cube's animation itself (no touchpad in the VM; the desktop-switch shortcut did not trigger in the test), live wallpaper, dynamic desktops, the `zohara` window decoration (the VM uses Breeze), round buttons, night light's colour, Wine, NVIDIA, Hibernate on 7.2.11.
+* **Xfce** (only Cinnamon was added and run); Cinnamon with 3D graphics; Cinnamon's look/apps beyond the menu; Zohara Settings pages inside Cinnamon (the dialog says they only work in Plasma).
+* The **Plasma 6.8 sign-in screen keeps showing its on-screen keyboard** over the password box in the VM (the VM has a tablet-type pointer, which probably triggers it): it ate keystrokes and locked the test account after 3 wrong passwords. Unknown on a real laptop; check there.
+* `baloo_file_extractor` aborts and `kde-baloo.service` failed (KDE's file indexer, in the VM); `kglobalacceld` crashed once while its package was being replaced during the update (a running program replaced by an update).
+* Real hardware; the signed-manifest update path; the ISO built from the new package list (no ISO built).
+
+**Still to do before the owner approves 10/20 or later:** a new ISO from `882951a`, the X11 button on **stable** (it is on alpha), Xfce tested, the cube/live wallpaper/dynamic desktops/window style checked by hand on a 6.8 machine, a decision on the greeter keyboard, then the approval (owner's key). Machines on 10/14 can also stay on Plasma 6.7 with its X11 session until then.
