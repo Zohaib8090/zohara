@@ -1,0 +1,94 @@
+# Maintainer: Zohara OS Team <https://github.com/Zohaib8090/zohara>
+#
+# Zohara's own copies of the four look-and-feel packages that used to come from Chaotic-AUR as rolling "-git" builds
+# (fluent-icon-theme-git, fluent-cursor-theme-git, fluent-gtk-theme-git, nordzy-icon-theme-git).
+#
+# Why: Chaotic-AUR is a third-party repository that follows the newest Arch regardless of Zohara's approved date, and a "-git"
+# build changes whenever upstream does. These builds use the exact upstream commits the owner's laptop already had (2026-10-21),
+# so nothing looks different, and they only change when a person here changes the commit below and tests it.
+# `replaces` moves machines that have the Chaotic packages over to these on their next update.
+#
+# Sources are upstream git checkouts at fixed commits (the commit hash is the integrity check). Licence: GPL-3.0 for all four;
+# the upstream projects are credited in each package's description and URL. The theme's optional wallpapers (usr/share/backgrounds)
+# are not packaged: nothing in Zohara uses them.
+pkgbase=zohara-themes
+pkgname=(zohara-fluent-icon-theme zohara-fluent-cursor-theme zohara-fluent-gtk-theme zohara-nordzy-icon-theme)
+pkgver=1
+pkgrel=1
+arch=('any')
+license=('GPL-3.0-or-later')
+makedepends=('git' 'sassc')
+options=('!strip')
+
+_fluent_icon=c8a244f571ef8fb47812bdc9dbce76546cedce69   # vinceliuice/Fluent-icon-theme, 2026-08-30
+_fluent_gtk=7a49a464b0188c340101c52965c18190b1c694cf    # vinceliuice/Fluent-gtk-theme, 2026-08-17
+_nordzy=829c47bda534d3c9f3c7d46c73a6fe9d946eca41        # MolassesLover/Nordzy-icon, 2026-04-27
+
+source=("Fluent-icon-theme::git+https://github.com/vinceliuice/Fluent-icon-theme.git#commit=$_fluent_icon"
+        "Fluent-gtk-theme::git+https://github.com/vinceliuice/Fluent-gtk-theme.git#commit=$_fluent_gtk"
+        "Nordzy-icon::git+https://github.com/MolassesLover/Nordzy-icon.git#commit=$_nordzy")
+sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+pkgver() {
+  # CI passes _PKGVER (a timestamp, so every build is newer than the last); by hand it stays at 1.
+  if [ -n "${_PKGVER:-}" ]; then echo "$_PKGVER"; else echo 1; fi
+}
+
+prepare() {
+  # no gtk-update-icon-cache while packaging (the package's install hook of the system does it)
+  sed -i '/gtk-update-icon-cache/d' "$srcdir/Fluent-icon-theme/install.sh"
+}
+
+package_zohara-fluent-icon-theme() {
+  pkgdesc="Fluent icon theme (vinceliuice/Fluent-icon-theme), pinned by Zohara"
+  url="https://github.com/vinceliuice/Fluent-icon-theme"
+  depends=('gtk-update-icon-cache' 'hicolor-icon-theme')
+  provides=('fluent-icon-theme' 'fluent-icon-theme-git')
+  conflicts=('fluent-icon-theme' 'fluent-icon-theme-git')
+  replaces=('fluent-icon-theme-git')
+  cd "$srcdir/Fluent-icon-theme"
+  install -d "$pkgdir/usr/share/icons"
+  ./install.sh -a -d "$pkgdir/usr/share/icons"
+}
+
+package_zohara-fluent-cursor-theme() {
+  pkgdesc="Fluent cursor theme (vinceliuice/Fluent-icon-theme, cursors), pinned by Zohara"
+  url="https://github.com/vinceliuice/Fluent-icon-theme"
+  provides=('fluent-cursor-theme' 'fluent-cursor-theme-git')
+  conflicts=('fluent-cursor-theme' 'fluent-cursor-theme-git')
+  replaces=('fluent-cursor-theme-git')
+  cd "$srcdir/Fluent-icon-theme/cursors"
+  install -d "$pkgdir/usr/share/icons"
+  cp -r dist "$pkgdir/usr/share/icons/Fluent-cursors"
+  cp -r dist-dark "$pkgdir/usr/share/icons/Fluent-dark-cursors"
+}
+
+package_zohara-fluent-gtk-theme() {
+  pkgdesc="Fluent GTK theme (vinceliuice/Fluent-gtk-theme), pinned by Zohara"
+  url="https://github.com/vinceliuice/Fluent-gtk-theme"
+  optdepends=('gtk-engine-murrine: GTK2 theme support')
+  provides=('fluent-gtk-theme' 'fluent-gtk-theme-git')
+  conflicts=('fluent-gtk-theme' 'fluent-gtk-theme-git')
+  replaces=('fluent-gtk-theme-git')
+  cd "$srcdir/Fluent-gtk-theme"
+  install -d "$pkgdir/usr/share/themes"
+  ./install.sh -t all -d "$pkgdir/usr/share/themes"
+  ./install.sh -t all --tweaks round -d "$pkgdir/usr/share/themes"
+  # the style sheets are made by sassc; without it the installer only prints a warning and the theme would be empty
+  for f in Fluent-Dark/gtk-4.0/gtk.css Fluent-round-Light/gtk-3.0/gtk.css; do
+    [ -s "$pkgdir/usr/share/themes/$f" ] || { echo "ERROR: $f was not generated (is sassc installed?)"; return 1; }
+  done
+}
+
+package_zohara-nordzy-icon-theme() {
+  pkgdesc="Nordzy icon theme (MolassesLover/Nordzy-icon), pinned by Zohara"
+  url="https://github.com/MolassesLover/Nordzy-icon"
+  provides=('nordzy-icon-theme' 'nordzy-icon-theme-git')
+  conflicts=('nordzy-icon-theme' 'nordzy-icon-theme-git')
+  replaces=('nordzy-icon-theme-git')
+  cd "$srcdir/Nordzy-icon"
+  install -dm755 "$pkgdir/usr/share/icons"
+  ./install.sh -g -d "$pkgdir/usr/share/icons" --total
+  # broken symlinks
+  find "$pkgdir" -xtype l -delete
+}
