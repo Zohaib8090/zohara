@@ -2,6 +2,10 @@
 
 A Linux distribution built to feel like home for people coming from Windows.
 
+[![Download Zohara OS](https://a.fsdn.com/con/app/sf-download-button)](https://sourceforge.net/projects/zohara-os/files/latest/download)
+
+[![Downloads per month](https://img.shields.io/sourceforge/dm/zohara-os.svg?label=downloads%2Fmonth)](https://sourceforge.net/projects/zohara-os/) [![Total downloads](https://img.shields.io/sourceforge/dt/zohara-os.svg?label=total%20downloads)](https://sourceforge.net/projects/zohara-os/)
+
 ## What is Zohara?
 
 Zohara is an Arch-based Linux distribution that trades Linux's usual friction for a desktop you'll already know how to use. It ships the KDE Plasma desktop with a Windows-flavored visual language on top, the Zen kernel for desktop and gaming performance, and working NVIDIA support out of the box — so the first boot looks and feels familiar, and the second boot is fast.
@@ -23,6 +27,8 @@ Zohara is an Arch-based Linux distribution that trades Linux's usual friction fo
 Screenshots will land here once the project has a stable public release.
 
 ## Download
+
+The latest ISO is also hosted on [SourceForge](https://sourceforge.net/projects/zohara-os/files/latest/download), the mirror that the download button above points to.
 
 ISOs are built by GitHub Actions on every change. The image (about 3.7 GB) is larger than GitHub allows for a release file (2 GB), so it isn't on the Releases page (the `v1.0.0` release there is an old August 2026 build). To get the current one:
 
