@@ -4,7 +4,7 @@ A Linux distribution built to feel like home for people coming from Windows.
 
 [![Download Zohara OS](https://a.fsdn.com/con/app/sf-download-button)](https://sourceforge.net/projects/zohara-os/files/latest/download)
 
-[![Downloads per month](https://img.shields.io/sourceforge/dm/zohara-os.svg?label=downloads%2Fmonth)](https://sourceforge.net/projects/zohara-os/) [![Total downloads](https://img.shields.io/sourceforge/dt/zohara-os.svg?label=total%20downloads)](https://sourceforge.net/projects/zohara-os/) [![SourceForge Rising Star](https://b.sf-syn.com/badge_img/4145259/oss-rising-star-white?achievement=oss-rising-star&variant_id=sf)](https://sourceforge.net/projects/zohara-os/?pk_campaign=badge&pk_source=vendor)
+[![Downloads per month](https://img.shields.io/sourceforge/dm/zohara-os.svg?label=downloads%2Fmonth)](https://sourceforge.net/projects/zohara-os/) [![Total downloads](https://img.shields.io/sourceforge/dt/zohara-os.svg?label=total%20downloads)](https://sourceforge.net/projects/zohara-os/) <a href="https://sourceforge.net/projects/zohara-os/?pk_campaign=badge&pk_source=vendor"><img alt="SourceForge Rising Star" src="https://b.sf-syn.com/badge_img/4145259/oss-rising-star-white?achievement=oss-rising-star&variant_id=sf" width="125"></a>
 
 ## What is Zohara?
 
