@@ -326,6 +326,22 @@ pub fn read_update_info(file: &Path) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
+/// A new, empty work folder only this person can open: in the runtime folder (or ~/.cache), never in the shared /tmp where
+/// another user could plant a folder of the same, guessable name first. `create_dir` (not `create_dir_all`) fails if the name
+/// already exists, so a planted folder or link is never used.
+pub fn private_work_dir(prefix: &str) -> Result<PathBuf, String> {
+    use std::os::unix::fs::DirBuilderExt;
+    let base = match std::env::var_os("XDG_RUNTIME_DIR").filter(|v| !v.is_empty()) {
+        Some(r) => PathBuf::from(r).join("zohara-store"),
+        None => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cache/zohara-store"),
+    };
+    std::fs::create_dir_all(&base).map_err(|e| format!("Couldn't make a work folder ({e})."))?;
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let dir = base.join(format!("{prefix}-{}-{nanos}", std::process::id()));
+    std::fs::DirBuilder::new().mode(0o700).create(&dir).map_err(|e| format!("Couldn't make a work folder ({e})."))?;
+    Ok(dir)
+}
+
 /// Installs the AppImage at `path` for this person.
 pub fn install(path: &Path, dirs: &Dirs) -> Result<Installed, String> {
     install_with(path, dirs, None, None)
@@ -351,6 +367,8 @@ pub fn install_with(path: &Path, dirs: &Dirs, keep_slug: Option<&str>, stamp: Op
     };
     std::fs::create_dir_all(&dirs.apps).map_err(|e| e.to_string())?;
     let dest = dirs.apps.join(format!("{slug}.AppImage"));
+    // Was it there before? If this install then fails half way, only a brand new app is taken out again.
+    let existed = dest.exists();
     // Copy beside it and rename: replacing an app that is running works (it keeps the old file until it closes).
     let staging = dirs.apps.join(format!(".{slug}.AppImage.new"));
     std::fs::copy(path, &staging).map_err(|e| format!("Couldn't copy the file ({e})."))?;
@@ -363,8 +381,8 @@ pub fn install_with(path: &Path, dirs: &Dirs, keep_slug: Option<&str>, stamp: Op
     let meta = Meta { source_name: file_name.clone(), source_stamp, update_info: read_update_info(&dest).unwrap_or_default() };
     let _ = std::fs::write(meta_path(&slug, dirs), meta_text(&meta));
 
-    let tmp = std::env::temp_dir().join(format!("zohara-appimage-{}-{slug}", std::process::id()));
-    let inside = read_inside(&dest, &head, &tmp);
+    let tmp = private_work_dir(&format!("appimage-{slug}")).unwrap_or_else(|_| PathBuf::from("/nonexistent/zohara-store"));
+    let inside = if tmp.is_dir() { read_inside(&dest, &head, &tmp) } else { None };
     let (name, comment, icon_src, cats) = match inside {
         Some((n, c, i, cats)) if !n.is_empty() => (n, c, i, cats),
         Some((_, c, i, cats)) => (guess_name(&file_name), c, i, cats),
@@ -372,18 +390,31 @@ pub fn install_with(path: &Path, dirs: &Dirs, keep_slug: Option<&str>, stamp: Op
     };
     let mut icon = String::new();
     if let Some(src) = icon_src {
-        let ext = if std::fs::read(&src).map(|b| b.starts_with(b"\x89PNG")).unwrap_or(false) { "png" } else if src.extension().map(|e| e == "svg").unwrap_or(false) { "svg" } else { "png" };
+        // Only the first bytes are looked at, and an icon over 5 MB is not an icon (the file comes from inside the AppImage).
+        let is_png = || {
+            use std::io::Read;
+            let mut head = [0u8; 4];
+            std::fs::File::open(&src).and_then(|mut f| f.read_exact(&mut head)).map(|_| head == *b"\x89PNG").unwrap_or(false)
+        };
+        let small_enough = std::fs::metadata(&src).map(|m| m.len() <= 5 * 1024 * 1024).unwrap_or(false);
+        let ext = if !small_enough { "png" } else if is_png() { "png" } else if src.extension().map(|e| e == "svg").unwrap_or(false) { "svg" } else { "png" };
         let _ = std::fs::create_dir_all(&dirs.icons);
         let to = dirs.icons.join(format!("{slug}.{ext}"));
-        if std::fs::copy(&src, &to).is_ok() {
+        if small_enough && std::fs::copy(&src, &to).is_ok() {
             icon = to.to_string_lossy().to_string();
         }
     }
     let _ = std::fs::remove_dir_all(&tmp);
 
-    std::fs::create_dir_all(&dirs.launchers).map_err(|e| e.to_string())?;
     let launcher = dirs.launchers.join(format!("zohara-appimage-{slug}.desktop"));
-    std::fs::write(&launcher, launcher_text(&slug, &name, &comment, &icon, &cats, &dest)).map_err(|e| e.to_string())?;
+    let wrote = std::fs::create_dir_all(&dirs.launchers).and_then(|_| std::fs::write(&launcher, launcher_text(&slug, &name, &comment, &icon, &cats, &dest)));
+    if let Err(e) = wrote {
+        // No menu entry means no way to open or remove it: do not leave a new app behind without one.
+        if !existed {
+            let _ = uninstall(&slug, dirs);
+        }
+        return Err(format!("Couldn't add the menu entry ({e}), so the app was not installed."));
+    }
     let _ = Command::new("update-desktop-database").arg(&dirs.launchers).stderr(Stdio::null()).status();
     Ok(Installed { slug, name, comment, icon })
 }
@@ -527,6 +558,35 @@ mod tests {
         std::fs::write(&src, "#!/bin/sh\nrm -rf ~\n").unwrap();
         assert!(install(&src, &dirs).is_err());
         assert!(!dirs.apps.exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn work_folders_are_private_new_and_never_reused() {
+        use std::os::unix::fs::PermissionsExt;
+        let a = private_work_dir("t").unwrap();
+        let b = private_work_dir("t").unwrap();
+        assert_ne!(a, b, "two calls never share a folder");
+        assert_eq!(std::fs::metadata(&a).unwrap().permissions().mode() & 0o777, 0o700, "only the owner can open it");
+        assert!(a.is_dir() && std::fs::read_dir(&a).unwrap().next().is_none(), "it starts empty");
+        let _ = std::fs::remove_dir_all(&a);
+        let _ = std::fs::remove_dir_all(&b);
+    }
+
+    #[test]
+    fn a_new_app_whose_menu_entry_cannot_be_written_is_not_left_behind() {
+        let root = std::env::temp_dir().join(format!("zohara-ai-test3-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        // the launchers "folder" is a file, so the menu entry cannot be written
+        std::fs::write(root.join("launchers"), "in the way").unwrap();
+        let dirs = Dirs { apps: root.join("apps"), icons: root.join("icons"), launchers: root.join("launchers") };
+        let src = root.join("Lonely-1.0.AppImage");
+        std::fs::write(&src, fake_appimage(b"not really a squashfs")).unwrap();
+        let err = install(&src, &dirs).unwrap_err();
+        assert!(err.contains("menu entry"), "{err}");
+        let left: Vec<_> = std::fs::read_dir(&dirs.apps).map(|d| d.flatten().collect()).unwrap_or_default();
+        assert!(left.is_empty(), "no orphaned app file: {left:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

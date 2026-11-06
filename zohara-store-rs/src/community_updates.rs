@@ -259,8 +259,7 @@ pub fn apply_image(u: &ImageUpdate, dirs: &Dirs, say: &dyn Fn(&str)) -> Result<(
         return Err("That download address looked wrong, so nothing was changed.".into());
     }
     say(&format!("Downloading {}…", u.asset));
-    let tmp_dir = std::env::temp_dir().join(format!("zohara-store-update-{}", std::process::id()));
-    std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
+    let tmp_dir = appimage::private_work_dir("update")?;
     let file = tmp_dir.join(&u.asset.replace('/', "_"));
     let ok = Command::new("curl")
         .args(["-fL", "--max-time", "3600", "--max-filesize", "4294967296", "-A", "ZoharaStore", "-o"])

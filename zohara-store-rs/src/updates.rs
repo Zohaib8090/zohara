@@ -87,8 +87,9 @@ pub fn check_all() -> UpdateSet {
 
 // ── Running things, with live output ───────────────────────────────────────
 
-fn safe_name(s: &str) -> bool {
-    !s.is_empty() && s.len() < 200 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"@._+-".contains(&b))
+/// A package or app id: plain characters only, and never starting with `-` (it would be read as an option).
+pub(crate) fn safe_name(s: &str) -> bool {
+    !s.is_empty() && s.len() < 200 && !s.starts_with('-') && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"@._+-".contains(&b))
 }
 
 /// Runs `cmd`, sending each output line to `tx`. pkexec's "dismissed" codes
@@ -126,7 +127,7 @@ pub fn apply(flatpaks: &[String], tx: &Sender<String>) -> Result<(), String> {
     }
     let _ = tx.send(format!("Updating {} app(s)…", flatpaks.len()));
     let mut c = Command::new("flatpak");
-    c.args(["update", "-y", "--noninteractive"]).args(flatpaks);
+    c.args(["update", "-y", "--noninteractive", "--"]).args(flatpaks);
     run_logged(c, tx)
 }
 
@@ -192,7 +193,7 @@ pub fn flatpak_go_back(app_id: &str, hash: &str, tx: &Sender<String>) -> Result<
         return Err("That version looked wrong, so nothing was changed.".into());
     }
     let mut c = Command::new("flatpak");
-    c.args(["update", "-y", "--noninteractive", &format!("--commit={hash}"), app_id]);
+    c.args(["update", "-y", "--noninteractive", &format!("--commit={hash}"), "--", app_id]);
     run_logged(c, tx)
 }
 
@@ -335,6 +336,7 @@ mod tests {
     fn names_are_checked() {
         assert!(safe_name("zohara-settings") && safe_name("org.mozilla.firefox") && safe_name("g++"));
         assert!(!safe_name("") && !safe_name("a b") && !safe_name("a;b") && !safe_name("$(x)"));
+        assert!(!safe_name("-y") && !safe_name("--commit=abc"), "a name that starts with - would be read as an option");
     }
 
     #[test]

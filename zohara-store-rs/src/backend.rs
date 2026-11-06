@@ -303,11 +303,16 @@ fn run_streaming(
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
                         for &b in &buf[..n] {
-                            if b == b'\n' || b == b'\r' {
+                            // A line is cut at 64 KiB: a program that prints without ever ending a line must not grow memory without limit.
+                            let end = b == b'\n' || b == b'\r';
+                            if end || cur.len() >= 65_536 {
                                 if !cur.is_empty() {
                                     let s = String::from_utf8_lossy(&cur).to_string();
                                     let _ = ltx.send(if err { Line::Err(s) } else { Line::Out(s) });
                                     cur.clear();
+                                }
+                                if !end {
+                                    cur.push(b);
                                 }
                             } else {
                                 cur.push(b);
@@ -475,19 +480,24 @@ pub fn aur_failure(stderr: &str) -> String {
 /// Installs (`remove == false`) or removes an app, sending progress to `tx`, and finishes with `Event::Done`.
 pub fn run_job(source: &AppSource, package_name: &str, remove: bool, tx: &std::sync::mpsc::Sender<Event>) {
     let _guard = PACKAGE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    // A name that is not plain (or starts with `-`) never reaches pacman or flatpak.
+    if !crate::updates::safe_name(package_name) {
+        let _ = tx.send(Event::Done(Err("That app name looked wrong, so nothing was changed.".to_string())));
+        return;
+    }
     let _ = tx.send(Event::Progress(Progress { fraction: None, text: "Starting…".into() }));
     let res = match (source, remove) {
-        (AppSource::Pacman, false) => pacman_admin(&["-S", "--noconfirm", "--needed", package_name], false, tx),
-        (AppSource::Pacman | AppSource::Aur, true) => pacman_admin(&["-Rs", "--noconfirm", package_name], true, tx),
+        (AppSource::Pacman, false) => pacman_admin(&["-S", "--noconfirm", "--needed", "--", package_name], false, tx),
+        (AppSource::Pacman | AppSource::Aur, true) => pacman_admin(&["-Rs", "--noconfirm", "--", package_name], true, tx),
         (AppSource::Aur, false) => aur_install(package_name, tx),
         (AppSource::AppImage, true) => crate::appimage::uninstall(package_name, &crate::appimage::Dirs::for_user()),
         (AppSource::AppImage, false) => Err("Open the AppImage file with the Store to install it.".to_string()),
         (AppSource::Flatpak, rm) => {
             let mut c = Command::new("flatpak");
             if rm {
-                c.args(["uninstall", "-y", "--noninteractive", package_name]);
+                c.args(["uninstall", "-y", "--noninteractive", "--", package_name]);
             } else {
-                c.args(["install", "-y", "--noninteractive", "flathub", package_name]);
+                c.args(["install", "-y", "--noninteractive", "flathub", "--", package_name]);
             }
             match run_streaming(c, parse_flatpak_line, || None, tx) {
                 Ok((st, _)) if st.success() => Ok(()),
